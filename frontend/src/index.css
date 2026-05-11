@@ -1,0 +1,104 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  /* Backgrounds */
+  --bg-app:        #F5F2EE;
+  --bg-sidebar:    #FAFAF8;
+  --bg-editor:     #FFFFFF;
+  --bg-elevated:   #FFFFFF;
+  --bg-hover:      #F5F0EB;
+
+  /* Borders */
+  --border:        #EDE8E3;
+  --border-hover:  #D8D0C8;
+
+  /* Text */
+  --text-primary:  #1A1714;
+  --text-secondary:#6B6560;
+  --text-muted:    #A89F98;
+
+  /* Actions */
+  --accent:        #FEE2E2;
+  --accent-text:   #7C2D2D;
+  --accent-hover:  #FECACA;
+  --accent-active: #FCA5A5;
+
+  /* Danger */
+  --danger-bg:     #FEE2E2;
+  --danger-text:   #991B1B;
+  --danger-hover:  #FECACA;
+
+  /* Success */
+  --success:       #D1FAE5;
+  --success-text:  #065F46;
+
+  /* Version tabs */
+  --tab-active-bg:   #FEE2E2;
+  --tab-active-text: #7C2D2D;
+
+  /* Typography */
+  --font-ui:   'DM Sans', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+
+  --text-xs:   11px;
+  --text-sm:   13px;
+  --text-base: 15px;
+  --text-lg:   18px;
+  --text-xl:   24px;
+
+  /* Spacing */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-12: 48px;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+
+  /* Layout */
+  --sidebar-width:  220px;
+  --postlist-width: 340px;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  background: var(--bg-app);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+
+input, textarea, select {
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  color: var(--text-primary);
+}
+
+textarea {
+  resize: none;
+}
