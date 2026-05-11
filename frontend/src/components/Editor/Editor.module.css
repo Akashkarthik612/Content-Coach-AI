@@ -1,0 +1,282 @@
+.editor {
+  flex: 1;
+  background: var(--bg-editor);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Post header ──────────────────────────────────────── */
+.postHeader {
+  padding: var(--sp-4) var(--sp-6) var(--sp-3);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.postTitle {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.statusChip {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.status_draft     { background: #F5F0EB; color: #6B6560; }
+.status_published { background: #D1FAE5; color: #065F46; }
+.status_archived  { background: #F3F4F6; color: #9CA3AF; }
+.status_scheduled { background: #FEE2E2; color: #7C2D2D; }
+
+/* ── Version tab bar ──────────────────────────────────── */
+.tabBar {
+  display: flex;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-6);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-editor);
+  align-items: center;
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: none;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.tabActive {
+  background: var(--tab-active-bg);
+  color: var(--tab-active-text);
+  font-weight: 500;
+}
+
+.latestDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent-text);
+  opacity: 0.6;
+}
+
+.tabLabel {
+  opacity: 0.7;
+  font-style: italic;
+  margin-left: 2px;
+  font-family: var(--font-ui);
+}
+
+.tabRenameInput {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  outline: none;
+  width: 90px;
+}
+
+/* ── Post editor wrap ─────────────────────────────────── */
+.postEditorWrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Scrollable body ──────────────────────────────────── */
+.body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Textarea ─────────────────────────────────────────── */
+.textarea {
+  width: 100%;
+  flex: 1;
+  min-height: 320px;
+  background: var(--bg-editor);
+  border: none;
+  outline: none;
+  padding: var(--sp-6);
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  line-height: 1.7;
+  color: var(--text-primary);
+}
+
+.textarea::placeholder { color: var(--text-muted); }
+.textarea:read-only    { color: var(--text-secondary); background: #FAFAF8; }
+
+/* ── Version meta row ─────────────────────────────────── */
+.metaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-6);
+  border-top: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+.metaItem  { display: flex; flex-direction: column; gap: 2px; }
+
+.metaLabel {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.metaMono {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.metaNote {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Save new version ─────────────────────────────────── */
+.saveSection {
+  padding: var(--sp-4) var(--sp-6);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.saveSectionLabel {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.saveRow {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.labelInput {
+  flex: 1;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 7px 10px;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.labelInput:focus   { border-color: var(--border-hover); }
+.labelInput::placeholder { color: var(--text-muted); }
+
+/* ── Generic form page (new folder / new post) ────────── */
+.formPage {
+  padding: var(--sp-8) var(--sp-6);
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.formHeading {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--sp-2);
+}
+
+.formActions {
+  display: flex;
+  gap: var(--sp-2);
+  padding-top: var(--sp-2);
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.fieldLabel {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.newPostTextarea {
+  background: var(--bg-editor);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-4);
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  line-height: 1.7;
+  color: var(--text-primary);
+  width: 100%;
+  min-height: 200px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.newPostTextarea:focus     { border-color: var(--border-hover); }
+.newPostTextarea::placeholder { color: var(--text-muted); }
+
+/* ── Empty / loading states ───────────────────────────── */
+.emptyState {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.emptyTitle {
+  font-size: var(--text-lg);
+  color: var(--text-muted);
+}
+
+.loadingState {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
