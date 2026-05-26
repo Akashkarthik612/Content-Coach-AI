@@ -36,6 +36,7 @@ class PostResponse(BaseModel):
     folder_id: Optional[UUID]
     title: str
     status: PostStatus
+    is_pinned: bool
     current_version: int
     created_at: datetime
     updated_at: datetime
@@ -49,6 +50,7 @@ class PostListResponse(BaseModel):
     folder_id: Optional[UUID]
     title: str
     status: PostStatus
+    is_pinned: bool
     current_version: int
     updated_at: datetime
 
@@ -96,6 +98,9 @@ class FolderRename(BaseModel):
 
 class PostRename(BaseModel):
     title: str
+
+class PostPin(BaseModel):
+    is_pinned: bool
 
 class VersionRename(BaseModel):
     version_label: str

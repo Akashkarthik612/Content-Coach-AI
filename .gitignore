@@ -21,8 +21,11 @@ storage/models/*.joblib
 storage/models/*.pkl
 
 # Notebooks output
-notebooks/.ipynb_checkpoints/
+**/.ipynb_checkpoints/
 notebooks/model_comparison.png
+
+# pgvector source clone (used for local installation only)
+pgvector/
 
 # OS
 .DS_Store

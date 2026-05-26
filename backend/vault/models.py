@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Enum,
@@ -37,7 +38,7 @@ class Folder(Base):
         default=uuid.uuid4,
         server_default="gen_random_uuid()",
     )
-    user_id = Column(UUID(as_uuid=True), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     name = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
     created_at = Column(
@@ -56,6 +57,7 @@ class Post(Base):
         default=uuid.uuid4,
         server_default="gen_random_uuid()",
     )
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     folder_id = Column(UUID(as_uuid=True), ForeignKey("folders.id"), nullable=True)
     title = Column(Text, nullable=False)
     status = Column(
@@ -64,6 +66,7 @@ class Post(Base):
         default=PostStatus.draft,
     )
     current_version = Column(Integer, nullable=False, default=1, server_default="1")
+    is_pinned = Column(Boolean, nullable=False, default=False, server_default="false")
     scheduled_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(
         DateTime(timezone=True), nullable=False, default=_utcnow, server_default="now()"

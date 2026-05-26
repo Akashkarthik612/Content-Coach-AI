@@ -2,7 +2,7 @@
   width: var(--sidebar-width);
   min-width: var(--sidebar-width);
   background: var(--bg-sidebar);
-  border-right: 1px solid var(--border);
+  border-right: 1px solid rgba(255,255,255,0.15);
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
@@ -15,7 +15,7 @@
   font-size: var(--text-sm);
   font-weight: 500;
   letter-spacing: 0.15em;
-  color: var(--text-secondary);
+  color: var(--sidebar-text);
   padding-bottom: var(--sp-2);
 }
 
@@ -30,7 +30,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--text-muted);
+  color: var(--sidebar-text-label);
   padding: var(--sp-2) var(--sp-2) var(--sp-1);
 }
 
@@ -41,7 +41,7 @@
   padding: 6px 8px;
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);
-  color: var(--text-secondary);
+  color: var(--sidebar-text-muted);
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
   display: flex;
@@ -53,13 +53,13 @@
 
 .renameInput {
   flex: 1;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-hover);
+  background: rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.4);
   border-radius: var(--radius-sm);
   padding: 2px 6px;
   font-size: var(--text-sm);
   font-family: var(--font-ui);
-  color: var(--text-primary);
+  color: var(--sidebar-text);
   outline: none;
   min-width: 0;
 }
@@ -67,7 +67,7 @@
 .folderItem:hover,
 .folderItem.active {
   background: var(--bg-hover);
-  color: var(--text-primary);
+  color: var(--sidebar-text);
 }
 
 .folderIcon {
@@ -83,7 +83,7 @@
 
 .empty {
   font-size: var(--text-xs);
-  color: var(--text-muted);
+  color: var(--sidebar-text-muted);
   padding: var(--sp-2) var(--sp-2);
   font-style: italic;
 }

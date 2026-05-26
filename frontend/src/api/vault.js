@@ -4,6 +4,12 @@ const BASE = 'http://localhost:8000/api/vault';
 
 const api = axios.create({ baseURL: BASE });
 
+api.interceptors.request.use(config => {
+  const userId = localStorage.getItem('user_id');
+  if (userId) config.headers['X-User-Id'] = userId;
+  return config;
+});
+
 // ── Folders ──────────────────────────────────────────────────
 export const getFolders = () =>
   api.get('/folders').then(r => r.data);
@@ -33,6 +39,9 @@ export const renamePost = (id, title) =>
 
 export const deletePost = (id) =>
   api.delete(`/posts/${id}`).then(r => r.data);
+
+export const pinPost = (id, is_pinned) =>
+  api.patch(`/posts/${id}/pin`, { is_pinned }).then(r => r.data);
 
 // ── Versions ──────────────────────────────────────────────────
 export const saveVersion = (postId, content, versionLabel) =>

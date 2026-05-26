@@ -2,7 +2,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import func
+from sqlalchemy import func, or_, case, null
 from sqlalchemy.orm import Session
 
 from backend.vault.models import Folder, Post, PostVersion, _utcnow
@@ -17,6 +17,32 @@ from backend.vault.schemas import (
 )
 
 
+def _own_folder(db: Session, user_id: UUID, folder_id: UUID) -> Folder:
+    folder = db.get(Folder, folder_id)
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    if folder.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return folder
+
+
+def _own_post(db: Session, user_id: UUID, post_id: UUID) -> Post:
+    post = db.get(Post, post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    if post.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return post
+
+
+def _own_version(db: Session, user_id: UUID, version_id: UUID) -> PostVersion:
+    version = db.get(PostVersion, version_id)
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+    _own_post(db, user_id, version.post_id)
+    return version
+
+
 # ── Folder ────────────────────────────────────────────────────────────────────
 
 def create_folder(db: Session, user_id: UUID, data: FolderCreate) -> Folder:
@@ -24,8 +50,6 @@ def create_folder(db: Session, user_id: UUID, data: FolderCreate) -> Folder:
     db.add(folder)
     db.commit()
     db.refresh(folder)
-    
-    # this function will return the newly created folder each time
     return folder
 
 
@@ -33,55 +57,42 @@ def list_folders(db: Session, user_id: UUID) -> list[Folder]:
     return db.query(Folder).filter(Folder.user_id == user_id).all()
 
 
-def rename_folder(db: Session, folder_id: UUID, data: FolderRename) -> Folder:
-    folder = db.get(Folder, folder_id)
-    if not folder:
-        raise HTTPException(status_code=404, detail="Folder not found")
+def rename_folder(db: Session, user_id: UUID, folder_id: UUID, data: FolderRename) -> Folder:
+    folder = _own_folder(db, user_id, folder_id)
     folder.name = data.name
     db.commit()
     db.refresh(folder)
     return folder
 
 
-def delete_folder(db: Session, folder_id: UUID) -> None:
-    folder = db.get(Folder, folder_id)
-    if not folder:
-        raise HTTPException(status_code=404, detail="Folder not found")
+def delete_folder(db: Session, user_id: UUID, folder_id: UUID) -> None:
+    folder = _own_folder(db, user_id, folder_id)
     db.delete(folder)
     db.commit()
 
 
 # ── Post ──────────────────────────────────────────────────────────────────────
 
-def create_post(db: Session, folder_id: UUID, data: PostCreate) -> Post:
-    folder = db.get(Folder, folder_id)
-    if not folder:
-        raise HTTPException(status_code=404, detail="Folder not found")
-    post = Post(title=data.title, folder_id=folder_id)
+def create_post(db: Session, user_id: UUID, folder_id: UUID, data: PostCreate) -> Post:
+    _own_folder(db, user_id, folder_id)
+    post = Post(user_id=user_id, title=data.title, folder_id=folder_id)
     db.add(post)
     db.commit()
     db.refresh(post)
     return post
 
 
-def list_posts(db: Session, folder_id: UUID) -> list[Post]:
-    folder = db.get(Folder, folder_id)
-    if not folder:
-        raise HTTPException(status_code=404, detail="Folder not found")
-    return db.query(Post).filter(Post.folder_id == folder_id).all()
+def list_posts(db: Session, user_id: UUID, folder_id: UUID) -> list[Post]:
+    _own_folder(db, user_id, folder_id)
+    return db.query(Post).filter(Post.folder_id == folder_id, Post.user_id == user_id).all()
 
 
-def get_post(db: Session, post_id: UUID) -> Post:
-    post = db.get(Post, post_id)
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
-    return post
+def get_post(db: Session, user_id: UUID, post_id: UUID) -> Post:
+    return _own_post(db, user_id, post_id)
 
 
-def rename_post(db: Session, post_id: UUID, data: PostRename) -> Post:
-    post = db.get(Post, post_id)
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
+def rename_post(db: Session, user_id: UUID, post_id: UUID, data: PostRename) -> Post:
+    post = _own_post(db, user_id, post_id)
     post.title = data.title
     post.updated_at = _utcnow()
     db.commit()
@@ -89,20 +100,25 @@ def rename_post(db: Session, post_id: UUID, data: PostRename) -> Post:
     return post
 
 
-def delete_post(db: Session, post_id: UUID) -> None:
-    post = db.get(Post, post_id)
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
+def delete_post(db: Session, user_id: UUID, post_id: UUID) -> None:
+    post = _own_post(db, user_id, post_id)
     db.delete(post)
     db.commit()
 
 
+def pin_post(db: Session, user_id: UUID, post_id: UUID, pinned: bool) -> Post:
+    post = _own_post(db, user_id, post_id)
+    post.is_pinned = pinned
+    post.updated_at = _utcnow()
+    db.commit()
+    db.refresh(post)
+    return post
+
+
 # ── Version ───────────────────────────────────────────────────────────────────
 
-def save_version(db: Session, post_id: UUID, data: VersionSave) -> PostVersion:
-    post = db.get(Post, post_id)
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
+def save_version(db: Session, user_id: UUID, post_id: UUID, data: VersionSave) -> PostVersion:
+    post = _own_post(db, user_id, post_id)
 
     max_num = (
         db.query(func.max(PostVersion.version_number))
@@ -121,7 +137,7 @@ def save_version(db: Session, post_id: UUID, data: VersionSave) -> PostVersion:
             char_count=len(data.content),
         )
         db.add(version)
-        db.flush()  # persist version row within transaction before updating post
+        db.flush()
 
         post.current_version = next_number
         post.updated_at = _utcnow()
@@ -135,10 +151,30 @@ def save_version(db: Session, post_id: UUID, data: VersionSave) -> PostVersion:
     return version
 
 
-def delete_version(db: Session, version_id: UUID) -> None:
-    version = db.get(PostVersion, version_id)
-    if not version:
-        raise HTTPException(status_code=404, detail="Version not found")
+def list_versions(db: Session, user_id: UUID, post_id: UUID) -> list[PostVersion]:
+    _own_post(db, user_id, post_id)
+    return (
+        db.query(PostVersion)
+        .filter(PostVersion.post_id == post_id)
+        .order_by(PostVersion.version_number)
+        .all()
+    )
+
+
+def get_version(db: Session, user_id: UUID, version_id: UUID) -> PostVersion:
+    return _own_version(db, user_id, version_id)
+
+
+def rename_version(db: Session, user_id: UUID, version_id: UUID, data: VersionRename) -> PostVersion:
+    version = _own_version(db, user_id, version_id)
+    version.change_summary = data.version_label
+    db.commit()
+    db.refresh(version)
+    return version
+
+
+def delete_version(db: Session, user_id: UUID, version_id: UUID) -> None:
+    version = _own_version(db, user_id, version_id)
     post = db.get(Post, version.post_id)
     db.delete(version)
     db.flush()
@@ -151,77 +187,42 @@ def delete_version(db: Session, version_id: UUID) -> None:
     db.commit()
 
 
-def rename_version(db: Session, version_id: UUID, data: VersionRename) -> PostVersion:
-    version = db.get(PostVersion, version_id)
-    if not version:
-        raise HTTPException(status_code=404, detail="Version not found")
-    version.change_summary = data.version_label
-    db.commit()
-    db.refresh(version)
-    return version
-
-
-def list_versions(db: Session, post_id: UUID) -> list[PostVersion]:
-    post = db.get(Post, post_id)
-    if not post:
-        raise HTTPException(status_code=404, detail="Post not found")
-    return (
-        db.query(PostVersion)
-        .filter(PostVersion.post_id == post_id)
-        .order_by(PostVersion.version_number)
-        .all()
-    )
-
-
-def get_version(db: Session, version_id: UUID) -> PostVersion:
-    version = db.get(PostVersion, version_id)
-    if not version:
-        raise HTTPException(status_code=404, detail="Version not found")
-    return version
-
-
 # ── Search ────────────────────────────────────────────────────────────────────
 
-def search_posts(db: Session, query: str) -> list[SearchResult]:
+def search_posts(db: Session, user_id: UUID, query: str) -> list[SearchResult]:
     like = f"%{query}%"
 
-    title_matches = db.query(Post).filter(Post.title.ilike(like)).all()
+    # Title matches take priority: when the post title satisfies the pattern,
+    # matched_version_id is NULL. When only a version's content satisfies it,
+    # matched_version_id carries that version's id.
+    matched_version_id_expr = case(
+        (Post.title.ilike(like), null()),
+        else_=PostVersion.id,
+    ).label("matched_version_id")
 
-    # posts whose any version content matches — one row per post (deduped below)
-    content_rows = (
-        db.query(Post, PostVersion)
-        .join(PostVersion, PostVersion.post_id == Post.id)
-        .filter(PostVersion.content.ilike(like))
+    rows = (
+        db.query(Post, matched_version_id_expr)
+        .outerjoin(PostVersion, PostVersion.post_id == Post.id)
+        .filter(
+            Post.user_id == user_id,
+            or_(Post.title.ilike(like), PostVersion.content.ilike(like)),
+        )
+        # DISTINCT ON (Post.id) — deduplication happens in PostgreSQL, not Python.
+        # ORDER BY must lead with Post.id to satisfy DISTINCT ON semantics; the
+        # secondary sort on version_number ensures we pick the earliest matching
+        # version for content-only hits.
+        .distinct(Post.id)
+        .order_by(Post.id, PostVersion.version_number)
         .all()
     )
 
-    seen: set[UUID] = set()
-    results: list[SearchResult] = []
-
-    for post in title_matches:
-        if post.id not in seen:
-            seen.add(post.id)
-            results.append(
-                SearchResult(
-                    post_id=post.id,
-                    title=post.title,
-                    folder_id=post.folder_id,
-                    matched_version_id=None,
-                    updated_at=post.updated_at,
-                )
-            )
-
-    for post, version in content_rows:
-        if post.id not in seen:
-            seen.add(post.id)
-            results.append(
-                SearchResult(
-                    post_id=post.id,
-                    title=post.title,
-                    folder_id=post.folder_id,
-                    matched_version_id=version.id,
-                    updated_at=post.updated_at,
-                )
-            )
-
-    return results
+    return [
+        SearchResult(
+            post_id=row.Post.id,
+            title=row.Post.title,
+            folder_id=row.Post.folder_id,
+            matched_version_id=row.matched_version_id,
+            updated_at=row.Post.updated_at,
+        )
+        for row in rows
+    ]

@@ -5,7 +5,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.auth.router import router as auth_router
 from backend.vault.router import router as vault_router
+from backend.ai.router import router as ai_router
 
 app = FastAPI()
 
@@ -16,7 +18,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
 app.include_router(vault_router)
+app.include_router(ai_router)
 
 
 @app.get("/health")

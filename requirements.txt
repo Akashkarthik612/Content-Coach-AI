@@ -1,0 +1,15 @@
+alembic
+bcrypt
+fastapi
+langchain
+langchain-community
+langchain-google-genai
+langchain-openai
+langchain-text-splitters
+langgraph
+pgvector
+psycopg2-binary
+pydantic-settings
+python-dotenv
+sqlalchemy
+uvicorn

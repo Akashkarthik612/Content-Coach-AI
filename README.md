@@ -1,108 +1,86 @@
 # Content Coach
 
-Your personal version control system for LinkedIn content and writing scripts — write, refine, and store every draft in one place, without the chaos.
-
-> ⚠️ AI-powered assistant coming soon — scoring, feedback, and engagement prediction are on the way.
+**Git for writing.** A version-controlled content workspace for LinkedIn creators who want to stop losing their best drafts.
 
 ---
 
 ## The Problem
 
-You write a LinkedIn post. You refine it. You refine it again. Now you've got:
+Every LinkedIn creator has been here:
 
-```
-post_draft_final.docx
-post_draft_final_v2.docx
-post_draft_ACTUALLY_FINAL.docx
-```
+> *"I had a much better version of this post last week. Where did it go?"*
 
-Or a single Google Doc buried three folders deep — and zero memory of what changed between any of them.
-
-**Sound familiar? Content Coach fixes this.**
+Your best writing gets overwritten, buried in Google Docs, or lost in Notion pages no one visits. Content Coach gives your writing the same discipline that code gets — every edit saved, every version named, everything searchable.
 
 ---
 
-## What It Does
+## What You Can Do
 
-Content Coach is a version-controlled post library built specifically for LinkedIn creators. Think of it like Git, but for your writing.
+**Organise** your posts into folders — by topic, campaign, or content series.
 
-| What you need | How Content Coach handles it |
+**Write** in a focused, distraction-free editor. Collapse the sidebar panels when you need to think.
+
+**Version** every draft that matters. Name them: *"tighter hook"*, *"shorter CTA"*, *"viral rewrite"*. Switch back to any version instantly.
+
+**Pin** your best posts to your dashboard so they're always one click away.
+
+**Search** your full post history by keyword — across titles and content — instantly.
+
+**Ask your AI assistant** questions about your own writing. It reads your vault and answers in context.
+
+---
+
+## What's Live
+
+| Area | Status |
 |---|---|
-| Save a new post | Give it a title + topic tag, done |
-| Track rewrites | Every edit becomes a new version (v1 → v2 → v3) |
-| Add context to changes | Leave a note on each version: "tightened the hook" |
-| Find old posts | Search across content, titles, and notes instantly |
-| Log real results | Record likes, comments, and impressions after publishing |
-| Filter by topic | View all your AI posts, career posts, etc. in one click |
+| Landing page + auth (register / login) | Live |
+| Dashboard with pinned posts, drafts, and calendar | Live |
+| 3-column vault workspace (folder → post → editor) | Live |
+| Version control — save named versions, switch between them | Live |
+| Pin posts to dashboard | Live |
+| Folder and post context menus (rename, delete, pin) | Live |
+| Keyword search across post history | Live |
+| AI assistant (powered by Gemini + your own post vault) | Live (beta) |
 
 ---
 
-## What's Built (v0.1)
+## What's Next
 
-### Feature 1 — The Vault ✅
-
-The core post library is live. Everything below works today:
-
-- Create a post with a title and topic tag
-- Add new versions as you refine your draft
-- Search your full library by keyword
-- Filter posts by topic
-- Log real engagement numbers after publishing
-- Clean REST API with auto-generated docs at `/docs`
-
-**Stack:** FastAPI · SQLAlchemy · SQLite (local) → PostgreSQL (SaaS) · Python 3.11+
+| Feature | Description |
+|---|---|
+| Post quality scoring | Hook strength, CTA presence, readability — scored per version |
+| Engagement predictor | Trained on your own metrics, not generic benchmarks |
+| LinkedIn draft import | Chrome extension that reads your draft directly from LinkedIn |
+| Scheduling calendar | Plan and visualise your content pipeline |
+| Team workspaces | Shared vaults for founders with a ghostwriter or content team |
 
 ---
 
-## What's Coming
+## Getting Started (Self-Hosted)
 
-| Feature | Status | Description |
-|---|---|---|
-| AI Scorer | Next up | Every post gets a quality score (0–100), an engagement level (Low / Medium / High), and a breakdown — hook strength, CTA presence, readability, and more. Includes a local AI assistant built on your own posts. |
-| Engagement Predictor | Later | Trained on your own past posts and real metrics. Not generic AI advice — predictions based on what actually works for your audience. |
-| Phase 2 — SaaS | Roadmap | User accounts, PostgreSQL, LLM-powered rewrite suggestions, and a Chrome extension that reads your LinkedIn draft directly. |
-
----
-
-## Run It Locally
+**Prerequisites:** Python 3.11+, Node 18+, PostgreSQL
 
 ```bash
-# Clone and enter the project
-cd linkedin_coach
+# 1. Clone and configure
+git clone <repo>
+cp .env.example .env          # fill in DATABASE_URL and GEMINI_API_KEY
 
-# Set up environment
-python -m venv .venv
-source .venv/bin/activate
-
-# Install dependencies
+# 2. Backend
+python -m venv venv
+venv\Scripts\activate          # Windows — or: source venv/bin/activate
 pip install -r requirements.txt
+venv\Scripts\alembic upgrade head
+venv\Scripts\uvicorn backend.main:app --reload
 
-# Start the server
-uvicorn backend.main:app --reload --port 8000
+# 3. Frontend
+cd frontend
+npm install
+npm run dev
 ```
 
-| URL | What's there |
-|---|---|
-| `http://localhost:8000/` | The Vault UI |
-| `http://localhost:8000/docs` | API docs (dev only) |
-| `http://localhost:8000/health` | Health check |
+Open `http://localhost:5173` and register an account.
 
 ---
 
-## Project Layout
-
-```
-linkedin_coach/
-├── frontend/          ← UI (React + Vite)
-├── backend/
-│   ├── core/          ← Config, DB connection
-│   ├── vault/         ← Post versioning (live)
-│   ├── analyser/      ← ML scorer (coming soon)
-│   └── predictor/     ← Engagement model (coming soon)
-├── storage/           ← SQLite DB + trained model artifacts
-└── notebooks/         ← ML experimentation (not shipped)
-```
-
----
-
-Built by Akash Balamurugan · v0.1.0 · April 2025
+Built by Akash Balamurugan · v0.2 · 2026

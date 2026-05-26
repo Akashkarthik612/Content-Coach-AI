@@ -60,7 +60,7 @@ export function Sidebar() {
 
   return (
     <aside className={styles.sidebar}>
-      <div className={styles.wordmark}>VAULT</div>
+      <div className={styles.wordmark}>Content Coach</div>
 
       <Button variant="primary" onClick={openNewFolder}>
         + New Folder

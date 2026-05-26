@@ -1,104 +1,172 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+@import "tw-animate-css";
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,100..900&family=DM+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
+/* ── Landing page tokens (--cc-*) ─────────────────────────────────────────── */
 :root {
-  /* Backgrounds */
-  --bg-app:        #F5F2EE;
-  --bg-sidebar:    #FAFAF8;
-  --bg-editor:     #FFFFFF;
-  --bg-elevated:   #FFFFFF;
-  --bg-hover:      #F5F0EB;
-
-  /* Borders */
-  --border:        #EDE8E3;
-  --border-hover:  #D8D0C8;
-
-  /* Text */
-  --text-primary:  #1A1714;
-  --text-secondary:#6B6560;
-  --text-muted:    #A89F98;
-
-  /* Actions */
-  --accent:        #FEE2E2;
-  --accent-text:   #7C2D2D;
-  --accent-hover:  #FECACA;
-  --accent-active: #FCA5A5;
-
-  /* Danger */
-  --danger-bg:     #FEE2E2;
-  --danger-text:   #991B1B;
-  --danger-hover:  #FECACA;
-
-  /* Success */
-  --success:       #D1FAE5;
-  --success-text:  #065F46;
-
-  /* Version tabs */
-  --tab-active-bg:   #FEE2E2;
-  --tab-active-text: #7C2D2D;
-
-  /* Typography */
-  --font-ui:   'DM Sans', sans-serif;
-  --font-mono: 'IBM Plex Mono', monospace;
-
-  --text-xs:   11px;
-  --text-sm:   13px;
-  --text-base: 15px;
-  --text-lg:   18px;
-  --text-xl:   24px;
-
-  /* Spacing */
-  --sp-1: 4px;
-  --sp-2: 8px;
-  --sp-3: 12px;
-  --sp-4: 16px;
-  --sp-6: 24px;
-  --sp-8: 32px;
-  --sp-12: 48px;
-
-  /* Radius */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
-
-  /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
-
-  /* Layout */
-  --sidebar-width:  220px;
-  --postlist-width: 340px;
+  --cc-white:       #FFFFFF;
+  --cc-bg-soft:     #F8FAFF;
+  --cc-bg-subtle:   #EEF2FF;
+  --cc-blue:        #2563EB;
+  --cc-blue-hover:  #1D4ED8;
+  --cc-blue-light:  #DBEAFE;
+  --cc-blue-dark:   #1E40AF;
+  --cc-text:        #0F172A;
+  --cc-text-muted:  #475569;
+  --cc-text-faint:  #94A3B8;
+  --cc-border:      #E2E8F0;
+  --cc-accent:      #FEE2E2;
+  --cc-green-light: #DCFCE7;
+  --cc-green-text:  #15803D;
+  --cc-red-light:   #FEF2F2;
+  --cc-red-text:    #B91C1C;
 }
 
+/* ── Landing layout utilities ─────────────────────────────────────────────── */
+@media (max-width: 768px)  { .cc-hide-mobile { display: none !important; } }
+@media (min-width: 769px)  { .cc-show-mobile { display: none !important; } }
+@media (max-width: 900px)  { .cc-hero-grid   { grid-template-columns: 1fr !important; } }
+
+/* ── Design tokens — single source of truth ───────────────────────────────── */
+:root {
+  /* UI_STATE.md canonical tokens — use these in all new components */
+  --color-bg:              #FFFFFF;
+  --color-bg-soft:         #F8FAFF;
+  --color-bg-subtle:       #EEF2FF;
+  --color-blue-primary:    #2563EB;
+  --color-blue-light:      #DBEAFE;
+  --color-blue-dark:       #1D4ED8;
+  --color-text:            #0F172A;
+  --color-text-muted:      #64748B;
+  --color-text-faint:      #94A3B8;
+  --color-border:          #E2E8F0;
+  --color-border-focus:    #2563EB;
+
+  /* Colors */
+  --color-accent:           #2563EB;
+  --color-accent-hover:     #1D4ED8;
+  --color-accent-light:     #EFF6FF;
+  --color-surface:          #F8F9FB;
+  --color-surface-card:     #FFFFFF;
+  --color-border:           #E2E8F0;
+  --color-border-strong:    #CBD5E1;
+  --color-text-primary:     #0F172A;
+  --color-text-secondary:   #64748B;
+  --color-text-muted:       #94A3B8;
+  --color-success:          #10B981;
+  --color-warning:          #F59E0B;
+  --color-danger:           #EF4444;
+
+  /* Spacing (4px base unit) */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Border radius */
+  --radius-sm:   6px;
+  --radius-md:   10px;
+  --radius-lg:   16px;
+  --radius-pill: 999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-lg: 0 10px 30px rgba(0,0,0,0.10), 0 4px 8px rgba(0,0,0,0.04);
+
+  /* Typography scale */
+  --text-xs:   0.75rem;
+  --text-sm:   0.875rem;
+  --text-base: 1rem;
+  --text-lg:   1.125rem;
+  --text-xl:   1.25rem;
+  --text-2xl:  1.5rem;
+  --text-4xl:  2.25rem;
+
+  /* shadcn required tokens — mapped to our palette */
+  --background:         var(--color-surface);
+  --foreground:         var(--color-text-primary);
+  --card:               var(--color-surface-card);
+  --card-foreground:    var(--color-text-primary);
+  --popover:            var(--color-surface-card);
+  --popover-foreground: var(--color-text-primary);
+  --primary:            var(--color-accent);
+  --primary-foreground: #FFFFFF;
+  --secondary:          var(--color-accent-light);
+  --secondary-foreground: var(--color-accent);
+  --muted:              var(--color-surface);
+  --muted-foreground:   var(--color-text-muted);
+  --accent:             var(--color-accent-light);
+  --accent-foreground:  var(--color-accent);
+  --destructive:        var(--color-danger);
+  --border:             var(--color-border);
+  --input:              var(--color-border);
+  --ring:               var(--color-accent);
+  --radius:             10px;
+}
+
+/* ── Base styles ──────────────────────────────────────────────────────────── */
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-html, body, #root {
-  height: 100%;
-  overflow: hidden;
-}
-
-body {
-  font-family: var(--font-ui);
-  font-size: var(--text-base);
-  color: var(--text-primary);
-  background: var(--bg-app);
+html, body {
+  background-color: var(--color-surface);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  color: var(--color-text-primary);
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
 
-button {
-  font-family: var(--font-ui);
-  cursor: pointer;
+/* ── shadcn Tailwind theme mapping ───────────────────────────────────────── */
+@theme inline {
+  --font-sans:                    'Plus Jakarta Sans', sans-serif;
+  --font-mono:                    'IBM Plex Mono', monospace;
+  --color-background:             var(--background);
+  --color-foreground:             var(--foreground);
+  --color-card:                   var(--card);
+  --color-card-foreground:        var(--card-foreground);
+  --color-popover:                var(--popover);
+  --color-popover-foreground:     var(--popover-foreground);
+  --color-primary:                var(--primary);
+  --color-primary-foreground:     var(--primary-foreground);
+  --color-secondary:              var(--secondary);
+  --color-secondary-foreground:   var(--secondary-foreground);
+  --color-muted:                  var(--muted);
+  --color-muted-foreground:       var(--muted-foreground);
+  --color-accent:                 var(--accent);
+  --color-accent-foreground:      var(--accent-foreground);
+  --color-destructive:            var(--destructive);
+  --color-border:                 var(--border);
+  --color-input:                  var(--input);
+  --color-ring:                   var(--ring);
+  --radius-sm:                    calc(var(--radius) * 0.6);
+  --radius-md:                    var(--radius);
+  --radius-lg:                    calc(var(--radius) * 1.6);
 }
 
-input, textarea, select {
-  font-family: var(--font-ui);
-  font-size: var(--text-base);
-  color: var(--text-primary);
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
 }
 
-textarea {
-  resize: none;
+/* ── Animations ──────────────────────────────────────────────────────────── */
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%       { transform: scale(1.4); opacity: 0.7; }
+}
+
+.pulse-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
 }
