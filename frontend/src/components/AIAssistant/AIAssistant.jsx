@@ -28,7 +28,7 @@ export function AIAssistant() {
     setLoading(true);
 
     try {
-      const res = await fetch('http://localhost:8000/api/ai/query', {
+      const res = await fetch('/api/ai/query', {
         method:  'POST',
         headers: {
           'Content-Type': 'application/json',
