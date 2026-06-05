@@ -1,10 +1,12 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
 
 from backend.auth.models import User
+from backend.core.cache import sync_invalidate_user_tool_cache
 from backend.core.dependencies import get_current_user, get_db
+from backend.ai.embeddings import embed_and_store_version
 from backend.vault import service
 from backend.vault.schemas import (
     FolderCreate,
@@ -69,10 +71,14 @@ def delete_folder(
 def create_post(
     folder_id: UUID,
     data: PostCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    return service.create_post(db, user_id=user.id, folder_id=folder_id, data=data)
+    post = service.create_post(db, user_id=user.id, folder_id=folder_id, data=data)
+    # A new post has no content yet, but its title changes the topic inventory cache
+    background_tasks.add_task(sync_invalidate_user_tool_cache, str(user.id))
+    return post
 
 
 @router.get("/folders/{folder_id}/posts", response_model=list[PostListResponse])
@@ -128,10 +134,27 @@ def pin_post(
 def save_version(
     post_id: UUID,
     data: VersionSave,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    return service.save_version(db, user_id=user.id, post_id=post_id, data=data)
+    version = service.save_version(db, user_id=user.id, post_id=post_id, data=data)
+
+    # Fire-and-forget: chunk → embed → store in post_embeddings
+    # Runs after HTTP 201 is sent; errors are logged, never re-raised
+    background_tasks.add_task(
+        embed_and_store_version,
+        version_id=str(version.id),
+        post_id=str(post_id),
+        user_id=str(user.id),
+        content=version.content,
+    )
+
+    # Invalidate all tool result caches for this user so the next AI query
+    # sees fresh content immediately
+    background_tasks.add_task(sync_invalidate_user_tool_cache, str(user.id))
+
+    return version
 
 
 @router.get("/posts/{post_id}/versions", response_model=list[VersionListResponse])

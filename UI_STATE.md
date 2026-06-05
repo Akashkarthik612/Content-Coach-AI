@@ -1,83 +1,58 @@
 # Content Coach — UI State & Design System
-
-> Feed this file to Claude at the start of every frontend session.
-> It is the single source of truth for all UI decisions.
-> Never deviate from constraints defined here without updating this file first.
-> Last updated: 2026-05-26
+> Single source of truth for all UI decisions. Never deviate from constraints without updating this file.
+> Last updated: 2026-06-02
 
 ---
 
 ## Product Identity
 
-- **Name:** Content Coach (internal codename: LinkedIn Coach)
+- **Name:** Content Coach (internal: LinkedIn Coach)
 - **Tagline:** "Git for writing — version-controlled LinkedIn content vault"
-- **Target user:** Solo LinkedIn creators, bootstrapped founders, self-employed professionals
-- **Build constraint:** Self-hosted first, bootstrapped — every KB of JS bundle matters
+- **User:** Solo LinkedIn creators, bootstrapped founders, self-employed professionals
+- **Constraint:** Self-hosted first, bootstrapped — every KB of JS bundle matters
 
 ---
 
-## Tech Stack (Frontend Only)
+## Tech Stack (Frontend)
 
 | Concern | Choice | Notes |
 |---|---|---|
-| Framework | React 19 | No legacy class components |
-| Build tool | Vite | No CRA, no Next.js |
+| Framework | React 19 | No class components |
+| Build | Vite | No CRA, no Next.js |
 | Routing | React Router v6 | `<BrowserRouter>` in `main.jsx` |
 | HTTP | Axios | Interceptor adds `X-User-Id` header |
-| State | `useState` + `useContext` | No Redux, no Zustand, no Jotai |
-| Animation | Framer Motion | Only for high-impact moments — not decorative filler |
-| Styling (landing/dashboard) | Inline styles + `var(--cc-*)` CSS variables | See token table below |
-| Styling (vault app) | CSS Modules + `--color-*` variables | Legacy vault components |
+| State | `useState` + `useContext` | No Redux/Zustand/Jotai |
+| Animation | Framer Motion | High-impact moments only — not decorative |
+| Styling (landing/dashboard) | Inline styles + `var(--cc-*)` | See token table |
+| Styling (vault app) | CSS Modules + `--color-*` | Legacy vault components |
 | Icons | `lucide-react` | Tree-shakeable; import only what is used |
 
 ---
 
 ## CSS Variable Namespaces
 
-Two namespaces exist in `index.css`. Use the correct one per context:
-
-### `--cc-*` tokens — use in landing page and dashboard (inline-style pages)
+### `--cc-*` — landing page + dashboard (inline-style pages)
 
 ```css
 :root {
-  --cc-white:       #FFFFFF;
-  --cc-bg-soft:     #F8FAFF;
-  --cc-bg-subtle:   #EEF2FF;
-  --cc-blue:        #2563EB;
-  --cc-blue-hover:  #1D4ED8;
-  --cc-blue-light:  #DBEAFE;
-  --cc-blue-dark:   #1E40AF;
-  --cc-text:        #0F172A;
-  --cc-text-muted:  #475569;
-  --cc-text-faint:  #94A3B8;
-  --cc-border:      #E2E8F0;
-  --cc-accent:      #FEE2E2;   /* soft red */
-  --cc-green-light: #DCFCE7;
-  --cc-green-text:  #15803D;
-  --cc-red-light:   #FEF2F2;
-  --cc-red-text:    #B91C1C;
+  --cc-white:       #FFFFFF;   --cc-bg-soft:    #F8FAFF;   --cc-bg-subtle:  #EEF2FF;
+  --cc-blue:        #2563EB;   --cc-blue-hover: #1D4ED8;   --cc-blue-light: #DBEAFE;
+  --cc-blue-dark:   #1E40AF;   --cc-text:       #0F172A;   --cc-text-muted: #475569;
+  --cc-text-faint:  #94A3B8;   --cc-border:     #E2E8F0;   --cc-accent:     #FEE2E2;
+  --cc-green-light: #DCFCE7;   --cc-green-text: #15803D;
+  --cc-red-light:   #FEF2F2;   --cc-red-text:   #B91C1C;
 }
 ```
 
-### `--color-*` tokens — legacy vault app components (CSS modules)
+### `--color-*` — vault app components (CSS modules)
 
 ```css
 :root {
-  --color-bg:              #FFFFFF;
-  --color-bg-soft:         #F8FAFF;
-  --color-bg-subtle:       #EEF2FF;
-  --color-blue-primary:    #2563EB;
-  --color-blue-light:      #DBEAFE;
-  --color-blue-dark:       #1D4ED8;
-  --color-text:            #0F172A;
-  --color-text-muted:      #64748B;
-  --color-text-faint:      #94A3B8;
-  --color-border:          #E2E8F0;
-  --color-border-focus:    #2563EB;
-  --color-accent:          #FEE2E2;
-  --color-accent-dark:     #EF4444;
-  --color-success:         #10B981;
-  --color-warning:         #F59E0B;
+  --color-bg:           #FFFFFF;   --color-bg-soft:       #F8FAFF;   --color-bg-subtle:    #EEF2FF;
+  --color-blue-primary: #2563EB;   --color-blue-light:    #DBEAFE;   --color-blue-dark:    #1D4ED8;
+  --color-text:         #0F172A;   --color-text-muted:    #64748B;   --color-text-faint:   #94A3B8;
+  --color-border:       #E2E8F0;   --color-border-focus:  #2563EB;   --color-accent:       #FEE2E2;
+  --color-accent-dark:  #EF4444;   --color-success:       #10B981;   --color-warning:      #F59E0B;
 }
 ```
 
@@ -85,13 +60,11 @@ Two namespaces exist in `index.css`. Use the correct one per context:
 
 ## Typography
 
-Three fonts loaded via Google Fonts in `index.css`:
-
 | Font | Use |
 |---|---|
-| `DM Sans` (400/500/600) | All UI text — labels, nav, buttons, body, dashboard |
+| `DM Sans` (400/500/600) | All UI — labels, nav, buttons, body, dashboard |
 | `IBM Plex Mono` (400/500) | Version labels, code, metadata badges |
-| `Fraunces` (variable, 100–900) | Display / hero headlines only |
+| `Fraunces` (variable 100–900) | Display / hero headlines only |
 
 **Body default:** `font-family: 'DM Sans', system-ui, sans-serif`
 
@@ -115,140 +88,155 @@ Three fonts loaded via Google Fonts in `index.css`:
 | `/login` | `pages/HomePage.jsx` (mode=login) | Public | ✅ Built |
 | `/register` | `pages/HomePage.jsx` (mode=register) | Public | ✅ Built |
 | `/dashboard` | `pages/DashboardPage.jsx` | RequireAuth | ✅ Built |
-| `/vault` | `pages/MyWorkPage.jsx` (3-col workspace) | RequireAuth | ✅ Built |
+| `/vault` | `pages/MyWorkPage.jsx` | RequireAuth | ✅ Built |
 | `/my-work` | `pages/MyWorkPage.jsx` (alias) | RequireAuth | ✅ Built |
 | `/app` | Legacy vault UI (MainApp) | RequireAuth | ⚠️ Legacy |
 
-**Post-login redirect:** Both login and register → `/dashboard`
+**Post-login redirect:** login + register → `/dashboard`
 
 ---
 
 ## Landing Page Architecture
 
-Landing page lives entirely in two files:
-
 ```
 frontend/src/pages/landing/
-├── landingContent.js    ← COPY object — ALL text strings, zero JSX. Edit copy here only.
-└── LandingPage.jsx      ← Single file, all sections as functions inside one module
+├── landingContent.js    ← COPY object — ALL text, zero JSX. Edit copy here only.
+└── LandingPage.jsx      ← Single file; all sections as named functions
 ```
 
-All other files in `landing/` (Hero.jsx, Navbar.jsx, Features.jsx, etc.) are **dead code** — superseded by the single-file approach. Do not import or edit them.
+All other `landing/*.jsx` (Hero, Navbar, Features, etc.) — **DEAD CODE**. Do not import or edit.
 
-### Sections in order (all inside LandingPage.jsx)
-1. `Navbar` — sticky, blur, hamburger on mobile (useState toggle), `cc-hide-mobile` / `cc-show-mobile`
+### Sections (order in LandingPage.jsx)
+1. `Navbar` — sticky blur, hamburger mobile (`cc-hide-mobile` / `cc-show-mobile`)
 2. `Hero` — 2-col grid (collapses at 900px via `.cc-hero-grid`), diff card, platform badges
-3. `ProblemStrip` — light blue bg, 3 pain-point cards, `id="problem"` (scroll target)
-4. `Features` — 4 cards, `id="features"` (nav anchor), hover border highlight
+3. `ProblemStrip` — `id="problem"`, light blue bg, 3 pain-point cards
+4. `Features` — `id="features"`, 4 cards, hover border highlight
 5. `HowItWorks` — 3-step numbered grid
 6. `Platforms` — LinkedIn / Medium / AI cards with inline SVG logos
-7. `Pricing` — Free + Pro, `id="pricing"` (nav anchor), Pro has blue border + "Most popular" badge
-8. `FinalCTA` — full-width dark blue section
-9. `Footer` — brand + links + copyright
+7. `Pricing` — `id="pricing"`, Free + Pro; Pro: blue border + "Most popular"
+8. `FinalCTA` — full-width dark blue
+9. `Footer`
 
 ### CTA wiring
-- **"Get started" / ctaPrimary** → `navigate('/login')`
-- **"See how it works" / ctaSecondary** → `document.getElementById('problem').scrollIntoView({ behavior: 'smooth' })`
-- **Navbar "Log in"** → `navigate('/login')`
-- **Navbar "Get started free"** → `navigate('/register')`
-- **Pricing Free CTA** → `navigate('/register')`
-- **FinalCTA button** → `navigate('/register')`
+- `ctaPrimary` / "Get started" → `navigate('/login')`
+- `ctaSecondary` / "See how it works" → `document.getElementById('problem').scrollIntoView({behavior:'smooth'})`
+- Navbar "Log in" → `navigate('/login')` · "Get started free" → `navigate('/register')`
+- Pricing Free CTA + FinalCTA → `navigate('/register')`
 
 ---
 
 ## HomePage.jsx (Login / Register / Forgot)
 
-Single file, 3 modes switched with `useState(initialMode)`.
+Single file, 3 modes via `useState(initialMode)`.
 
-### Visual spec
-- Full-page: `var(--cc-bg-soft)` background, flex center
-- Card: white, `borderRadius: 16`, `maxWidth: 420`, `boxShadow: 0 4px 24px rgba(37,99,235,0.07)`
-- Logo + wordmark at top of card (always shown)
-- Mode-specific title + subtitle below logo
-- Input fields: labels above, focus ring via `onFocus/onBlur` toggling `borderColor`
-- Error: red strip (`var(--cc-red-light)` bg, `var(--cc-red-text)` color) between button and footer
-- Footer: divider, "Sign up free" / "Log in" toggle, "← Back to home" link
+- **Layout:** full-page `var(--cc-bg-soft)`, flex center
+- **Card:** white · `borderRadius:16` · `maxWidth:420` · `boxShadow:0 4px 24px rgba(37,99,235,0.07)`
+- **Inputs:** label above · focus ring via `onFocus/onBlur` toggling `borderColor`
+- **Error:** red strip (`--cc-red-light` bg / `--cc-red-text` color) between button and footer
+- **Footer:** divider · "Sign up free"/"Log in" toggle · "← Back to home" link
 
-### What NOT to touch
-- Auth logic (`handleLogin`, `handleRegister`)
-- API calls (`login()`, `register()`)
-- localStorage writes
-- Error state management
-- Mode switching (`switchMode`)
+**Do NOT touch:** `handleLogin`, `handleRegister`, API calls, localStorage writes, error state, `switchMode`.
 
 ---
 
 ## DashboardPage.jsx
 
-Post-login home. Single file. All sub-components defined inside.
+Post-login home. Single file; all sub-components defined inline.
 
-### Layout
 ```
-┌──────────────┬──────────────────────────────────┐
-│ Sidebar 220px│ Main content (flex: 1)            │
-│ (collapsible)│  TopBar (hamburger)               │
-│              │  Greeting hero                    │
-│              │  2-col: Schedule | Pinned Posts   │
-│              │  2-col: My posts | Recent drafts  │
-│              │  [Fixed AI bar at bottom]         │
-└──────────────┴──────────────────────────────────┘
+┌──────────────┬─────────────────────────────────────────┐
+│ Sidebar 220px│ TopBar (hamburger)                       │
+│ collapsible  │ Greeting hero                            │
+│              │ 2-col: Schedule | Pinned Posts           │
+│              │ 2-col: My Posts | Recent Drafts          │
+│              │ [Fixed AI bar — bottom]                  │
+└──────────────┴─────────────────────────────────────────┘
 ```
 
-### Key behaviours
-- Sidebar toggles with `setSidebarOpen` via hamburger — `width`/`min-width` animate with `transition: 0.25s ease`
-- Sidebar starts open on desktop (`window.innerWidth >= 768`), closed on mobile
+- Sidebar: `width`/`min-width` animate `transition:0.25s ease`; open on desktop (≥768px), closed on mobile
 - Fixed AI bar tracks sidebar: `left: sidebarOpen ? 220 : 0` with matching transition
 - Data: `getFolders()` → `Promise.all(getPostsInFolder per folder)` → flatten + sort by `updated_at`
-- `pinnedPosts = recentPosts.filter(p => p.is_pinned)` — live from fetched data, no extra API call
-- Grid: `repeat(auto-fit, minmax(280px,1fr))` — collapses to 1 col on narrow screens
+- `pinnedPosts = recentPosts.filter(p => p.is_pinned)` — derived, no extra API call
+- Grid: `repeat(auto-fit, minmax(280px,1fr))`
+- **MiniCalendar:** pure inline component, highlights today in `--cc-blue`, no deps
 
-### Sidebar nav structure
+**Sidebar nav:** `Home→/dashboard` · `My Work→/my-work` · `New Post→/my-work` · `Folders→/my-work` · `Context Vault→/my-work`
+**Card routing:** "Create New Post" → `/my-work` (not `/app`)
+
+---
+
+## MyWorkPage.jsx (`/vault`, `/my-work`)
+
+3-column workspace. Inline styles + `--cc-*`. All sub-components inline.
+
 ```
-PLAN:   Home → /dashboard | My Work → /my-work
-CREATE: New Post → /my-work | Folders → /my-work
-STORE:  Context Vault → /my-work
+┌──────────────┬────────────────┬──────────────────────────┐
+│ Col1 Sidebar │ Col2 Folders   │ Col3 Canvas              │
+│ 220px        │ 280px          │ PostList OR DocEditor    │
+│ sidebarOpen  │ folderPanelOpen│ driven by activePost     │
+└──────────────┴────────────────┴──────────────────────────┘
 ```
 
-### Card routing
-- "Create New Post" button → `/my-work` (not `/app` — user must pick folder first)
-- "Pinned Posts" card shows `recentPosts.filter(p => p.is_pinned)` — live data
+Columns collapse via `width:0; overflow:hidden; transition:0.25s ease-in-out`.
 
-### MiniCalendar
-Pure component defined above `DashboardPage`. Highlights today's date in `var(--cc-blue)`. No external dependencies.
+**State:**
+- `sidebarOpen` — Col1 visibility
+- `folderPanelOpen` — Col2 visibility
+- `activePost` — `null`=PostList · `{id,title,status}`=DocEditor
+- `panelsCollapsed = !sidebarOpen && !folderPanelOpen` — focus mode flag
+
+**Panel toggle mechanics:**
+- Col2 `PanelLeftClose` → collapses **both** Col1+Col2 (focus mode)
+- DocEditor `PanelLeftOpen` → restores both (shown only when `panelsCollapsed`)
+- `Menu` in Col2 header → toggles Col1 only
+
+**Create Post flow:**
+1. Select folder (Col2) → click "Create Post" (Col3 header)
+2. `createPost(folder.id, 'Untitled Post')` → new post in list
+3. `setActivePost(post)` + `setSidebarOpen(false)` + `setFolderPanelOpen(false)` → panels sweep left
+4. DocEditor fills screen
+
+**DocEditor (inline component):**
+- Header: `PanelLeftOpen` (restore, when collapsed) · ← Back · status chip · `PanelLeftClose`
+- Version pills: IBM Plex Mono; active=`--cc-blue`; latest has dot indicator
+- Title input: centered · `fontSize:22` · `maxWidth:640px` · border on focus only · saved on blur via `renamePost`
+- Textarea: `padding:0 10%` · `lineHeight:1.85` · `flex:1` · transparent bg · read-only for older versions
+- Bottom toolbar: version label input + "Save as vN" → `saveVersion(postId, content, label)`
+- Read-only banner shown for non-latest versions
+
+**Context menus (`CtxMenu` inline component, `zIndex:99` backdrop):**
+- Folders: Rename (inline input) / Delete (`window.confirm`)
+- Posts: Rename (inline input) / Pin to dashboard / Unpin / Delete
 
 ---
 
 ## Inline Style Conventions (landing + dashboard)
 
-New pages (LandingPage, DashboardPage, HomePage) use inline styles with `var(--cc-*)` tokens, NOT Tailwind classes (except `.cc-hide-mobile` etc. utility classes).
-
 ```jsx
 // Correct
 <div style={{ background: 'var(--cc-bg-soft)', borderRadius: 14 }}>
 
-// Wrong — do not mix Tailwind utilities into inline-style pages
+// Wrong — do NOT mix Tailwind into inline-style pages
 <div className="bg-[--cc-bg-soft] rounded-xl">
 ```
 
-Shared style constants go in a local `const S = { ... }` object at the top of the file.
+Shared style constants → local `const S = { ... }` at top of file.
 
 ---
 
 ## Component Rules (vault app — CSS module pages)
 
 ### Buttons
+
 ```jsx
 // Primary
-<button className="bg-[--color-blue-primary] hover:bg-[--color-blue-dark] text-white
-                   px-5 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150">
+<button className="bg-[--color-blue-primary] hover:bg-[--color-blue-dark] text-white px-5 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150">
 
 // Secondary (outline)
-<button className="border border-[--color-border] hover:border-[--color-blue-primary]
-                   text-[--color-text] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150">
+<button className="border border-[--color-border] hover:border-[--color-blue-primary] text-[--color-text] px-5 py-2.5 rounded-lg text-sm font-medium transition-colors duration-150">
 
 // Ghost
-<button className="text-[--color-text-muted] hover:text-[--color-text] hover:bg-[--color-bg-subtle]
-                   px-4 py-2 rounded-lg text-sm transition-colors duration-150">
+<button className="text-[--color-text-muted] hover:text-[--color-text] hover:bg-[--color-bg-subtle] px-4 py-2 rounded-lg text-sm transition-colors duration-150">
 ```
 
 ---
@@ -269,7 +257,7 @@ Shared style constants go in a local `const S = { ... }` object at the top of th
 ## File Naming Conventions
 
 - Pages: `PascalCase.jsx`
-- Sub-components (inside a single file): plain functions, not exported
+- Sub-components (inside single file): plain functions, not exported
 - Hooks: `camelCase.js` prefixed `use`
 - API modules: `camelCase.js`
 - Content/copy: `camelCase.js` (e.g. `landingContent.js`)
@@ -278,57 +266,10 @@ Shared style constants go in a local `const S = { ... }` object at the top of th
 
 ## What NOT to Do
 
-- Do not hardcode text strings in JSX — all landing copy lives in `landingContent.js` COPY object
+- No hardcoded text in JSX — all landing copy in `landingContent.js` COPY object
 - No `styled-components`, no Emotion
 - No `useState` for server data in vault app — use hooks (`useFolders`, `usePosts`)
-- No `console.log` left in production code
-- No placeholder images from Unsplash/Lorem — use SVG or pure CSS shapes
-- Do not mix Tailwind class styling into inline-style pages (landing/dashboard)
-- Do not add new npm packages without noting them here
-
----
-
-## MyWorkPage.jsx (`/vault`, `/my-work`)
-
-3-column workspace. Uses inline styles + `--cc-*` tokens. All sub-components defined inline.
-
-### Column layout
-```
-┌──────────────┬────────────────┬──────────────────────────────────┐
-│ Col 1        │ Col 2          │ Col 3 (Dynamic Canvas)           │
-│ Sidebar Nav  │ Folder Panel   │ Post List  OR  DocEditor         │
-│ 220px        │ 280px          │ flex: 1                          │
-│ sidebarOpen  │ folderPanelOpen│ driven by activePost state       │
-└──────────────┴────────────────┴──────────────────────────────────┘
-```
-Both columns collapse via `width: 0, overflow: hidden` with `transition: 0.25s ease-in-out`.
-
-### State
-- `sidebarOpen` — Col 1 visibility
-- `folderPanelOpen` — Col 2 visibility
-- `activePost` — `null` = post list, `{id, title, status}` = DocEditor
-- `panelsCollapsed = !sidebarOpen && !folderPanelOpen` — focus mode flag
-
-### Panel toggle mechanics
-- Col 2 header `PanelLeftClose` icon → collapses **both** Col 1 + Col 2 (focus mode)
-- DocEditor header `PanelLeftOpen` icon → restores both (only shown when `panelsCollapsed`)
-- `Menu` icon in Col 2 header → toggles Col 1 only
-
-### Create Post flow
-1. User selects a folder (Col 2), clicks "Create Post" (Col 3 header)
-2. `createPost(folder.id, 'Untitled Post')` → new post added to list
-3. `setActivePost(post)` + `setSidebarOpen(false)` + `setFolderPanelOpen(false)` — panels sweep left instantly
-4. DocEditor fills screen; user edits title inline, writes, saves versions
-
-### DocEditor (inline component inside MyWorkPage)
-- **Header:** `PanelLeftOpen` (restore, when collapsed) | ← Back | status chip | `PanelLeftClose` (enter focus)
-- **Version pills:** IBM Plex Mono pill buttons; active = `--cc-blue`; latest has a dot indicator
-- **Title input:** centered, `fontSize: 22`, `maxWidth: 640px`, border appears only on focus; saved on blur via `renamePost`
-- **Textarea:** `0 10%` padding, `lineHeight: 1.85`, `flex: 1`, transparent background, read-only for older versions
-- **Bottom toolbar:** version label input + "Save as vN" button → calls `saveVersion(postId, content, label)`
-- Reads-only banner shown when viewing a non-latest version
-
-### Context menus
-- Folders: **Rename** (inline input) / **Delete** (window.confirm)
-- Posts: **Rename** (inline input) / **Pin to dashboard** / **Unpin** / **Delete**
-- `CtxMenu` is an inline functional component; backdrop `div` (`zIndex: 99`) closes it on outside click
+- No `console.log` in production code
+- No placeholder images (Unsplash/Lorem) — use SVG or CSS shapes
+- Do not mix Tailwind into inline-style pages (landing/dashboard)
+- Do not add npm packages without noting them here

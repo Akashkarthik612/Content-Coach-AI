@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     DATABASE_URL: str
+    REDIS_URL: str = "redis://localhost:6379/0"
     OPENAI_API_KEY: str = ""
     LANGCHAIN_API_KEY_GEMINI: str = ""
     APP_NAME: str = "LinkedIn Coach"
