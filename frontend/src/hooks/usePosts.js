@@ -15,6 +15,7 @@ export function usePosts(folderId) {
   }, [folderId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!folderId) { setPosts([]); return; }
     setLoading(true);
     getPostsInFolder(folderId)
