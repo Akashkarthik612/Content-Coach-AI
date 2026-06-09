@@ -13,7 +13,13 @@ export function useFolders() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { refetch(); }, [refetch]);
+  useEffect(() => {
+    setLoading(true);
+    getFolders()
+      .then(data => setFolders(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
 
   return { folders, loading, refetch };
 }

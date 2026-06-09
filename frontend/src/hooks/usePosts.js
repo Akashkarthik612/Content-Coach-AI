@@ -14,7 +14,14 @@ export function usePosts(folderId) {
       .finally(() => setLoading(false));
   }, [folderId]);
 
-  useEffect(() => { refetch(); }, [refetch]);
+  useEffect(() => {
+    if (!folderId) { setPosts([]); return; }
+    setLoading(true);
+    getPostsInFolder(folderId)
+      .then(data => setPosts(Array.isArray(data) ? data : []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [folderId]);
 
   return { posts, loading, refetch };
 }

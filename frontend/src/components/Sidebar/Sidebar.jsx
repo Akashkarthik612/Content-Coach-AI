@@ -1,5 +1,5 @@
 import { useContext, useState, useRef } from 'react';
-import { AppContext } from '../../App';
+import { AppContext } from '../../AppContext';
 import { Button } from '../shared/Button';
 import { ContextMenu } from '../shared/ContextMenu';
 import { renameFolder, deleteFolder } from '../../api/vault';

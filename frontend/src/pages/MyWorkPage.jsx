@@ -68,11 +68,6 @@ function DocEditor({ post, panelsCollapsed, onTogglePanels, onClose, onTitleChan
   const [activeIdx,      setActiveIdx]      = useState(-1)
   const [loading,        setLoading]        = useState(true)
 
-  useEffect(() => {
-    setTitle(post.title)
-    loadVersions()
-  }, [post.id])
-
   async function loadVersions(forceIdx) {
     setLoading(true)
     try {
@@ -93,6 +88,13 @@ function DocEditor({ post, panelsCollapsed, onTogglePanels, onClose, onTitleChan
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTitle(post.title)
+    loadVersions()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [post.id])
 
   async function handleVersionSelect(idx) {
     setActiveIdx(idx)
@@ -349,15 +351,15 @@ export default function MyWorkPage() {
   const folderInputRef = useRef(null)
   const panelsCollapsed = !sidebarOpen && !folderPanelOpen
 
-  useEffect(() => { loadFolders() }, [])
-  useEffect(() => { if (creatingFolder) folderInputRef.current?.focus() }, [creatingFolder])
-
   async function loadFolders() {
     setLoadingFolders(true)
     try { setFolders(await getFolders()) }
     catch (err) { console.error('Failed to load folders:', err) }
     finally { setLoadingFolders(false) }
   }
+
+  useEffect(() => { loadFolders() }, [])
+  useEffect(() => { if (creatingFolder) folderInputRef.current?.focus() }, [creatingFolder])
 
   async function handleSelectFolder(folder) {
     setSelectedFolder(folder)

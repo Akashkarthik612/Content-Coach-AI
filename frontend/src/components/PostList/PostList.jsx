@@ -1,5 +1,5 @@
 import { useState, useContext, useCallback } from 'react';
-import { AppContext } from '../../App';
+import { AppContext } from '../../AppContext';
 import { PostListItem } from './PostListItem';
 import { Button } from '../shared/Button';
 import styles from './PostList.module.css';
