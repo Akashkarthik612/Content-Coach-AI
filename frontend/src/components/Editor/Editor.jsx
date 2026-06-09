@@ -1,5 +1,5 @@
 import { useState, useEffect, useContext } from 'react';
-import { AppContext } from '../../App';
+import { AppContext } from '../../AppContext';
 import { createFolder, createPost, saveVersion, getVersions, getVersion } from '../../api/vault';
 import { VersionTabs } from './VersionTabs';
 import { VersionMeta } from './VersionMeta';

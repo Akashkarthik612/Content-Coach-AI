@@ -1,5 +1,5 @@
 import { useContext, useState, useRef } from 'react';
-import { AppContext } from '../../App';
+import { AppContext } from '../../AppContext';
 import { ContextMenu } from '../shared/ContextMenu';
 import { deletePost, renamePost } from '../../api/vault';
 import styles from './PostList.module.css';

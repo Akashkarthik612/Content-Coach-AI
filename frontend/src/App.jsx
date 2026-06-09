@@ -1,5 +1,6 @@
-import { createContext, useState } from 'react';
+import { useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { AppContext } from './AppContext';
 import { useFolders } from './hooks/useFolders';
 import { usePosts } from './hooks/usePosts';
 import { Sidebar } from './components/Sidebar/Sidebar';
@@ -10,8 +11,6 @@ import HomePage from './pages/HomePage';
 import LandingPage from './pages/landing/LandingPage';
 import DashboardPage from './pages/DashboardPage';
 import MyWorkPage from './pages/MyWorkPage';
-
-export const AppContext = createContext(null);
 
 function MainApp() {
   const [selectedFolderId, setSelectedFolderId] = useState(null);

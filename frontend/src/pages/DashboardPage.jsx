@@ -125,7 +125,6 @@ export default function DashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768)
   const [aiInput,     setAiInput]     = useState('')
   const [recentPosts, setRecentPosts] = useState([])
-  const [folders,     setFolders]     = useState([])
   const [loading,     setLoading]     = useState(true)
 
   // AI chat state
@@ -143,7 +142,6 @@ export default function DashboardPage() {
     const load = async () => {
       try {
         const folderList = await getFolders()
-        setFolders(folderList)
         // fetch posts from all folders in parallel
         const postArrays = await Promise.all(
           folderList.map(f => getPostsInFolder(f.id).catch(() => []))

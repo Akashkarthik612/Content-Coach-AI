@@ -15,7 +15,14 @@ export function usePost(id) {
       .finally(() => setLoading(false));
   }, [id]);
 
-  useEffect(() => { fetch(); }, [fetch]);
+  useEffect(() => {
+    if (!id) { setPost(null); return; }
+    setLoading(true);
+    getPost(id)
+      .then(data => { setPost(data); setError(null); })
+      .catch(err => setError(err))
+      .finally(() => setLoading(false));
+  }, [id]);
 
   return { post, loading, error, refetch: fetch };
 }
