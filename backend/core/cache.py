@@ -8,6 +8,8 @@ Two clients:
 Key namespaces:
   tool:{tool_name}:{user_id}[:{query_hash}]  — tool result strings, TTL 30 min
   embed:{query_hash}                          — query embedding vectors, TTL 24 h
+  style:lt:{user_id}                          — long-term style JSON, TTL 24 h
+  style:st:{user_id}                          — short-term style JSON, TTL 1 h
 """
 import hashlib
 import json
@@ -21,8 +23,10 @@ from backend.core.config import settings
 logger = logging.getLogger(__name__)
 
 # TTLs
-_TOOL_TTL  = 1800   # 30 minutes — safety net; invalidated actively on save
-_EMBED_TTL = 86400  # 24 hours   — content-addressed; same text = same vector
+_TOOL_TTL       = 1800   # 30 minutes — safety net; invalidated actively on save
+_EMBED_TTL      = 86400  # 24 hours   — content-addressed; same text = same vector
+_LT_STYLE_TTL   = 86400  # 24 hours   — long-term style; replaced on LT analysis run
+_ST_STYLE_TTL   = 3600   # 1 hour     — short-term style; replaced on ST analysis run
 
 
 # ── Lazy singletons ───────────────────────────────────────────────────────────
@@ -58,6 +62,14 @@ def tool_key(tool_name: str, user_id: str, extra: str = "") -> str:
 
 def embed_key(query: str) -> str:
     return f"embed:{query_hash(query)}"
+
+
+def style_lt_key(user_id: str) -> str:
+    return f"style:lt:{user_id}"
+
+
+def style_st_key(user_id: str) -> str:
+    return f"style:st:{user_id}"
 
 
 # ── Async helpers (used by @tool functions) ───────────────────────────────────
@@ -110,3 +122,21 @@ def sync_invalidate_user_tool_cache(user_id: str) -> None:
             logger.debug("Invalidated %d cache key(s) for user %s", len(keys), user_id)
     except Exception:
         logger.warning("Redis sync cache invalidation failed for user %s", user_id)
+
+
+def sync_get_json(key: str) -> dict | None:
+    """Sync Redis get, parses JSON. Returns None on miss or error."""
+    try:
+        raw = _get_sync().get(key)
+        return json.loads(raw) if raw else None
+    except Exception:
+        logger.warning("Redis sync_get_json failed for key %s", key)
+        return None
+
+
+def sync_set_json(key: str, value: dict, ttl: int) -> None:
+    """Sync Redis set with JSON serialisation. Silent on error."""
+    try:
+        _get_sync().setex(key, ttl, json.dumps(value))
+    except Exception:
+        logger.warning("Redis sync_set_json failed for key %s", key)

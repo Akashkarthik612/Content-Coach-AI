@@ -11,6 +11,7 @@ from backend.ai.agents.tools import (
     get_style_samples,
     get_topic_inventory,
     analyze_publish_history,
+    get_post_analytics,
 )
 
 
@@ -22,7 +23,7 @@ _llm = ChatGoogleGenerativeAI(
     google_api_key=settings.LANGCHAIN_API_KEY_GEMINI,
 )
 
-_all_tools = [search_vault_posts, get_style_samples, get_topic_inventory, analyze_publish_history]
+_all_tools = [search_vault_posts, get_style_samples, get_topic_inventory, analyze_publish_history, get_post_analytics]
 _llm_agent  = _llm.bind_tools(_all_tools)
 
 
@@ -79,30 +80,13 @@ If the tool result contains "[NO_CONTEXT_FOUND]" or "[NO_ANALYTICS_CONTEXT]", te
 honestly that you found no relevant data yet, and offer practical general advice instead.
 """
 
-_ANALYTICS_SYSTEM = """\
-You are a LinkedIn growth analyst with deep knowledge of LinkedIn's current ranking algorithm.
-
-You have been given the user's complete publish history via a tool call.
-The tool result is in your message history as a ToolMessage.
-
-Apply your knowledge of LinkedIn's algorithmic factors:
-- Early engagement velocity: first 60–90 minutes are critical for reach
-- Optimal post length by type: personal stories 800–1200 chars, tactical/how-to 1500–2000 chars
-- Best posting windows: Tuesday–Thursday 8–10am and 5–6pm in the audience's timezone
-- Content format performance: text-only posts often outperform image posts for reach
-- Hook pattern effectiveness: personal vulnerability, bold claims, counter-intuitive openers
-- Hashtag strategy: 3–5 highly relevant tags beats 15+ generic ones
-
-Be specific and reference actual data from the user's publish history where relevant.
-Identify patterns, gaps, and give prioritised actionable recommendations — not generic advice.
-"""
 
 # Maps task_type to which tool to call (shown in system prompt for the tool-calling LLM)
 _TOOL_HINT = {
     "research":  "search_vault_posts (pass user_id and the user's query text as query)",
     "write":     "get_style_samples (pass user_id only)",
     "suggest":   "get_topic_inventory (pass user_id only)",
-    "analytics": "analyze_publish_history (pass user_id only)",
+    "analytics": "get_post_analytics (pass user_id only)",
 }
 
 
@@ -126,12 +110,14 @@ async def supervisor_node(state: AgentState) -> dict:
         task_type = state["task_type"]
 
         if task_type == "write":
-            # Style samples are in the last ToolMessage; route to writer_node
             return {"route": "write"}
 
-        system = _ANALYTICS_SYSTEM if task_type == "analytics" else _SYNTHESIZE_SYSTEM
+        if task_type == "analytics":
+            # Offloaded to analytics_node — dedicated small model with tight prompt
+            return {"route": "analytics"}
+
         response = await _llm.ainvoke([
-            SystemMessage(content=system),
+            SystemMessage(content=_SYNTHESIZE_SYSTEM),
             *state["messages"],
         ])
         return {

@@ -7,11 +7,14 @@ from backend.auth.models import User
 from backend.core.cache import sync_invalidate_user_tool_cache
 from backend.core.dependencies import get_current_user, get_db
 from backend.ai.embeddings import embed_and_store_version
+from backend.ai.style_memory import sync_check_and_refresh_style_memory
 from backend.vault import service
 from backend.vault.schemas import (
     FolderCreate,
     FolderRename,
     FolderResponse,
+    PostAnalyticsResponse,
+    PostAnalyticsUpdate,
     PostCreate,
     PostListResponse,
     PostPin,
@@ -128,6 +131,24 @@ def pin_post(
     return service.pin_post(db, user_id=user.id, post_id=post_id, pinned=data.is_pinned)
 
 
+# ── Post Analytics ────────────────────────────────────────────────────────────
+
+@router.patch("/posts/{post_id}/analytics", response_model=PostAnalyticsResponse)
+def update_post_analytics(
+    post_id: UUID,
+    data: PostAnalyticsUpdate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    result = service.upsert_post_analytics(
+        db, post_id=post_id, user_id=user.id,
+        impressions=data.impressions, reactions=data.reactions,
+    )
+    background_tasks.add_task(sync_invalidate_user_tool_cache, str(user.id))
+    return result
+
+
 # ── Version ───────────────────────────────────────────────────────────────────
 
 @router.post("/posts/{post_id}/versions", response_model=VersionResponse, status_code=201)
@@ -153,6 +174,10 @@ def save_version(
     # Invalidate all tool result caches for this user so the next AI query
     # sees fresh content immediately
     background_tasks.add_task(sync_invalidate_user_tool_cache, str(user.id))
+
+    # Check style memory windows; runs LLM analyzer only when threshold is crossed
+    # (every 3 new published posts for short-term, every 10 for long-term)
+    background_tasks.add_task(sync_check_and_refresh_style_memory, str(user.id))
 
     return version
 

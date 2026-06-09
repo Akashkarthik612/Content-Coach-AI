@@ -16,8 +16,8 @@ from backend.core.database import SessionLocal
 logger = logging.getLogger(__name__)
 
 EMBEDDING_DIM  = 768
-CHUNK_SIZE     = 300
-CHUNK_OVERLAP  = 60
+CHUNK_SIZE     = 650
+CHUNK_OVERLAP  = 80
 
 # Module-level singletons — one cold-start per process lifetime
 _embeddings = GoogleGenerativeAIEmbeddings(
@@ -81,12 +81,12 @@ def embed_and_store_version(
                         (id, post_id, version_id, user_id, chunk_index, content, embedding)
                     VALUES
                         (gen_random_uuid(),
-                         :post_id::uuid,
-                         :version_id::uuid,
-                         :user_id::uuid,
+                         CAST(:post_id    AS uuid),
+                         CAST(:version_id AS uuid),
+                         CAST(:user_id    AS uuid),
                          :chunk_index,
                          :content,
-                         :embedding::vector)
+                         CAST(:embedding  AS vector))
                 """),
                 rows,
             )

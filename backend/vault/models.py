@@ -147,6 +147,31 @@ class PostTag(Base):
     post = relationship("Post", back_populates="tags", lazy="selectin")
 
 
+class PostAnalytics(Base):
+    __tablename__ = "post_analytics"
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        server_default="gen_random_uuid()",
+    )
+    post_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("posts.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    user_id = Column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    impressions = Column(Integer, nullable=False, default=0, server_default="0")
+    reactions   = Column(Integer, nullable=False, default=0, server_default="0")
+    updated_at  = Column(
+        DateTime(timezone=True), nullable=False, default=_utcnow, server_default="now()"
+    )
+
+
 class PostPublishLog(Base):
     __tablename__ = "post_publish_log"
 

@@ -5,50 +5,37 @@ from backend.core.config import settings
 from backend.ai.state import AgentState
 
 
-llm = ChatGoogleGenerativeAI(
+_llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash-lite",
-    temperature=0.2,
-    max_output_tokens=2048,
+    temperature=0.0,
+    max_output_tokens=1024,
     google_api_key=settings.LANGCHAIN_API_KEY_GEMINI,
 )
 
 _ANALYTICS_SYSTEM = """\
-You are a LinkedIn growth analyst with deep knowledge of LinkedIn's current ranking algorithm.
+You are a LinkedIn growth analyst. You have been given the user's post analytics data via a tool call.
+The tool result is in your message history as a ToolMessage.
 
-You have been given the user's complete publish history. Use it to answer their question.
+Your job: answer the user's analytics question using only the data provided.
+Be specific — reference actual post titles, dates, impressions, reactions from the data.
+Identify patterns and give prioritised, actionable recommendations.
 
-Apply your knowledge of LinkedIn's algorithmic factors:
-- Early engagement velocity: first 60–90 minutes are critical for reach
-- Optimal post length by type: personal stories 800–1200 chars, tactical/how-to 1500–2000 chars
-- Best posting windows: Tuesday–Thursday 8–10am and 5–6pm in the audience's timezone
-- Content format performance: text-only posts often outperform image posts for reach
-- Hook pattern effectiveness: personal vulnerability, bold claims, and counter-intuitive openers
-- Hashtag strategy: 3–5 highly relevant tags beats 15+ generic ones
-- Comment-first strategy: early comments from connections boost algorithmic distribution
-- Dwell time signal: longer, structured posts with natural scroll hooks retain readers
+LinkedIn algorithm knowledge to apply where relevant:
+- Early engagement velocity (first 60–90 min) is critical for reach
+- Optimal length: personal stories 800–1200 chars, tactical/how-to 1500–2000 chars
+- Best windows: Tue–Thu 8–10am and 5–6pm in the audience's timezone
+- 3–5 targeted hashtags outperform 15+ generic ones
+- Text-only posts often outperform image posts for organic reach
 
-Be specific and reference actual data from the user's publish history where relevant.
-Identify patterns, gaps, and give prioritised actionable recommendations — not generic LinkedIn advice.
+If impressions and reactions are all zero, tell the user to log their metrics via the
+analytics feature on each post before you can give performance analysis.
+Do not give generic LinkedIn advice — always tie recommendations to the user's actual data.
 """
 
 
 async def analytics_node(state: AgentState) -> dict:
-    """
-    COGNITIVE node — evaluates publish history against LinkedIn algorithm knowledge.
-
-    Reads:  state["sql_context"]  (publish log from sql_fetch_node)
-    Writes: state["analytics_report"], state["answer"]
-    Route:  fixed edge → END
-    """
-    sql_context = state.get("sql_context", "")
-
-    response = await llm.ainvoke([
+    response = await _llm.ainvoke([
         SystemMessage(content=_ANALYTICS_SYSTEM),
         *state["messages"],
-        SystemMessage(content=f"USER'S PUBLISH HISTORY:\n{sql_context}"),
     ])
-
-    return {
-        "analytics_report": response.content,
-        "answer":           response.content,
-    }
+    return {"answer": response.content, "route": "direct"}

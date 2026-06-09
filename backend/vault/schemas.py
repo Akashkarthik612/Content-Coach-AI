@@ -106,6 +106,22 @@ class VersionRename(BaseModel):
     version_label: str
 
 
+# ── Post Analytics ────────────────────────────────────────────────────────────
+
+class PostAnalyticsUpdate(BaseModel):
+    impressions: int
+    reactions: int
+
+
+class PostAnalyticsResponse(BaseModel):
+    post_id: UUID
+    impressions: int
+    reactions: int
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 # ── Search ────────────────────────────────────────────────────────────────────
 
 class SearchResult(BaseModel):

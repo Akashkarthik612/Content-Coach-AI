@@ -1,6 +1,6 @@
 # Content Coach — UI State & Design System
 > Single source of truth for all UI decisions. Never deviate from constraints without updating this file.
-> Last updated: 2026-06-02
+> Last updated: 2026-06-09
 
 ---
 
@@ -261,6 +261,45 @@ Shared style constants → local `const S = { ... }` at top of file.
 - Hooks: `camelCase.js` prefixed `use`
 - API modules: `camelCase.js`
 - Content/copy: `camelCase.js` (e.g. `landingContent.js`)
+
+---
+
+## AIAssistant Component (`components/AIAssistant/`)
+
+Floating panel wired to the AI backend via `api/ai.js`. Rendered at the bottom of `DashboardPage` and `MyWorkPage`.
+
+**API calls:**
+- `queryAI(prompt)` → `POST /api/ai/query` — sends user message; returns `{status, answer?, draft?, thread_id?}`
+- `resumeAI(thread_id, action, content)` → `POST /api/ai/resume` — HITL response; returns `{answer}`
+
+**Message types rendered in chat:**
+- `role: 'user'` → right-aligned bubble (`.userBubble`)
+- `role: 'assistant'` → left-aligned bubble (`.aiBubble`)
+- `role: 'draft'` → special card with header "Draft post ready" + Approve / Edit / Reject action bar
+
+**HITL (draft) flow:**
+1. Response has `status === 'awaiting_approval'` → push `{role: 'draft', content: draft}` into messages
+2. "Edit" → inline textarea opens (`editMode=true`); "Confirm" → calls `resumeAI(threadId, 'edited', editContent)`
+3. "Approve" → `resumeAI(threadId, 'approved')`
+4. "Reject" → `resumeAI(threadId, 'rejected')`
+5. After any resume → push `{role: 'assistant', content: data.answer}`, clear `threadId`
+
+**Input behaviour:** Enter sends (no Shift+Enter); textarea auto-focuses when panel opens; chat auto-scrolls to bottom on new messages.
+
+**Styling:** CSS module (`AIAssistant.module.css`). FAB button fixed bottom-right. Panel is a fixed overlay; `.panel` class defines dimensions and positioning.
+
+---
+
+## ai.js API module (`api/ai.js`)
+
+Separate Axios instance from `vault.js`. Same `X-User-Id` interceptor pattern.
+
+```js
+queryAI(prompt)                          → Promise<{status, answer?, draft?, thread_id?}>
+resumeAI(thread_id, action, content='') → Promise<{answer}>
+```
+
+**Do NOT add `.data` at call site** — both functions already unwrap with `.then(r => r.data)`.
 
 ---
 

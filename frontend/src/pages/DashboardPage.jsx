@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Home, FolderOpen, PenSquare, Archive, Menu, Send, ChevronRight } from 'lucide-react'
 import { getFolders, getPostsInFolder } from '../api/vault'
+import { queryAI, resumeAI } from '../api/ai'
 
 // ─── Mini Calendar ────────────────────────────────────────────────────────────
 function MiniCalendar() {
@@ -41,6 +42,80 @@ function MiniCalendar() {
   )
 }
 
+// ─── AI Chat sub-components (inline, use --cc-* tokens) ──────────────────────
+
+function AiBubble({ role, content }) {
+  const isUser = role === 'user'
+  return (
+    <div style={{
+      alignSelf: isUser ? 'flex-end' : 'flex-start',
+      background: isUser ? 'var(--cc-blue)' : 'var(--cc-bg-soft)',
+      color: isUser ? 'white' : 'var(--cc-text)',
+      border: isUser ? 'none' : '1px solid var(--cc-border)',
+      borderRadius: isUser ? '12px 0 12px 12px' : '0 12px 12px 12px',
+      padding: '9px 13px',
+      fontSize: 13,
+      lineHeight: 1.6,
+      maxWidth: '82%',
+      whiteSpace: 'pre-wrap',
+    }}>
+      {content}
+    </div>
+  )
+}
+
+function AiThinkingDots() {
+  return (
+    <>
+      <style>{`
+        @keyframes aiBounce {
+          0%,80%,100% { transform:translateY(0); }
+          40%          { transform:translateY(-5px); }
+        }
+        .ai-dot { width:7px;height:7px;border-radius:50%;background:var(--cc-text-faint);display:inline-block;animation:aiBounce 1.2s ease-in-out infinite; }
+        .ai-dot:nth-child(2){animation-delay:.2s}
+        .ai-dot:nth-child(3){animation-delay:.4s}
+      `}</style>
+      <div style={{ alignSelf:'flex-start', background:'var(--cc-bg-soft)', border:'1px solid var(--cc-border)', borderRadius:'0 12px 12px 12px', padding:'10px 14px', display:'flex', gap:4, alignItems:'center' }}>
+        <span className="ai-dot"/><span className="ai-dot"/><span className="ai-dot"/>
+      </div>
+    </>
+  )
+}
+
+function AiDraftCard({ content, onResume, editMode, setEditMode, editContent, setEditContent }) {
+  return (
+    <div style={{ alignSelf:'flex-start', maxWidth:'90%', border:'1px solid var(--cc-border)', borderRadius:10, overflow:'hidden', fontSize:13 }}>
+      <div style={{ padding:'8px 13px', background:'var(--cc-bg-subtle)', borderBottom:'1px solid var(--cc-border)', fontWeight:600, color:'var(--cc-text)', display:'flex', justifyContent:'space-between' }}>
+        <span>Draft post ready</span>
+      </div>
+      {editMode ? (
+        <textarea
+          value={editContent}
+          onChange={e => setEditContent(e.target.value)}
+          style={{ width:'100%', minHeight:140, padding:'10px 13px', fontSize:13, lineHeight:1.6, border:'none', outline:'none', resize:'vertical', fontFamily:"'DM Sans',system-ui,sans-serif", boxSizing:'border-box' }}
+        />
+      ) : (
+        <div style={{ padding:'10px 13px', color:'var(--cc-text)', lineHeight:1.6, whiteSpace:'pre-wrap', maxHeight:160, overflowY:'auto' }}>{content}</div>
+      )}
+      <div style={{ display:'flex', gap:8, padding:'8px 13px', background:'var(--cc-bg-soft)', borderTop:'1px solid var(--cc-border)' }}>
+        {editMode ? (
+          <>
+            <button onClick={() => onResume('edited')} style={{ fontSize:12, padding:'5px 12px', borderRadius:6, border:'none', background:'var(--cc-blue)', color:'white', cursor:'pointer', fontWeight:500 }}>Confirm edit</button>
+            <button onClick={() => setEditMode(false)} style={{ fontSize:12, padding:'5px 12px', borderRadius:6, border:'1px solid var(--cc-border)', background:'white', color:'var(--cc-text-muted)', cursor:'pointer' }}>Cancel</button>
+          </>
+        ) : (
+          <>
+            <button onClick={() => onResume('approved')} style={{ fontSize:12, padding:'5px 12px', borderRadius:6, border:'none', background:'var(--cc-blue)', color:'white', cursor:'pointer', fontWeight:500 }}>Approve</button>
+            <button onClick={() => { setEditContent(content); setEditMode(true) }} style={{ fontSize:12, padding:'5px 12px', borderRadius:6, border:'1px solid var(--cc-border)', background:'white', color:'var(--cc-text)', cursor:'pointer' }}>Edit</button>
+            <button onClick={() => onResume('rejected')} style={{ fontSize:12, padding:'5px 12px', borderRadius:6, border:'1px solid var(--cc-border)', background:'white', color:'var(--cc-text-muted)', cursor:'pointer' }}>Reject</button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Dashboard Page ───────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const navigate  = useNavigate()
@@ -52,6 +127,15 @@ export default function DashboardPage() {
   const [recentPosts, setRecentPosts] = useState([])
   const [folders,     setFolders]     = useState([])
   const [loading,     setLoading]     = useState(true)
+
+  // AI chat state
+  const [aiMessages,    setAiMessages]    = useState([])
+  const [aiLoading,     setAiLoading]     = useState(false)
+  const [aiPanelOpen,   setAiPanelOpen]   = useState(false)
+  const [aiThreadId,    setAiThreadId]    = useState(null)
+  const [aiEditMode,    setAiEditMode]    = useState(false)
+  const [aiEditContent, setAiEditContent] = useState('')
+  const aiBottomRef = useRef(null)
 
   const gridCols = window.innerWidth < 640 ? '1fr' : 'repeat(auto-fit, minmax(280px,1fr))'
 
@@ -76,6 +160,48 @@ export default function DashboardPage() {
     }
     load()
   }, [])
+
+  useEffect(() => {
+    aiBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [aiMessages, aiLoading])
+
+  async function handleAiSend() {
+    if (!aiInput.trim() || aiLoading) return
+    const text = aiInput.trim()
+    setAiInput('')
+    setAiPanelOpen(true)
+    setAiMessages(prev => [...prev, { role: 'user', content: text }])
+    setAiLoading(true)
+    try {
+      const data = await queryAI(text)
+      if (data.status === 'awaiting_approval') {
+        setAiThreadId(data.thread_id)
+        setAiMessages(prev => [...prev, { role: 'draft', content: data.draft }])
+      } else {
+        setAiMessages(prev => [...prev, { role: 'assistant', content: data.answer }])
+      }
+    } catch {
+      setAiMessages(prev => [...prev, { role: 'assistant', content: 'Something went wrong. Make sure the backend is running.' }])
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  async function handleAiResume(action) {
+    setAiLoading(true)
+    setAiEditMode(false)
+    try {
+      const content = action === 'edited' ? aiEditContent : ''
+      const data = await resumeAI(aiThreadId, action, content)
+      setAiMessages(prev => [...prev, { role: 'assistant', content: data.answer }])
+      setAiThreadId(null)
+      setAiEditContent('')
+    } catch {
+      setAiMessages(prev => [...prev, { role: 'assistant', content: 'Something went wrong.' }])
+    } finally {
+      setAiLoading(false)
+    }
+  }
 
   // ── Sidebar ────────────────────────────────────────────────────────────────
   const NAV = [
@@ -370,31 +496,66 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Fixed AI bar */}
+        {/* Fixed AI bar + chat panel */}
         <div style={{
           position: 'fixed', bottom: 0,
           left: sidebarOpen ? 220 : 0,
           right: 0,
-          padding: '12px 24px 16px',
+          padding: '0 24px 16px',
           background: 'linear-gradient(to top, var(--cc-bg-soft) 70%, transparent)',
           transition: 'left 0.25s ease',
           zIndex: 10,
         }}>
-          <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 10, background: 'white', border: '1px solid var(--cc-border)', borderRadius: 12, padding: '10px 14px', boxShadow: '0 2px 12px rgba(37,99,235,0.08)' }}>
+          {/* Chat panel — slides up when open */}
+          {aiPanelOpen && (
+            <div style={{
+              maxWidth: 680, margin: '0 auto 0',
+              background: 'white', border: '1px solid var(--cc-border)',
+              borderRadius: '12px 12px 0 0',
+              boxShadow: '0 -4px 24px rgba(37,99,235,0.08)',
+              maxHeight: 380, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            }}>
+              {/* Panel header */}
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 14px', borderBottom:'1px solid var(--cc-border)', flexShrink:0 }}>
+                <span style={{ fontSize:13, fontWeight:600, color:'var(--cc-text)' }}>AI Assistant</span>
+                <button onClick={() => setAiPanelOpen(false)} style={{ background:'none', border:'none', fontSize:16, color:'var(--cc-text-faint)', cursor:'pointer', lineHeight:1, padding:'2px 6px', borderRadius:4 }}>✕</button>
+              </div>
+              {/* Messages */}
+              <div style={{ flex:1, overflowY:'auto', padding:'12px 14px', display:'flex', flexDirection:'column', gap:8 }}>
+                {aiMessages.map((msg, i) =>
+                  msg.role === 'draft'
+                    ? <AiDraftCard
+                        key={i}
+                        content={msg.content}
+                        onResume={handleAiResume}
+                        editMode={aiEditMode}
+                        setEditMode={setAiEditMode}
+                        editContent={aiEditContent}
+                        setEditContent={setAiEditContent}
+                      />
+                    : <AiBubble key={i} role={msg.role} content={msg.content} />
+                )}
+                {aiLoading && <AiThinkingDots />}
+                <div ref={aiBottomRef} />
+              </div>
+            </div>
+          )}
+
+          {/* Input bar */}
+          <div style={{ maxWidth: 680, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 10, background: 'white', border: '1px solid var(--cc-border)', borderRadius: aiPanelOpen ? '0 0 12px 12px' : 12, padding: '10px 14px', boxShadow: '0 2px 12px rgba(37,99,235,0.08)', marginTop: 0 }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--cc-text-faint)" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
             <input
               value={aiInput}
               onChange={e => setAiInput(e.target.value)}
               placeholder="Ask your AI assistant anything about your posts..."
               style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, color: 'var(--cc-text)', background: 'transparent', fontFamily: "'DM Sans', system-ui, sans-serif" }}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && aiInput.trim()) {
-                  setAiInput('')
-                }
-              }}
+              onKeyDown={e => { if (e.key === 'Enter') handleAiSend() }}
+              disabled={aiLoading}
             />
             <button
-              style={{ background: aiInput.trim() ? 'var(--cc-blue)' : 'var(--cc-border)', border: 'none', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: aiInput.trim() ? 'pointer' : 'default', transition: 'background 0.15s', flexShrink: 0 }}>
+              onClick={handleAiSend}
+              disabled={aiLoading || !aiInput.trim()}
+              style={{ background: aiInput.trim() && !aiLoading ? 'var(--cc-blue)' : 'var(--cc-border)', border: 'none', borderRadius: 8, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: aiInput.trim() && !aiLoading ? 'pointer' : 'default', transition: 'background 0.15s', flexShrink: 0 }}>
               <Send size={13} color="white" />
             </button>
           </div>

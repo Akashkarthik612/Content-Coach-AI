@@ -5,7 +5,9 @@ from fastapi import HTTPException
 from sqlalchemy import func, or_, case, null
 from sqlalchemy.orm import Session
 
-from backend.vault.models import Folder, Post, PostVersion, _utcnow
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+from backend.vault.models import Folder, Post, PostAnalytics, PostVersion, _utcnow
 from backend.vault.schemas import (
     FolderCreate,
     FolderRename,
@@ -185,6 +187,31 @@ def delete_version(db: Session, user_id: UUID, version_id: UUID) -> None:
     )
     post.current_version = max_num or 0
     db.commit()
+
+
+# ── Post Analytics ────────────────────────────────────────────────────────────
+
+def upsert_post_analytics(
+    db: Session, post_id: UUID, user_id: UUID, impressions: int, reactions: int
+) -> PostAnalytics:
+    _own_post(db, user_id, post_id)
+    stmt = (
+        pg_insert(PostAnalytics)
+        .values(
+            post_id=post_id,
+            user_id=user_id,
+            impressions=impressions,
+            reactions=reactions,
+            updated_at=_utcnow(),
+        )
+        .on_conflict_do_update(
+            constraint="uq_post_analytics_post_id",
+            set_=dict(impressions=impressions, reactions=reactions, updated_at=_utcnow()),
+        )
+    )
+    db.execute(stmt)
+    db.commit()
+    return db.query(PostAnalytics).filter(PostAnalytics.post_id == post_id).one()
 
 
 # ── Search ────────────────────────────────────────────────────────────────────

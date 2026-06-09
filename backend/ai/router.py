@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 from pydantic import BaseModel
@@ -35,6 +35,9 @@ class ResumeRequest(BaseModel):
 
 @router.post("/query", response_model=QueryResponse)
 async def query(body: QueryRequest, user: User = Depends(get_current_user)):
+    if not body.prompt.strip():
+        raise HTTPException(status_code=422, detail="Prompt cannot be empty.")
+
     thread_id = str(uuid.uuid4())
     config    = {"configurable": {"thread_id": thread_id}}
 
