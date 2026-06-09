@@ -9,6 +9,7 @@ import {
   renameFolder, deleteFolder, renamePost, deletePost, pinPost,
   createPost, saveVersion, getVersions, getVersion,
 } from '../api/vault'
+import { AIAssistant } from '../components/AIAssistant/AIAssistant'
 
 // ── Shared style helpers ───────────────────────────────────────────────────────
 const S = {
@@ -493,6 +494,7 @@ export default function MyWorkPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
+    <>
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
 
       {/* ── COLUMN 1: Sidebar nav ──────────────────────────────────────────── */}
@@ -822,5 +824,7 @@ export default function MyWorkPage() {
         )}
       </div>
     </div>
+    <AIAssistant />
+    </>
   )
 }

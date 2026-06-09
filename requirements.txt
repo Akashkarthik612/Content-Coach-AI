@@ -11,5 +11,6 @@ pgvector
 psycopg2-binary
 pydantic-settings
 python-dotenv
+redis
 sqlalchemy
 uvicorn
