@@ -237,8 +237,8 @@ def _write_db_and_cache(
                          short_term, short_term_post_count, short_term_updated_at)
                     VALUES (
                         CAST(:uid AS uuid),
-                        :lt::jsonb,  :lt_count,  :lt_at,
-                        :st::jsonb,  :st_count,  :st_at
+                        CAST(:lt AS jsonb),  :lt_count,  :lt_at,
+                        CAST(:st AS jsonb),  :st_count,  :st_at
                     )
                 """),
                 {
@@ -256,12 +256,12 @@ def _write_db_and_cache(
             updates = {}
             params  = {"uid": user_id}
             if new_lt:
-                updates["long_term"]             = ":lt::jsonb"
+                updates["long_term"]             = "CAST(:lt AS jsonb)"
                 updates["long_term_post_count"]  = ":lt_count"
                 updates["long_term_updated_at"]  = ":lt_at"
                 params.update({"lt": json.dumps(new_lt), "lt_count": published_count, "lt_at": now})
             if new_st:
-                updates["short_term"]             = ":st::jsonb"
+                updates["short_term"]             = "CAST(:st AS jsonb)"
                 updates["short_term_post_count"]  = ":st_count"
                 updates["short_term_updated_at"]  = ":st_at"
                 params.update({"st": json.dumps(new_st), "st_count": published_count, "st_at": now})
