@@ -88,9 +88,10 @@ class TestQueryEndpoint:
         r = await authed_ai_client.post("/api/ai/query", json={"prompt": ""})
         assert r.status_code == 422
 
-    async def test_query_no_auth_returns_401(self, test_client):
+    async def test_query_no_auth_returns_422(self, test_client):
+        # Missing required X-User-Id header → FastAPI returns 422
         r = await test_client.post("/api/ai/query", json={"prompt": "hello"})
-        assert r.status_code == 401
+        assert r.status_code == 422
 
 
 class TestResumeEndpoint:

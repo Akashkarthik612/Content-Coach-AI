@@ -167,7 +167,7 @@ class TestVersionCrud:
 
     def test_rename_version(self, db_session, test_user, test_version):
         updated = vault_service.rename_version(
-            db_session, test_user.id, test_version.id, VersionRename(label="Draft v1")
+            db_session, test_user.id, test_version.id, VersionRename(version_label="Draft v1")
         )
         assert updated.change_summary == "Draft v1"
 

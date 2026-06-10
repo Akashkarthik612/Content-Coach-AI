@@ -198,7 +198,7 @@ def _read_db_memory(db, user_id: str) -> dict | None:
             SELECT long_term, long_term_post_count,
                    short_term, short_term_post_count
             FROM user_style_memory
-            WHERE user_id = :uid::uuid
+            WHERE user_id = CAST(:uid AS uuid)
         """),
         {"uid": user_id},
     ).fetchone()
@@ -236,7 +236,7 @@ def _write_db_and_cache(
                          long_term,  long_term_post_count,  long_term_updated_at,
                          short_term, short_term_post_count, short_term_updated_at)
                     VALUES (
-                        :uid::uuid,
+                        CAST(:uid AS uuid),
                         :lt::jsonb,  :lt_count,  :lt_at,
                         :st::jsonb,  :st_count,  :st_at
                     )
@@ -271,7 +271,7 @@ def _write_db_and_cache(
                             user_id, bool(new_lt), bool(new_st))
                 set_clause = ", ".join(f"{col} = {expr}" for col, expr in updates.items())
                 db.execute(
-                    text(f"UPDATE user_style_memory SET {set_clause} WHERE user_id = :uid::uuid"),
+                    text(f"UPDATE user_style_memory SET {set_clause} WHERE user_id = CAST(:uid AS uuid)"),
                     params,
                 )
         db.commit()
