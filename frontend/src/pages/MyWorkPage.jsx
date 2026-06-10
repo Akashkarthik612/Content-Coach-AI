@@ -358,6 +358,7 @@ export default function MyWorkPage() {
     finally { setLoadingFolders(false) }
   }
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { loadFolders() }, [])
   useEffect(() => { if (creatingFolder) folderInputRef.current?.focus() }, [creatingFolder])
 

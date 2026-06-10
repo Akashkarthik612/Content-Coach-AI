@@ -48,12 +48,16 @@ def embed_and_store_version(
     Called as a FastAPI BackgroundTask — runs after HTTP 201 is sent to client.
     Errors are logged but never re-raised (caller has already responded).
     """
+    logger.debug("embed_and_store_version: post_id=%s version_id=%s content_len=%d",
+                 post_id, version_id, len(content))
     try:
         chunks = _splitter.split_text(content)
+        logger.debug("Chunked into %d chunk(s): post_id=%s", len(chunks), post_id)
         if not chunks:
             return
 
         vectors: list[list[float]] = _embeddings.embed_documents(chunks)
+        logger.debug("Generated %d embedding vector(s): post_id=%s", len(vectors), post_id)
 
         with SessionLocal() as db:
             # Delete all chunks for this post (any prior version)
@@ -61,6 +65,7 @@ def embed_and_store_version(
                 text("DELETE FROM post_embeddings WHERE post_id = :post_id"),
                 {"post_id": post_id},
             )
+            logger.debug("Deleted existing embeddings: post_id=%s", post_id)
 
             # Bulk-insert new chunks
             rows = [

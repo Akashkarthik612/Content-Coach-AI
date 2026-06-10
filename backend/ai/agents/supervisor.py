@@ -1,3 +1,4 @@
+import logging
 from typing import Literal
 
 from pydantic import BaseModel
@@ -6,6 +7,8 @@ from langchain_core.messages import SystemMessage
 
 from backend.core.config import settings
 from backend.ai.state import AgentState
+
+logger = logging.getLogger(__name__)
 from backend.ai.agents.tools import (
     search_vault_posts,
     get_style_samples,
@@ -108,14 +111,18 @@ async def supervisor_node(state: AgentState) -> dict:
     # ── Pass 2: tool has executed, result is in messages ─────────────────────
     if state.get("task_type"):
         task_type = state["task_type"]
+        logger.debug("supervisor_node Pass 2: task_type=%s user_id=%s", task_type, state["user_id"])
 
         if task_type == "write":
+            logger.debug("supervisor_node: routing to writer_node for user_id=%s", state["user_id"])
             return {"route": "write"}
 
         if task_type == "analytics":
-            # Offloaded to analytics_node — dedicated small model with tight prompt
+            logger.debug("supervisor_node: routing to analytics_node for user_id=%s", state["user_id"])
             return {"route": "analytics"}
 
+        logger.debug("supervisor_node: synthesizing answer for task_type=%s user_id=%s",
+                     task_type, state["user_id"])
         response = await _llm.ainvoke([
             SystemMessage(content=_SYNTHESIZE_SYSTEM),
             *state["messages"],
@@ -127,12 +134,16 @@ async def supervisor_node(state: AgentState) -> dict:
         }
 
     # ── Pass 1: classify then trigger tool call ───────────────────────────────
+    logger.debug("supervisor_node Pass 1: user_id=%s query_len=%d",
+                 state["user_id"], len(state.get("query", "")))
     result: ClassificationResult = await _classifier.ainvoke([
         SystemMessage(content=_CLASSIFY_SYSTEM),
         *state["messages"],
     ])
+    logger.info("Query classified: task_type=%s user_id=%s", result.task_type, state["user_id"])
 
     if result.task_type == "general":
+        logger.debug("supervisor_node: answering general query inline for user_id=%s", state["user_id"])
         response = await _llm.ainvoke(state["messages"])
         return {
             "task_type": "general",

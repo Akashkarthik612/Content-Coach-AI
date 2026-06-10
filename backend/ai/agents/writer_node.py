@@ -1,8 +1,12 @@
+import logging
+
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage
 
 from backend.core.config import settings
 from backend.ai.state import AgentState
+
+logger = logging.getLogger(__name__)
 
 
 llm = ChatGoogleGenerativeAI(
@@ -37,6 +41,7 @@ Rules:
 
 
 async def writer_node(state: AgentState) -> dict:
+    logger.debug("writer_node invoked: user_id=%s", state.get("user_id"))
     # Find the most recent ToolMessage — it contains the style profile (compressed memory
     # or cold-start raw samples, depending on whether style memory has been generated yet)
     style_profile = ""
@@ -45,11 +50,17 @@ async def writer_node(state: AgentState) -> dict:
             style_profile = msg.content
             break
 
+    if not style_profile:
+        logger.warning("writer_node: no ToolMessage found in state messages — proceeding without style profile")
+    else:
+        logger.debug("writer_node: style_profile length=%d", len(style_profile))
+
     response = await llm.ainvoke([
         SystemMessage(content=_WRITER_SYSTEM),
         *state["messages"],
         SystemMessage(content=f"STYLE PROFILE:\n{style_profile}"),
     ])
 
+    logger.info("writer_node: draft generated, char_count=%d", len(response.content))
     return {"draft": response.content}
 

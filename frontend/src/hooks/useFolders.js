@@ -14,7 +14,6 @@ export function useFolders() {
   }, []);
 
   useEffect(() => {
-    setLoading(true);
     getFolders()
       .then(data => setFolders(Array.isArray(data) ? data : []))
       .catch(() => {})
