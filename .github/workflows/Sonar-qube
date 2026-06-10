@@ -1,0 +1,197 @@
+name: Backend CI
+
+on:
+push:
+branches:
+- main
+- develop
+- 'feat/**'
+- 'feature/**'
+- 'fix/**'
+
+```
+paths:
+  - 'backend/**'
+  - 'tests/**'
+  - 'requirements.txt'
+  - 'requirements-test.txt'
+  - 'pytest.ini'
+  - 'alembic.ini'
+  - '.github/workflows/backend-tests.yml'
+```
+
+pull_request:
+branches:
+- main
+- develop
+
+```
+paths:
+  - 'backend/**'
+  - 'tests/**'
+  - 'requirements.txt'
+  - 'requirements-test.txt'
+  - 'pytest.ini'
+```
+
+jobs:
+
+test:
+name: Backend Tests
+runs-on: ubuntu-latest
+timeout-minutes: 15
+
+```
+services:
+
+  postgres:
+    image: pgvector/pgvector:pg17
+
+    env:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: test_content_coach
+
+    ports:
+      - 5432:5432
+
+    options: >-
+      --health-cmd "pg_isready -U postgres"
+      --health-interval 5s
+      --health-timeout 5s
+      --health-retries 10
+
+  redis:
+    image: redis:7-alpine
+
+    ports:
+      - 6379:6379
+
+    options: >-
+      --health-cmd "redis-cli ping"
+      --health-interval 5s
+      --health-timeout 3s
+      --health-retries 5
+
+env:
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_content_coach
+  REDIS_URL: redis://localhost:6379/1
+
+  LANGCHAIN_API_KEY_GEMINI: ci-placeholder
+  OPENAI_API_KEY: ci-placeholder
+
+steps:
+
+  - name: Checkout Code
+    uses: actions/checkout@v4
+
+  - name: Setup Python
+    uses: actions/setup-python@v5
+    with:
+      python-version: "3.11"
+      cache: pip
+
+  - name: Install Production Dependencies
+    run: |
+      pip install -r requirements.txt
+
+  - name: Install Test Dependencies
+    run: |
+      pip install -r requirements-test.txt
+
+ 
+  - name: Run Database Migrations
+    run: |
+      python -m alembic upgrade head
+
+  - name: Run Backend Tests
+    run: |
+      pytest tests/ \
+        --tb=short \
+        --cov=backend \
+        --cov-report=term-missing \
+        --cov-report=xml:coverage.xml \
+        -v
+
+  - name: Upload Coverage Artifact
+    uses: actions/upload-artifact@v4
+    with:
+      name: coverage-report
+      path: coverage.xml
+```
+
+sonarqube:
+name: SonarCloud Scan
+
+```
+needs: test
+
+runs-on: ubuntu-latest
+
+steps:
+
+  - name: Checkout Code
+    uses: actions/checkout@v4
+    with:
+      fetch-depth: 0
+
+  - name: Download Coverage Artifact
+    uses: actions/download-artifact@v4
+    with:
+      name: coverage-report
+
+  - name: SonarCloud Scan
+    uses: SonarSource/sonarqube-scan-action@v5
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+```
+
+docker:
+name: Docker Build
+
+```
+needs:
+  - test
+  - sonarqube
+
+runs-on: ubuntu-latest
+
+steps:
+
+  - name: Checkout Code
+    uses: actions/checkout@v4
+
+  - name: Build Backend Docker Image
+    run: |
+      docker build \
+        -f backend/Dockerfile \
+        -t content-coach-backend .
+```
+
+trivy:
+name: Trivy Security Scan
+
+```
+needs: docker
+
+runs-on: ubuntu-latest
+
+steps:
+
+  - name: Checkout Code
+    uses: actions/checkout@v4
+
+  - name: Build Backend Docker Image
+    run: |
+      docker build \
+        -f backend/Dockerfile \
+        -t content-coach-backend .
+
+  - name: Run Trivy Scan
+    uses: aquasecurity/trivy-action@0.28.0
+    with:
+      image-ref: content-coach-backend
+      format: table
+      exit-code: 1
+      severity: CRITICAL,HIGH
+```
