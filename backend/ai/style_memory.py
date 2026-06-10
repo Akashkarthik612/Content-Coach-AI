@@ -60,7 +60,11 @@ def sync_check_and_refresh_style_memory(user_id: str) -> None:
         run_st = (published_count - st_count) >= _ST_THRESHOLD
         run_lt = (published_count - lt_count) >= _LT_THRESHOLD
 
+        logger.debug("Style memory check: user_id=%s published=%d st_count=%d lt_count=%d run_st=%s run_lt=%s",
+                     user_id, published_count, st_count, lt_count, run_st, run_lt)
+
         if not run_st and not run_lt:
+            logger.debug("Style memory thresholds not met for user_id=%s — skipping", user_id)
             return  # nothing to do — fast exit
 
         # Fetch posts once for both analyses (LT window is larger)
@@ -104,16 +108,19 @@ async def get_style_memory(user_id: str) -> dict | None:
     st_raw = await async_get(st_key)
 
     if lt_raw:
+        logger.debug("Style memory Redis hit: user_id=%s", user_id)
         return {
             "long_term":  json.loads(lt_raw),
             "short_term": json.loads(st_raw) if st_raw else None,
         }
 
     # Redis miss (cold start or eviction) — read from DB
+    logger.debug("Style memory Redis miss, reading from DB: user_id=%s", user_id)
     import asyncio
     row = await asyncio.to_thread(_read_db_memory, None, user_id)
 
     if not row or not row.get("long_term"):
+        logger.debug("No style memory found in DB: user_id=%s", user_id)
         return None
 
     lt_dict = row["long_term"]
@@ -123,6 +130,7 @@ async def get_style_memory(user_id: str) -> dict | None:
     await async_set(lt_key, json.dumps(lt_dict), ttl=_LT_STYLE_TTL)
     if st_dict:
         await async_set(st_key, json.dumps(st_dict), ttl=_ST_STYLE_TTL)
+    logger.debug("Repopulated Redis style cache: user_id=%s", user_id)
 
     return {"long_term": lt_dict, "short_term": st_dict}
 
@@ -219,6 +227,7 @@ def _write_db_and_cache(
         row = _read_db_memory(db, user_id)
 
         if row is None:
+            logger.info("Inserting new user_style_memory row: user_id=%s", user_id)
             # INSERT
             db.execute(
                 text("""
@@ -258,6 +267,8 @@ def _write_db_and_cache(
                 params.update({"st": json.dumps(new_st), "st_count": published_count, "st_at": now})
 
             if updates:
+                logger.info("Updating user_style_memory: user_id=%s lt=%s st=%s",
+                            user_id, bool(new_lt), bool(new_st))
                 set_clause = ", ".join(f"{col} = {expr}" for col, expr in updates.items())
                 db.execute(
                     text(f"UPDATE user_style_memory SET {set_clause} WHERE user_id = :uid::uuid"),

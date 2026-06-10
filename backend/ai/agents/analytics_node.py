@@ -1,8 +1,12 @@
+import logging
+
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage
 
 from backend.core.config import settings
 from backend.ai.state import AgentState
+
+logger = logging.getLogger(__name__)
 
 
 _llm = ChatGoogleGenerativeAI(
@@ -34,8 +38,10 @@ Do not give generic LinkedIn advice — always tie recommendations to the user's
 
 
 async def analytics_node(state: AgentState) -> dict:
+    logger.debug("analytics_node invoked: user_id=%s", state.get("user_id"))
     response = await _llm.ainvoke([
         SystemMessage(content=_ANALYTICS_SYSTEM),
         *state["messages"],
     ])
+    logger.info("analytics_node: response generated, char_count=%d", len(response.content))
     return {"answer": response.content, "route": "direct"}

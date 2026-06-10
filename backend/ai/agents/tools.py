@@ -14,10 +14,13 @@ Gemini Embedding API is not called again for the same query text (24-h TTL).
 """
 import asyncio
 import json
+import logging
 from langchain_core.tools import tool
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from sqlalchemy import text
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 from backend.core.config import settings
 from backend.core.database import SessionLocal
@@ -144,6 +147,7 @@ def _fetch_publish_history_sql(uid: UUID) -> list:
 async def search_vault_posts(user_id: str, query: str) -> str:
     """Search the user's post vault for posts relevant to the query.
     Uses pgvector semantic search on post_embeddings; falls back to recent posts if fewer than 2 vector hits exist."""
+    logger.debug("search_vault_posts: user_id=%s query_len=%d", user_id, len(query))
     if not query or not query.strip():
         return "[NO_CONTEXT_FOUND: empty search query]"
 
@@ -152,6 +156,7 @@ async def search_vault_posts(user_id: str, query: str) -> str:
     # 1. Tool result cache
     cached = await async_get(ck)
     if cached:
+        logger.debug("search_vault_posts cache hit: user_id=%s", user_id)
         return cached
 
     # 2. Embedding cache — avoids Gemini API call for repeated query text
@@ -165,6 +170,7 @@ async def search_vault_posts(user_id: str, query: str) -> str:
 
     # 3. Vector search
     rows = await asyncio.to_thread(_search_posts_sql, user_id, embedding_str)
+    logger.debug("search_vault_posts: %d vector results for user_id=%s", len(rows), user_id)
 
     if rows:
         lines = ["## Semantic Search Results\n"]
@@ -184,9 +190,11 @@ async def search_vault_posts(user_id: str, query: str) -> str:
 async def get_style_samples(user_id: str) -> str:
     """Fetch the user's compressed style memory (long-term DNA + recent evolution) to guide the ghostwriter.
     Falls back to 2 raw published posts when no style memory has been generated yet."""
+    logger.debug("get_style_samples: user_id=%s", user_id)
     ck = tool_key("get_style_samples", user_id)
     cached = await async_get(ck)
     if cached:
+        logger.debug("get_style_samples cache hit: user_id=%s", user_id)
         return cached
 
     from backend.ai.style_memory import get_style_memory, format_style_memory_for_writer
@@ -200,6 +208,7 @@ async def get_style_samples(user_id: str) -> str:
         # Use 2 most recent published posts as a minimal fallback.
         uid  = UUID(user_id)
         rows = await asyncio.to_thread(_fetch_style_samples_sql, uid, 2)
+        logger.info("get_style_samples cold-start fallback: user_id=%s raw_posts=%d", user_id, len(rows))
 
         if not rows:
             result = "[NO_CONTEXT_FOUND: no published posts yet — cannot replicate writing style]"
@@ -220,6 +229,7 @@ async def get_style_samples(user_id: str) -> str:
 async def get_topic_inventory(user_id: str) -> str:
     """Get all post titles and tags from the user's vault to identify content gaps and suggest new topics.
     Returns a structured list of every post and all distinct tags used."""
+    logger.debug("get_topic_inventory: user_id=%s", user_id)
     ck = tool_key("get_topic_inventory", user_id)
     cached = await async_get(ck)
     if cached:
@@ -227,6 +237,7 @@ async def get_topic_inventory(user_id: str) -> str:
 
     uid         = UUID(user_id)
     posts, tags = await asyncio.to_thread(_fetch_topic_inventory_sql, uid)
+    logger.debug("get_topic_inventory: post_count=%d user_id=%s", len(posts), user_id)
 
     if not posts:
         result = "[NO_CONTEXT_FOUND: no posts in vault yet]"
@@ -246,6 +257,7 @@ async def get_topic_inventory(user_id: str) -> str:
 async def get_post_analytics(user_id: str) -> str:
     """Fetch all posts with performance metrics (impressions, reactions), publish history,
     and a short content preview. Use for any analytics, performance, or posting pattern questions."""
+    logger.debug("get_post_analytics: user_id=%s", user_id)
     ck = tool_key("get_post_analytics", user_id)
     cached = await async_get(ck)
     if cached:
@@ -253,6 +265,7 @@ async def get_post_analytics(user_id: str) -> str:
 
     uid  = UUID(user_id)
     rows = await asyncio.to_thread(_fetch_post_analytics_sql, uid)
+    logger.debug("get_post_analytics: row_count=%d user_id=%s", len(rows), user_id)
 
     if not rows:
         result = "[NO_ANALYTICS_CONTEXT: no posts found yet]"

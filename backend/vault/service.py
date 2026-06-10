@@ -1,7 +1,10 @@
+import logging
 from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException
+
+logger = logging.getLogger(__name__)
 from sqlalchemy import func, or_, case, null
 from sqlalchemy.orm import Session
 
@@ -22,8 +25,10 @@ from backend.vault.schemas import (
 def _own_folder(db: Session, user_id: UUID, folder_id: UUID) -> Folder:
     folder = db.get(Folder, folder_id)
     if not folder:
+        logger.debug("Folder not found: folder_id=%s", folder_id)
         raise HTTPException(status_code=404, detail="Folder not found")
     if folder.user_id != user_id:
+        logger.warning("Forbidden: user_id=%s does not own folder_id=%s", user_id, folder_id)
         raise HTTPException(status_code=403, detail="Forbidden")
     return folder
 
@@ -31,8 +36,10 @@ def _own_folder(db: Session, user_id: UUID, folder_id: UUID) -> Folder:
 def _own_post(db: Session, user_id: UUID, post_id: UUID) -> Post:
     post = db.get(Post, post_id)
     if not post:
+        logger.debug("Post not found: post_id=%s", post_id)
         raise HTTPException(status_code=404, detail="Post not found")
     if post.user_id != user_id:
+        logger.warning("Forbidden: user_id=%s does not own post_id=%s", user_id, post_id)
         raise HTTPException(status_code=403, detail="Forbidden")
     return post
 
@@ -48,6 +55,7 @@ def _own_version(db: Session, user_id: UUID, version_id: UUID) -> PostVersion:
 # ── Folder ────────────────────────────────────────────────────────────────────
 
 def create_folder(db: Session, user_id: UUID, data: FolderCreate) -> Folder:
+    logger.info("Creating folder: user_id=%s name=%s", user_id, data.name)
     folder = Folder(user_id=user_id, name=data.name, description=data.description)
     db.add(folder)
     db.commit()
@@ -76,6 +84,7 @@ def delete_folder(db: Session, user_id: UUID, folder_id: UUID) -> None:
 # ── Post ──────────────────────────────────────────────────────────────────────
 
 def create_post(db: Session, user_id: UUID, folder_id: UUID, data: PostCreate) -> Post:
+    logger.info("Creating post: user_id=%s folder_id=%s title=%s", user_id, folder_id, data.title)
     _own_folder(db, user_id, folder_id)
     post = Post(user_id=user_id, title=data.title, folder_id=folder_id)
     db.add(post)
@@ -129,6 +138,8 @@ def save_version(db: Session, user_id: UUID, post_id: UUID, data: VersionSave) -
     )
     next_number = (max_num or 0) + 1
 
+    logger.info("Saving version: post_id=%s version_number=%d char_count=%d",
+                post_id, next_number, len(data.content))
     try:
         version = PostVersion(
             post_id=post_id,
@@ -147,6 +158,7 @@ def save_version(db: Session, user_id: UUID, post_id: UUID, data: VersionSave) -
         db.commit()
         db.refresh(version)
     except Exception:
+        logger.exception("save_version failed: post_id=%s", post_id)
         db.rollback()
         raise
 
