@@ -2,7 +2,7 @@ name: Backend Tests
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, "feat/**", "feature/**", "fix/**"]
     paths:
       - "backend/**"
       - "tests/**"
