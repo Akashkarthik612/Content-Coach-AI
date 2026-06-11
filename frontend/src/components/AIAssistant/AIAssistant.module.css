@@ -129,6 +129,23 @@
   40%           { transform: translateY(-6px); }
 }
 
+/* ── Streaming cursor ────────────────────────────────────────────────────── */
+
+.streamCursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--color-text-muted);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink 0.8s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
 /* ── Input row ───────────────────────────────────────────────────────────── */
 
 .inputRow {

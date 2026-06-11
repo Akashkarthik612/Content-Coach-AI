@@ -14,7 +14,12 @@ class AgentState(TypedDict):
 
     # Supervisor routing
     task_type: str  # "" | "general" | "research" | "write" | "analytics" | "suggest"
-    route:     str  # "tools" | "write" | "direct"
+    route:     str  # "style_retrieval" | "analytics" | "tools" | "direct"
+
+    # Inter-worker JSON contracts — structured dicts, never prose paragraphs
+    style_json:     dict  # {"long_term": {9 style keys}, "short_term": {9 keys}|None}
+    research_brief: dict  # {recommended_angle, talking_points, past_coverage, avoid_repeating, suggested_length}
+    writer_task:    dict  # {action: "write"|"rewrite", topic, constraints: []}
 
     # Writer path
     draft:           str  # produced by writer_node

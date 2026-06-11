@@ -5,12 +5,12 @@ import { queryAI, resumeAI } from '../../api/ai';
 const GREETING = { role: 'assistant', content: 'How may I help you?' };
 
 export function AIAssistant() {
-  const [open, setOpen]             = useState(false);
-  const [prompt, setPrompt]         = useState('');
-  const [messages, setMessages]     = useState([GREETING]);
-  const [loading, setLoading]       = useState(false);
-  const [threadId, setThreadId]     = useState(null);
-  const [editMode, setEditMode]     = useState(false);
+  const [open, setOpen]               = useState(false);
+  const [prompt, setPrompt]           = useState('');
+  const [messages, setMessages]       = useState([GREETING]);
+  const [loading, setLoading]         = useState(false);
+  const [threadId, setThreadId]       = useState(null);
+  const [editMode, setEditMode]       = useState(false);
   const [editContent, setEditContent] = useState('');
   const bottomRef   = useRef(null);
   const textareaRef = useRef(null);
