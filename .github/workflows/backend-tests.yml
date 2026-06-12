@@ -120,7 +120,6 @@ jobs:
       - name: Build Backend Docker Image
         run: |
           docker build \
-            -f backend/Dockerfile \
             -t content-coach-backend .
 
   trivy:
