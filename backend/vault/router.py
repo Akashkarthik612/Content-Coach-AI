@@ -10,6 +10,7 @@ from backend.ai.embeddings import embed_and_store_version
 from backend.ai.style_memory import sync_check_and_refresh_style_memory
 from backend.vault import service
 from backend.vault.schemas import (
+    AnalyticsSummaryResponse,
     FolderCreate,
     FolderRename,
     FolderResponse,
@@ -93,6 +94,17 @@ def list_posts(
     return service.list_posts(db, user_id=user.id, folder_id=folder_id)
 
 
+# ── Recent posts (cross-folder) — must come BEFORE /posts/{post_id} ──────────
+
+@router.get("/posts/recent", response_model=list[PostListResponse])
+def get_recent_posts(
+    limit: int = 2,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return service.get_recent_posts(db, user_id=user.id, limit=limit)
+
+
 @router.get("/posts/{post_id}", response_model=PostResponse)
 def get_post(
     post_id: UUID,
@@ -129,6 +141,16 @@ def pin_post(
     user: User = Depends(get_current_user),
 ):
     return service.pin_post(db, user_id=user.id, post_id=post_id, pinned=data.is_pinned)
+
+
+# ── Analytics Summary ─────────────────────────────────────────────────────────
+
+@router.get("/analytics/summary", response_model=AnalyticsSummaryResponse)
+def get_analytics_summary(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return service.get_analytics_summary(db, user_id=user.id)
 
 
 # ── Post Analytics ────────────────────────────────────────────────────────────

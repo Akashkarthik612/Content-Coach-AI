@@ -14,6 +14,7 @@ from uuid import UUID
 
 from sqlalchemy import func
 
+from backend.ai._log_setup import log_style_json
 from backend.ai.worker_states import StyleRetrieverState
 from backend.ai.style_memory import (
     get_style_memory,
@@ -59,11 +60,13 @@ async def style_retriever_node(state: StyleRetrieverState) -> dict:
 
     if memory is None:
         # No style data at all — run LLM analysis now before writer proceeds
+        '''already the logs are there'''
         logger.info("style_retriever_node: no style memory — running on-demand analysis")
         posts, published_count = await asyncio.to_thread(_fetch_posts_and_count, user_id, 20)
 
         if not posts:
             logger.info("style_retriever_node: no published posts yet — cold-start")
+            log_style_json(logger, f"style_retriever_node cold-start user={user_id}", {})
             return {"style_json": {}}
 
         lt_dict = await asyncio.to_thread(analyze_style, posts[:20])
@@ -73,9 +76,12 @@ async def style_retriever_node(state: StyleRetrieverState) -> dict:
             _write_db_and_cache, user_id, lt_dict, st_dict, published_count, None
         )
         logger.info("style_retriever_node: analysis complete, post_count=%d", len(posts))
-        return {"style_json": {"long_term": lt_dict, "short_term": st_dict}}
+        result = {"long_term": lt_dict, "short_term": st_dict}
+        log_style_json(logger, f"style_retriever_node on-demand user={user_id}", result)
+        return {"style_json": result}
 
     # Style exists — fire staleness check in background, return cached JSON now
     asyncio.ensure_future(asyncio.to_thread(sync_check_and_refresh_style_memory, user_id))
     logger.debug("style_retriever_node: returning cached style_json, stale-check fired")
+    log_style_json(logger, f"style_retriever_node cache-hit user={user_id}", memory)
     return {"style_json": memory}

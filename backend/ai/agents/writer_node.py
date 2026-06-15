@@ -122,7 +122,13 @@ async def writer_node(state: WriterState) -> dict:
         messages.append(HumanMessage(content=f"[EXISTING DRAFT TO MODIFY]\n{state['draft']}"))
 
     response = await _llm.ainvoke(messages)
-    content = response.content.strip() if isinstance(response.content, str) else ""
+    raw = response.content
+    if isinstance(raw, list):
+        content = "".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in raw).strip()
+    elif isinstance(raw, str):
+        content = raw.strip()
+    else:
+        content = ""
     logger.info("writer_node: draft generated, char_count=%d", len(content))
     if not content:
         logger.error("writer_node: LLM returned empty content — model may have refused or failed")

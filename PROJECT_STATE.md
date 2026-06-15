@@ -1,6 +1,6 @@
 # Content Coach — Project State
 > Living reference for Claude. Update when architecture, decisions, or status change.
-> Last updated: 2026-06-09
+> Last updated: 2026-06-16 (dashboard redesign · analytics/recent-posts endpoints · AI file logging · analytics_node Gemini list-content bug fix)
 
 ---
 
@@ -62,20 +62,27 @@ f:\My_first_product\
 │   │   ├── service.py            ← Business logic; all queries scoped to user_id
 │   │   └── router.py             ← /api/vault/* — all require X-User-Id
 │   ├── ai/
-│   │   ├── router.py             ← POST /api/ai/query + POST /api/ai/resume (HITL)
+│   │   ├── router.py             ← POST /api/ai/query + /resume (HITL) + /stream (SSE); calls setup_ai_file_logging() at startup
+│   │   ├── _log_setup.py         ← NEW: file-based log handler setup; log_style_json() helper
+│   │   ├── logs/                 ← AUTO-CREATED at runtime
+│   │   │   ├── ai_debug.log      ← DEBUG+ from all backend.ai.* loggers
+│   │   │   ├── errors.log        ← ERROR+ only
+│   │   │   └── style_debug.log   ← full style JSON dumps on every style extraction
 │   │   ├── embeddings.py         ← embed_and_store_version() — BackgroundTask, writes post_embeddings
-│   │   ├── style_analyzer.py     ← analyze_style() — LLM-based 9-key JSON style extraction
+│   │   ├── style_analyzer.py     ← analyze_style() — 9-key JSON; now calls log_style_json() after extraction
 │   │   ├── style_memory.py       ← Style memory lifecycle: window trigger, DB UPSERT, Redis cache
 │   │   ├── rag_chain.py          ← Legacy RAG chain (reference only — superseded by graph)
 │   │   ├── state.py              ← AgentState TypedDict
-│   │   ├── graph.py              ← LangGraph StateGraph, 5 nodes + ToolNode, MemorySaver
+│   │   ├── worker_states.py      ← StyleRetrieverState, WriterState, AnalyticsState, ResearcherState
+│   │   ├── graph.py              ← LangGraph StateGraph, 6 nodes + ToolNode, MemorySaver
 │   │   └── agents/
-│   │       ├── supervisor.py          ← COGNITIVE: classifier (Pass 1) + tool caller + router (Pass 2)
-│   │       ├── tools.py               ← 5 async @tool functions — all DB reads + Redis cache layer
+│   │       ├── supervisor.py          ← COGNITIVE: tool caller + router; direct answer sets state["answer"]
+│   │       ├── tools.py               ← 4 async @tool functions — DB reads + Redis cache layer
 │   │       ├── sql_fetch_node.py      ← WRITE ONLY: save_draft_to_vault()
 │   │       ├── vector_search_node.py  ← DEAD (kept for reference — logic lives in tools.py)
-│   │       ├── writer_node.py         ← COGNITIVE: style-aware LinkedIn post drafter (reads style memory JSON)
-│   │       ├── analytics_node.py      ← COGNITIVE: LinkedIn analytics synthesizer (gemini-2.5-flash-lite temp=0.0; reads get_post_analytics ToolMessage)
+│   │       ├── style_retriever_node.py← COGNITIVE: fetch/refresh style JSON; dispatched via Send API; calls log_style_json()
+│   │       ├── writer_node.py         ← COGNITIVE: style-aware LinkedIn post drafter; Gemini list-content handled
+│   │       ├── analytics_node.py      ← COGNITIVE: LinkedIn analytics synthesizer; FIXED: Gemini list-content bug
 │   │       ├── human_approval_node.py ← INTERRUPT: HITL checkpoint, saves on approve/edit
 │   │       └── helper.py              ← DEAD (superseded — delete when ready)
 │   ├── core/
@@ -96,9 +103,12 @@ f:\My_first_product\
 │       │   ├── auth.js           ← register(), login()
 │       │   ├── vault.js          ← all vault API calls + X-User-Id Axios interceptor
 │       │   └── ai.js             ← queryAI(prompt), resumeAI(thread_id, action, content)
+│       ├── context/
+│       │   └── ReviewQueueContext.jsx ← (new) shared context for review queue state
 │       ├── pages/
 │       │   ├── HomePage.jsx      ← Login / Register / Forgot (3 modes)
-│       │   ├── DashboardPage.jsx ← Post-login dashboard (sidebar + cards + AI bar)
+│       │   ├── DashboardPage.jsx ← Fully redesigned: collapsible sidebar, 4 AgentCards, pipeline, AIPanel with initialInput
+│       │   ├── AnalyticsPage.jsx ← (new) /analytics route — analytics overview UI
 │       │   ├── MyWorkPage.jsx    ← 3-col workspace: sidebar | folder panel | DocEditor
 │       │   └── landing/
 │       │       ├── landingContent.js  ← COPY object — all text strings, no JSX
@@ -106,6 +116,8 @@ f:\My_first_product\
 │       │       └── *.jsx              ← Hero, Navbar, Features… DEAD CODE (superseded)
 │       ├── hooks/
 │       │   ├── useFolders.js · usePosts.js · usePost.js
+│       │   ├── useAnalytics.js   ← calls getAnalyticsSummary(); used by DashboardPage Analytics card
+│       │   └── useIdeas.js       ← (new) idea generation hook
 │       └── components/
 │           ├── Sidebar/   PostList/   Editor/   AIAssistant/
 │           ├── shared/    ← Button, Input, Badge, ContextMenu
@@ -170,6 +182,8 @@ post_analytics(id UUID PK, post_id UUID UNIQUE FK→posts CASCADE, user_id UUID 
 | GET/PATCH/DELETE | `/versions/{id}` | Get / Rename label / Delete |
 | GET | `/search?q=` | Keyword search across posts |
 | PATCH | `/posts/{id}/analytics` | `{impressions, reactions}` — upsert user-logged metrics; invalidates analytics tool cache |
+| GET | `/analytics/summary` | Returns `AnalyticsSummaryResponse` — total_impressions, avg_reactions, top_platform, monthly_trend |
+| GET | `/posts/recent?limit=N` | Returns last N posts (`PostListResponse[]`) ordered by updated_at DESC — must be declared BEFORE `/posts/{post_id}` in router |
 
 ### AI — `/api/ai`
 | Method | Path | Body | Notes |
@@ -200,6 +214,8 @@ getVersion(versionId)               → version
 renameVersion(versionId, label)     → version
 deleteVersion(versionId)            → {}
 search(query)                       → result[]
+getAnalyticsSummary()               → {total_impressions, avg_reactions, top_platform, monthly_trend}
+getRecentPosts(limit=2)             → post[]  // used by Dashboard Writer card to show currentDraft title
 ```
 
 **No global getPosts().** To get all user posts: `getFolders()` → `Promise.all(folders.map(f => getPostsInFolder(f.id)))` → flatten.
@@ -321,8 +337,8 @@ Uses `llm.with_structured_output(ClassificationResult)` for reliable JSON — no
 | — | `tools.py` | ✅ Done | 5 async `@tool` functions — all DB reads live here |
 | — | `supervisor_node` | ✅ Done | Pass 1: classify + trigger tool call. Pass 2: route to writer / analytics / direct. No longer synthesizes analytics. |
 | — | `tool_node` (LangGraph prebuilt) | ✅ Done | Executes tool called by LLM; appends ToolMessage; loops to supervisor |
-| — | `writer_node` | ✅ Done | Reads style from last ToolMessage in messages |
-| — | `analytics_node` | ✅ Done | Dedicated analytics synthesizer; temp=0.0; reads get_post_analytics ToolMessage |
+| — | `writer_node` | ✅ Done | Reads style from last ToolMessage in messages; **FIXED: same Gemini list-content bug** |
+| — | `analytics_node` | ✅ Done | Dedicated analytics synthesizer; temp=0.0; reads get_post_analytics ToolMessage; **FIXED: Gemini list-content bug** (response.content may be `[{"text":"..."}]`) |
 | — | `human_approval_node` | ✅ Done | `interrupt()` HITL, saves on approve/edit |
 | — | `sql_fetch_node` | ✅ Done | Write-only: `save_draft_to_vault()` |
 | — | `router.py` | ✅ Done | `thread_id`, trimmed initial state, `/resume` endpoint |
@@ -342,7 +358,7 @@ Uses `llm.with_structured_output(ClassificationResult)` for reliable JSON — no
 | Embedding backfill | Pending | Existing `post_versions` rows have no embeddings — new saves embed automatically at 650-char chunks; old content needs a one-off backfill script |
 | Style memory cold start | Expected | First write request before user reaches 3 published posts uses 2 raw posts; auto-generates once threshold is crossed |
 | AI UI integration | ✅ Done | `AIAssistant.jsx` wired to `ai.js`; supports query, draft approval (Approve/Edit/Reject), and HITL resume flow |
-| Dashboard analytics UI | Pending | `post_analytics` table and API exist; dashboard cards showing impressions/reactions not yet built |
+| Dashboard analytics UI | ✅ Done | Analytics card in DashboardPage wired to `useAnalytics()` hook → `GET /api/vault/analytics/summary`; shows impressions, avgLikes, topPlatform |
 | Post analytics UI | Pending | `PATCH /posts/{id}/analytics` endpoint exists; no UI yet for users to log impressions/reactions per post |
 | Chunk size backfill | Pending | Chunk size changed 300→650; existing embeddings need re-embedding for consistent retrieval quality |
 

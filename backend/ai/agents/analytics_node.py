@@ -44,6 +44,14 @@ async def analytics_node(state: AgentState) -> dict:
         SystemMessage(content=_ANALYTICS_SYSTEM),
         *state["messages"],
     ])
-    content = response.content if isinstance(response.content, str) else ""
+    raw = response.content
+    if isinstance(raw, list):
+        content = "".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in raw).strip()
+    elif isinstance(raw, str):
+        content = raw.strip()
+    else:
+        content = ""
     logger.info("analytics_node: response generated, char_count=%d", len(content))
+    if not content:
+        logger.error("analytics_node: LLM returned empty content — raw type=%s raw=%r", type(raw).__name__, raw)
     return {"answer": content, "route": "direct"}

@@ -1,4 +1,5 @@
 import logging
+from datetime import timedelta
 from typing import Optional
 from uuid import UUID
 
@@ -10,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from backend.vault.models import Folder, Post, PostAnalytics, PostVersion, _utcnow
+from backend.vault.models import Folder, Post, PostAnalytics, PostPublishLog, PostVersion, _utcnow
 from backend.vault.schemas import (
     FolderCreate,
     FolderRename,
@@ -224,6 +225,64 @@ def upsert_post_analytics(
     db.execute(stmt)
     db.commit()
     return db.query(PostAnalytics).filter(PostAnalytics.post_id == post_id).one()
+
+
+# ── Analytics Summary ─────────────────────────────────────────────────────────
+
+def get_analytics_summary(db: Session, user_id: UUID) -> dict:
+    agg = (
+        db.query(
+            func.coalesce(func.sum(PostAnalytics.impressions), 0).label("total_impressions"),
+            func.coalesce(func.avg(PostAnalytics.reactions), 0.0).label("avg_reactions"),
+            func.count(PostAnalytics.id).label("post_count"),
+        )
+        .filter(PostAnalytics.user_id == user_id)
+        .one()
+    )
+
+    top_row = (
+        db.query(PostPublishLog.platform, func.count(PostPublishLog.id).label("cnt"))
+        .join(Post, Post.id == PostPublishLog.post_id)
+        .filter(Post.user_id == user_id)
+        .group_by(PostPublishLog.platform)
+        .order_by(func.count(PostPublishLog.id).desc())
+        .first()
+    )
+
+    cutoff   = _utcnow() - timedelta(days=180)
+    trunc    = func.date_trunc("month", PostAnalytics.updated_at)
+    trend_rows = (
+        db.query(
+            func.to_char(PostAnalytics.updated_at, "Mon").label("month"),
+            func.sum(PostAnalytics.impressions).label("impressions"),
+            func.sum(PostAnalytics.reactions).label("reactions"),
+        )
+        .filter(PostAnalytics.user_id == user_id, PostAnalytics.updated_at >= cutoff)
+        .group_by(trunc, func.to_char(PostAnalytics.updated_at, "Mon"))
+        .order_by(trunc)
+        .all()
+    )
+
+    return {
+        "total_impressions": int(agg.total_impressions),
+        "avg_reactions":     float(agg.avg_reactions),
+        "post_count":        int(agg.post_count),
+        "top_platform":      top_row.platform if top_row else None,
+        "monthly_trend": [
+            {"month": r.month, "impressions": int(r.impressions), "reactions": int(r.reactions or 0)}
+            for r in trend_rows
+        ],
+    }
+
+
+def get_recent_posts(db: Session, user_id: UUID, limit: int = 3) -> list[Post]:
+    return (
+        db.query(Post)
+        .filter(Post.user_id == user_id)
+        .order_by(Post.updated_at.desc())
+        .limit(limit)
+        .all()
+    )
 
 
 # ── Search ────────────────────────────────────────────────────────────────────

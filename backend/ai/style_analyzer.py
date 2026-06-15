@@ -14,6 +14,7 @@ import logging
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
+from backend.ai._log_setup import log_style_json
 from backend.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -83,4 +84,5 @@ def analyze_style(post_contents: list[str]) -> dict:
     if missing:
         raise ValueError(f"Style JSON missing keys: {missing}")
 
+    log_style_json(logger, "style_analyzer output", result)
     return result

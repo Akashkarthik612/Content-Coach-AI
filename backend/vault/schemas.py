@@ -122,6 +122,22 @@ class PostAnalyticsResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+# ── Analytics Summary ─────────────────────────────────────────────────────────
+
+class MonthlyTrendPoint(BaseModel):
+    month: str
+    impressions: int
+    reactions: int
+
+
+class AnalyticsSummaryResponse(BaseModel):
+    total_impressions: int
+    avg_reactions: float
+    post_count: int
+    top_platform: str | None
+    monthly_trend: list[MonthlyTrendPoint]
+
+
 # ── Search ────────────────────────────────────────────────────────────────────
 
 class SearchResult(BaseModel):

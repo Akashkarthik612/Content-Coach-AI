@@ -66,3 +66,10 @@ export const deleteVersion = (versionId) =>
 // ── Search ────────────────────────────────────────────────────
 export const search = (query) =>
   api.get('/search', { params: { q: query } }).then(r => r.data);
+
+// ── Dashboard helpers ─────────────────────────────────────────
+export const getAnalyticsSummary = () =>
+  api.get('/analytics/summary').then(r => r.data);
+
+export const getRecentPosts = (limit = 2) =>
+  api.get('/posts/recent', { params: { limit } }).then(r => r.data);

@@ -11,6 +11,8 @@ import HomePage from './pages/HomePage';
 import LandingPage from './pages/landing/LandingPage';
 import DashboardPage from './pages/DashboardPage';
 import MyWorkPage from './pages/MyWorkPage';
+import AnalyticsPage from './pages/AnalyticsPage';
+import { ReviewQueueProvider } from './context/ReviewQueueContext';
 
 function MainApp() {
   const [selectedFolderId, setSelectedFolderId] = useState(null);
@@ -58,9 +60,10 @@ export default function App() {
       <Route path="/login"    element={<HomePage initialMode="login" />} />
       <Route path="/register" element={<HomePage initialMode="register" />} />
       <Route path="/app"       element={<RequireAuth><MainApp /></RequireAuth>} />
-      <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
-      <Route path="/my-work"   element={<RequireAuth><MyWorkPage /></RequireAuth>} />
-      <Route path="/vault"     element={<RequireAuth><MyWorkPage /></RequireAuth>} />
+      <Route path="/dashboard"  element={<RequireAuth><ReviewQueueProvider><DashboardPage /></ReviewQueueProvider></RequireAuth>} />
+      <Route path="/analytics"  element={<RequireAuth><AnalyticsPage /></RequireAuth>} />
+      <Route path="/my-work"    element={<RequireAuth><MyWorkPage /></RequireAuth>} />
+      <Route path="/vault"      element={<RequireAuth><MyWorkPage /></RequireAuth>} />
       <Route path="*"          element={<Navigate to="/" replace />} />
     </Routes>
   );

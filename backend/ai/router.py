@@ -10,9 +10,12 @@ from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 from pydantic import BaseModel
 
+from backend.ai._log_setup import setup_ai_file_logging
 from backend.ai.graph import assistant
 from backend.auth.models import User
 from backend.core.dependencies import get_current_user
+
+setup_ai_file_logging()
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
