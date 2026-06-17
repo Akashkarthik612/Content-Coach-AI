@@ -1,6 +1,6 @@
 # ContentCoach AI — UI State & Design System
 > Single source of truth for all UI decisions. Never deviate from constraints without updating this file.
-> Last updated: 2026-06-16 (dashboard full redesign · collapsible sidebar · pipeline responsive · AI panel wired · analytics/recent-posts API · file-based AI logging)
+> Last updated: 2026-06-16 (MyWorkPage's browsing view replaced with a faithful Content Vault port per `ContentCoachAI-Vault-ClaudeCode-Prompt.md`; Dashboard's sidebar extracted into shared `AppSidebar` component, reused by both pages; "Content" nav renamed "Start Writing" and wired to jump straight into the editor)
 
 ---
 
@@ -24,8 +24,7 @@
 | State | `useState` + `useContext` | No Redux/Zustand/Jotai |
 | Animation | Framer Motion | High-impact moments only — not decorative |
 | Styling (landing) | Inline styles + JS `const C/FONT/GRAD` | New landing uses hardcoded hex; no `--cc-*` |
-| Styling (dashboard) | Inline styles + `var(--cc-*)` | See token table |
-| Styling (vault app) | CSS Modules + `--color-*` | Legacy vault components |
+| Styling (dashboard) | Inline styles + local JS const tokens (`BLUE`, `INK`, `FONT`, `SERIF`, `MONO`…) | See `DashboardPage.jsx` § below — do NOT use `--cc-*` here despite the name |
 | Icons | `lucide-react` + inline SVGs | Landing uses only inline SVGs; lucide for dashboard |
 
 ---
@@ -45,7 +44,9 @@
 }
 ```
 
-### `--color-*` — vault app components (CSS modules)
+### `--color-*` — shared component tokens (CSS modules)
+
+Used by the surviving CSS-module components that aren't tied to any deleted page: `AIAssistant.module.css`, `components/shared/ContextMenu.module.css` (legacy skin only — see its `dashboard` variant for the inline-style equivalent).
 
 ```css
 :root {
@@ -154,15 +155,17 @@ All respect `@media (prefers-reduced-motion: reduce)` — `animation:none; trans
 | `/register` | `pages/HomePage.jsx` (mode=register) | Public | ✅ Built |
 | `/dashboard` | `pages/DashboardPage.jsx` | RequireAuth | ✅ Redesigned |
 | `/analytics` | `pages/AnalyticsPage.jsx` | RequireAuth | ✅ Stub built |
-| `/vault` | `pages/MyWorkPage.jsx` | RequireAuth | ✅ Built |
-| `/my-work` | `pages/MyWorkPage.jsx` (alias) | RequireAuth | ✅ Built |
-| `/app` | Legacy vault UI (MainApp) | RequireAuth | ⚠️ Legacy |
+| `/vault`, `/my-work` | `pages/MyWorkPage.jsx` | RequireAuth | ✅ Rebuilt 2026-06-16 |
+| `/app` | — | — | ❌ Removed — legacy MainApp stack deleted, not rebuilt |
 
 **Post-login redirect:** login + register → `/dashboard`
 
 **App.jsx wiring:**
-- `/dashboard` wrapped in `<ReviewQueueProvider>` (provides `queue` + `addToQueue` + `removeFromQueue`)
+- `<ReviewQueueProvider>` wraps the entire `<Routes>` tree (not just `/dashboard`) — so a future My Work page sharing the same provider instance can push into the same queue `/dashboard` reads.
 - `/analytics` wrapped in `<RequireAuth>` only
+
+**Deleted 2026-06-16 (dead code, confirmed unreferenced anywhere else before removal):**
+`pages/MyWorkPage.jsx` · `components/Editor/` · `components/PostList/` · `components/Sidebar/` · `components/ui/button.jsx` · `lib/utils.js` · `AppContext.js` · `hooks/useFolders.js` · `hooks/usePosts.js` · `hooks/usePost.js` · `hooks/useTopics.js`. `components/shared/Button.jsx` / `Input.jsx` / `Badge.jsx` are now also unreferenced (only consumers were the deleted pages) but were left in place — not yet deleted.
 
 ---
 
@@ -307,15 +310,17 @@ FONT="'Hanken Grotesk'..."  SERIF="'Newsreader'..."  MONO="'JetBrains Mono'..."
 └─────────────────┴──────────────────────────────────────────────┘
 ```
 
-### Sidebar
+### Sidebar — `components/shared/AppSidebar.jsx` (extracted 2026-06-16)
+Shared between `DashboardPage.jsx` and `MyWorkPage.jsx` so navigation is consistent across pages — previously DashboardPage had its own inline `Sidebar`/`NAV_ITEMS` and MyWorkPage had a completely different, older `--cc-*` sidebar; both now render the same component.
 - **WHITE** background (`#FFFFFF`) with `border-right: 1px solid rgba(17,24,39,0.07)`
-- Collapsible: `sidebarCollapsed` state in `DashboardPage`; passed as `collapsed` + `onToggle` props
+- Collapsible: caller owns `collapsed` state, passed as `collapsed` + `onToggle` props (`DashboardPage`'s `sidebarCollapsed`; `MyWorkPage`'s `sidebarCollapsed`, also reused as its focus-mode flag when a post is open)
 - Expanded (248px): logo text visible, nav labels, full calendar widget, user name
 - Collapsed (64px): icon-only nav (with `title` tooltips), calendar icon shortcut, avatar only
 - Transition: `width .22s cubic-bezier(.16,1,.3,1)` on `<aside>`
 - Toggle chevron button in header row (‹ = collapse, › = expand)
-- Nav items: Dashboard · Content · Agents · Content Vault · Analytics · Templates
-- Calendar widget (click → `CalendarPanel` slide-in); hidden in collapsed mode (icon shortcut shown instead)
+- Nav items (exported as `NAV_ITEMS`): Dashboard · **Start Writing** (renamed from "Content" 2026-06-16; navigates to `/my-work?new=1`, which auto-creates a post and opens it directly in `DocEditor`) · Agents · Content Vault · Analytics · Templates
+- `activeKey` prop selects the highlighted item (`DashboardPage` always passes `'dashboard'`; `MyWorkPage` passes `'vault'` on `/vault`, else `'content'`)
+- Calendar widget (click → `onCalendarOpen`; `DashboardPage` opens its `CalendarPanel`, `MyWorkPage` doesn't pass one — defaults to a no-op)
 - User row at bottom: avatar + name + Pro plan + sign-out dots button
 
 ### Header
@@ -375,48 +380,33 @@ Ideas from `useIdeas()` hook. Each idea has "Draft this →" button.
 
 ---
 
-## MyWorkPage.jsx (`/vault`, `/my-work`)
+## MyWorkPage.jsx (`/vault`, `/my-work`) — rebuilt 2026-06-16
 
-3-column workspace. Inline styles + `--cc-*`. All sub-components inline.
+Single file (per File Naming Conventions — sub-components inline, not exported). Column 1 is now the **shared `AppSidebar`** component (see below) — the old inline `--cc-*`/DM Sans shell sidebar is gone. Column 2 ("Canvas") shows either the **Content Vault** browsing view (no post open) or the redesigned `DocEditor` (post open).
 
-```
-┌──────────────┬────────────────┬──────────────────────────┐
-│ Col1 Sidebar │ Col2 Folders   │ Col3 Canvas              │
-│ 220px        │ 280px          │ PostList OR DocEditor    │
-│ sidebarOpen  │ folderPanelOpen│ driven by activePost     │
-└──────────────┴────────────────┴──────────────────────────┘
-```
+### Content Vault view (browsing — no post open)
 
-Columns collapse via `width:0; overflow:hidden; transition:0.25s ease-in-out`.
+Faithful port of the approved `ContentCoach AI - Vault.dc.html` design per `ContentCoachAI-Vault-ClaudeCode-Prompt.md` §A: header ("Content Vault" + Import Content/New Folder) → search bar (clears with ✕, searches title + folder name across all folders) → two-panel body (260px folder rail | post grid). Folder tiles use a 5-color rotating tint palette (`FOLDER_TINTS` in `hooks/useVault.js`) since real folders have no inherent "platform". Post cards show a **status pill** (real `post.status`, not a fictional platform) + version chip + 2-line-clamped title + "Updated {relative} · Open ↗" footer; clicking a card sets `activePost` (same mechanism as before) to open `DocEditor`.
 
-**State:**
-- `sidebarOpen` — Col1 visibility
-- `folderPanelOpen` — Col2 visibility
-- `activePost` — `null`=PostList · `{id,title,status}`=DocEditor
-- `panelsCollapsed = !sidebarOpen && !folderPanelOpen` — focus mode flag
+**Deviates from the prompt's literal §B1 ("mock data now"):** `useVault()` is wired to the **real backend** (`getFolders`/`getPostsInFolder`/`createFolder`/`createPost`) instead of the spec's hardcoded LinkedIn/Blog/Newsletter/Reddit/Research mock set — a deliberate call so the page shows the user's actual folders/posts and "Open" leads to a working editor. Import Content (§B4) and the Trending/Audience-style extras are left as disclosed TODO stubs; New Folder (§B3) is real (creates via `createFolder`, no color/platform field since real folders don't have one). Folder rail's responsive collapse-to-scroller under ~720px (§D5) was not implemented.
 
-**Panel toggle mechanics:**
-- Col2 `PanelLeftClose` → collapses **both** Col1+Col2 (focus mode)
-- DocEditor `PanelLeftOpen` → restores both (shown only when `panelsCollapsed`)
-- `Menu` in Col2 header → toggles Col1 only
+### DocEditor (post open) — built 2026-06-16, unchanged by the Vault rebuild
 
-**Create Post flow:**
-1. Select folder (Col2) → click "Create Post" (Col3 header)
-2. `createPost(folder.id, 'Untitled Post')` → new post in list
-3. `setActivePost(post)` + `setSidebarOpen(false)` + `setFolderPanelOpen(false)` → panels sweep left
-4. DocEditor fills screen
+Redesigned to match `ContentCoachAI-TextEditor-ClaudeCode-Prompt.md` + the `image_text_editor.pdf` mockup, using dashboard tokens (`Newsreader`/`Hanken Grotesk`/`JetBrains Mono`, local JS consts — same as `DashboardPage.jsx`).
 
-**DocEditor (inline component):**
-- Header: `PanelLeftOpen` (restore, when collapsed) · ← Back · status chip · `PanelLeftClose`
-- Version pills: IBM Plex Mono; active=`--cc-blue`; latest has dot indicator
-- Title input: centered · `fontSize:22` · `maxWidth:640px` · border on focus only · saved on blur via `renamePost`
-- Textarea: `padding:0 10%` · `lineHeight:1.85` · `flex:1` · transparent bg · read-only for older versions
-- Bottom toolbar: version label input + "Save as vN" → `saveVersion(postId, content, label)`
-- Read-only banner shown for non-latest versions
+**DocEditor layout (top to bottom):**
+1. **TopBar** — logo, status dropdown (Draft/In review/Scheduled/Published — opens a `ContextMenu` with "Mark as in review"), platform dropdown (LinkedIn/X/Reddit), `✓ Saved`/`Unsaved` indicator, **Share** (copies draft to clipboard via `navigator.clipboard`), **Publish** (opens `SchedulePublishSheet`).
+2. **3-column row:**
+   - **HistoryRail** (left, resizable 240–420px via `useResizableRail('cc_leftW',...)`) — "History" header + "Diff" toggle (UI-only stub) + big **"+ Save as v{N}"** button + vertical version cards (active = blue border/tint, relative-time label, content-label preview). Right-click a card → `ContextMenu` (Rename label / Delete version / Pin to top / Review later / Mark milestone — last 3 are TODO stubs, no backend field exists).
+   - **Center column** — `FormattingToolbar` (H1/H2/H3/Bold/Italic/Quote/Link — inserts **Markdown syntax** into the plain `<textarea>` at the cursor/selection via `applyMarkdown()`, not a WYSIWYG/contentEditable editor) → title (32px bold Newsreader) → status·platform subline → read-only banner + Restore (non-latest versions) → body textarea → footer stats (word count, read time, dirty/saved state, `chars / 3000` with a "cut at 210" LinkedIn preview-truncation marker).
+   - **Right rail** (resizable 240–460px) — **ResearchCard** (Vault/Trending/Audience tabs; Vault tab is real via `getRecentPosts()`, Trending/Audience are TODO-stub "Coming soon"; "Insert into draft" appends a reference line) → **WritingActionsCard** ("Rewrite in your voice" opens `StyleAgentModal`; "Sounds like me?" is a TODO-stub verdict) → **MetricsCard** (real `updatePostAnalytics()`; muted pre-publish, doesn't refetch existing values on reopen — no GET-single-post-analytics endpoint exists).
+3. **AICommandBar** (bottom, full width under center+right) — quick-action chips (Rewrite/Shorten/Hook/CTA) + Whole-doc/Selection scope toggle + prompt input, built on the shared `useAIChat()` hook (same HITL approve/edit/reject flow as the floating `AIAssistant`). Replaces a side-panel chat — matches the PDF mockup, not the original spec text's inspector-rail chat description.
 
-**Context menus (`CtxMenu` inline component, `zIndex:99` backdrop):**
-- Folders: Rename (inline input) / Delete (`window.confirm`)
-- Posts: Rename (inline input) / Pin to dashboard / Unpin / Delete
+**Right-click on the writing surface** → `ContextMenu` with Send to review (→ `useReviewQueue().addToQueue` + `api/publishing.js`'s `sendToReview` stub) / Rename (focuses title) / Pin / Delete.
+
+**Status workflow:** `draft` → (Send to review) → `in_review` (local state + real review-queue push, no backend persistence) → (Publish sheet) → `scheduled`/`published` (local state + `publishPost` stub — **the actual LinkedIn/X/Reddit integration is intentionally left as a TODO in `api/publishing.js`**).
+
+**Reused, not rebuilt:** `components/shared/ContextMenu.jsx` (generalized with a `variant="dashboard"` skin + right-click-to-close), `hooks/useResizableRail.js`, `components/AIAssistant/useAIChat.js`, `api/publishing.js`, `updatePostAnalytics` in `api/vault.js` — all were built in an earlier pass and survived because only `MyWorkPage.jsx` + the legacy `/app` stack were deleted.
 
 ---
 
@@ -446,7 +436,9 @@ Shared style constants → local `const S = { ... }` (dashboard) or `const C/FON
 
 ---
 
-## Component Rules (vault app — CSS module pages)
+## Component Rules (CSS-module components)
+
+No page currently uses this pattern (the vault-app pages that did were deleted 2026-06-16); kept for `AIAssistant`/`ContextMenu` and any future CSS-module component.
 
 ### Buttons
 
@@ -478,7 +470,7 @@ Shared style constants → local `const S = { ... }` (dashboard) or `const C/FON
 
 **Rule:** No Framer Motion on the landing page. If CSS `transition`/`animation` can do it, use CSS.
 
-### Dashboard / vault
+### Dashboard
 | Location | Animation | Implementation |
 |---|---|---|
 | Sidebar collapse/expand | `width .22s cubic-bezier(.16,1,.3,1)` | CSS transition on `<aside>` |
@@ -508,8 +500,9 @@ Shared style constants → local `const S = { ... }` (dashboard) or `const C/FON
 |---|---|---|---|
 | `useAnalytics()` | `useAnalytics.js` | `GET /api/vault/analytics/summary` → real backend | ✅ Connected |
 | `useIdeas()` | `useIdeas.js` | Mock list of 4 ideas (source: HN/News labels) | ⚠️ Mock — TODO: connect HN + Google News |
-| `useFolders()` | `useFolders.js` | Vault API | ✅ Existing |
-| `usePosts()` | `usePosts.js` | Vault API | ✅ Existing |
+| `useResizableRail()` | `useResizableRail.js` | N/A — drag-to-resize a rail, `localStorage`-persisted (`cc_leftW`/`cc_rightW`) | ✅ Wired into `MyWorkPage.jsx`'s History rail + inspector rail |
+| `useVault()` | `useVault.js` | Real backend — `getFolders`/`getPostsInFolder`/`createFolder`/`createPost` | ✅ Connected — feeds `MyWorkPage.jsx`'s Content Vault view; returns `{folders, postsByFolder, loading, addFolder, addPost}` |
+| `useAIChat()` | `components/AIAssistant/useAIChat.js` | `queryAI`/`resumeAI` via `api/ai.js` | ✅ Shared by `AIAssistant.jsx` (unmounted) and `MyWorkPage.jsx`'s `AICommandBar` |
 
 **`useAnalytics()` return shape:**
 ```js
@@ -543,7 +536,7 @@ Stub page. Tab group (LinkedIn / X / Reddit). Per-platform stat cards using `use
 
 ## AIAssistant Component (`components/AIAssistant/`)
 
-Floating panel wired to the AI backend via `api/ai.js`. Rendered at the bottom of `DashboardPage` and `MyWorkPage`.
+Floating panel wired to the AI backend via `api/ai.js`. **Not currently mounted anywhere** — `DashboardPage.jsx` has its own separate inline `AIPanel`, and `MyWorkPage.jsx`'s `DocEditor` uses the bottom `AICommandBar` (built on the same shared `useAIChat()` hook this component also uses) instead of the floating FAB. The component/hook still exist and work; nothing currently renders `<AIAssistant/>` itself.
 
 **API calls:**
 - `queryAI(prompt)` → `POST /api/ai/query` — sends user message; returns `{status, answer?, draft?, thread_id?}`
@@ -585,7 +578,6 @@ resumeAI(thread_id, action, content='') → Promise<{answer}>
 - No hardcoded copy/data in landing JSX — text arrays belong in `landingContent.js`; structural/static text tightly coupled to layout is acceptable inline
 - No hardcoded copy in `HomePage.jsx` — marketing text belongs in `authContent.js`
 - No `styled-components`, no Emotion
-- No `useState` for server data in vault app — use hooks (`useFolders`, `usePosts`)
 - No `console.log` in production code
 - No placeholder images (Unsplash/Lorem) — use inline SVGs or CSS shapes
 - Do not mix Tailwind into inline-style pages (landing/dashboard)

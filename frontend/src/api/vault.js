@@ -63,6 +63,10 @@ export const renameVersion = (versionId, versionLabel) =>
 export const deleteVersion = (versionId) =>
   api.delete(`/versions/${versionId}`).then(r => r.data);
 
+// ── Analytics (per-post) ─────────────────────────────────────
+export const updatePostAnalytics = (postId, impressions, reactions) =>
+  api.patch(`/posts/${postId}/analytics`, { impressions, reactions }).then(r => r.data);
+
 // ── Search ────────────────────────────────────────────────────
 export const search = (query) =>
   api.get('/search', { params: { q: query } }).then(r => r.data);

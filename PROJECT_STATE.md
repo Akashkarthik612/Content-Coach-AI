@@ -1,6 +1,6 @@
 # Content Coach — Project State
 > Living reference for Claude. Update when architecture, decisions, or status change.
-> Last updated: 2026-06-16 (dashboard redesign · analytics/recent-posts endpoints · AI file logging · analytics_node Gemini list-content bug fix)
+> Last updated: 2026-06-16 (My Work / Text Editor rebuilt per `ContentCoachAI-TextEditor-ClaudeCode-Prompt.md` + `image_text_editor.pdf`; legacy `/app` MainApp stack deleted — see UI_STATE.md for full editor design)
 
 ---
 
@@ -16,7 +16,7 @@
 
 ## What This Product Is
 
-"Git for writing" — version-controlled LinkedIn/Medium post library. Users create folders, write posts, save named versions. AI layer queries post history and gives writing help.
+"Git for writing" — version-controlled LinkedIn/Medium post library. Users create folders, write posts, save named versions. AI layer consists of AI agents which performs independant specialised tasks to help users write better content queries post history and gives writing help.
 
 ---
 
@@ -97,34 +97,37 @@ f:\My_first_product\
 │   ├── jsconfig.json · package.json
 │   └── src/
 │       ├── main.jsx              ← BrowserRouter entry
-│       ├── App.jsx               ← Routes, RequireAuth guard, AppContext
+│       ├── App.jsx               ← Routes (Landing/Login/Register/Dashboard/Analytics/MyWork), RequireAuth guard; ReviewQueueProvider wraps entire tree. Legacy `/app` MainApp route removed 2026-06-16.
 │       ├── index.css             ← --cc-* tokens, --color-* tokens, Tailwind import
 │       ├── api/
 │       │   ├── auth.js           ← register(), login()
-│       │   ├── vault.js          ← all vault API calls + X-User-Id Axios interceptor
-│       │   └── ai.js             ← queryAI(prompt), resumeAI(thread_id, action, content)
+│       │   ├── vault.js          ← all vault API calls + X-User-Id Axios interceptor + updatePostAnalytics()
+│       │   ├── ai.js             ← queryAI(prompt), resumeAI(thread_id, action, content)
+│       │   └── publishing.js     ← sendToReview(), publishPost() — TODO-stub LinkedIn/X/Reddit integration point
 │       ├── context/
-│       │   └── ReviewQueueContext.jsx ← (new) shared context for review queue state
+│       │   └── ReviewQueueContext.jsx ← shared context for review queue state
 │       ├── pages/
 │       │   ├── HomePage.jsx      ← Login / Register / Forgot (3 modes)
 │       │   ├── DashboardPage.jsx ← Fully redesigned: collapsible sidebar, 4 AgentCards, pipeline, AIPanel with initialInput
-│       │   ├── AnalyticsPage.jsx ← (new) /analytics route — analytics overview UI
-│       │   ├── MyWorkPage.jsx    ← 3-col workspace: sidebar | folder panel | DocEditor
+│       │   ├── AnalyticsPage.jsx ← /analytics route — analytics overview UI
+│       │   ├── MyWorkPage.jsx    ← rebuilt 2026-06-16: shared AppSidebar | Canvas = Content Vault browsing view (faithful port, real data) OR redesigned DocEditor (History rail · rich-text toolbar · Research/Writing/Performance inspector rail · bottom AI command bar) — see UI_STATE.md for full breakdown
 │       │   └── landing/
 │       │       ├── landingContent.js  ← COPY object — all text strings, no JSX
 │       │       ├── LandingPage.jsx    ← Single-file landing (all sections as functions)
 │       │       └── *.jsx              ← Hero, Navbar, Features… DEAD CODE (superseded)
 │       ├── hooks/
-│       │   ├── useFolders.js · usePosts.js · usePost.js
 │       │   ├── useAnalytics.js   ← calls getAnalyticsSummary(); used by DashboardPage Analytics card
-│       │   └── useIdeas.js       ← (new) idea generation hook
+│       │   ├── useIdeas.js       ← idea generation hook
+│       │   ├── useResizableRail.js ← drag-to-resize hook; wired into MyWorkPage's left/right rails
+│       │   └── useVault.js       ← real getFolders/getPostsInFolder/createFolder/createPost, feeds MyWorkPage's Content Vault view
 │       └── components/
-│           ├── Sidebar/   PostList/   Editor/   AIAssistant/
-│           ├── shared/    ← Button, Input, Badge, ContextMenu
-│           └── ui/        ← shadcn base (installed, not used in landing)
+│           ├── AIAssistant/      ← AIAssistant.jsx (floating widget, currently unmounted) + useAIChat.js (shared hook, also used by MyWorkPage's bottom AI bar)
+│           └── shared/           ← Button, Input, Badge, ContextMenu (generalized with a `variant="dashboard"` skin), AppSidebar (shared by DashboardPage + MyWorkPage, 2026-06-16)
 │
 └── aI_assistance_f1/RAG/RAG.ipynb
 ```
+
+**Deleted 2026-06-16 (legacy `/app` MainApp stack, dead code):** `components/Editor/` · `components/PostList/` · `components/Sidebar/` · `components/ui/` · `lib/utils.js` · `AppContext.js` · `hooks/useFolders.js` · `hooks/usePosts.js` · `hooks/usePost.js` · `hooks/useTopics.js`.
 
 ---
 
@@ -359,8 +362,10 @@ Uses `llm.with_structured_output(ClassificationResult)` for reliable JSON — no
 | Style memory cold start | Expected | First write request before user reaches 3 published posts uses 2 raw posts; auto-generates once threshold is crossed |
 | AI UI integration | ✅ Done | `AIAssistant.jsx` wired to `ai.js`; supports query, draft approval (Approve/Edit/Reject), and HITL resume flow |
 | Dashboard analytics UI | ✅ Done | Analytics card in DashboardPage wired to `useAnalytics()` hook → `GET /api/vault/analytics/summary`; shows impressions, avgLikes, topPlatform |
-| Post analytics UI | Pending | `PATCH /posts/{id}/analytics` endpoint exists; no UI yet for users to log impressions/reactions per post |
+| Post analytics UI | ✅ Done | `MetricsCard` in `MyWorkPage.jsx`'s inspector rail calls `updatePostAnalytics()`; doesn't refetch existing values on reopen (no GET-single-post-analytics endpoint) |
 | Chunk size backfill | Pending | Chunk size changed 300→650; existing embeddings need re-embedding for consistent retrieval quality |
+| LinkedIn/X/Reddit publish integration | TODO stub | `api/publishing.js`'s `sendToReview()`/`publishPost()` resolve locally only — intentionally left as the integration point for real platform APIs later |
+| Floating AIAssistant FAB | Unmounted | `AIAssistant.jsx` + its FAB/panel chrome aren't rendered anywhere currently; `useAIChat()` (its extracted hook) is reused by `MyWorkPage.jsx`'s bottom AI command bar instead |
 
 ---
 
