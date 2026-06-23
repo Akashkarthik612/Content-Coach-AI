@@ -66,8 +66,10 @@ async def stream_query(body: QueryRequest, user: User = Depends(get_current_user
       {"type": "done",   "status": "complete"}
       {"type": "error",  "message": "..."}
 
-    Streams writer_node and analytics_node tokens in real time.
-    Supervisor direct answers are buffered (routing signals filtered) then emitted.
+    Uses stream_mode="messages" — LangGraph yields (AIMessageChunk, metadata) tuples
+    as tokens arrive from each node's LLM call.
+    Supervisor tokens are buffered so routing signals ([HANDOFF:*]) are filtered before
+    anything reaches the client.
     """
     if not body.prompt.strip():
         raise HTTPException(status_code=422, detail="Prompt cannot be empty.")
@@ -77,58 +79,44 @@ async def stream_query(body: QueryRequest, user: User = Depends(get_current_user
     initial_state = _build_initial_state(body.prompt, str(user.id))
 
     async def generate():
-        has_writer_output  = False
-        supervisor_buffer  = []   # buffer supervisor tokens until we know if it's a handoff
-        in_supervisor_llm  = False
+        has_writer_output = False
+        supervisor_buffer = []
 
         try:
-            async for event in assistant.astream_events(initial_state, config=config, version="v2"):
-                kind = event["event"]
-                node = event.get("metadata", {}).get("langgraph_node", "")
+            async for chunk, metadata in assistant.astream(
+                initial_state, config=config, stream_mode="messages"
+            ):
+                node = metadata.get("langgraph_node", "")
 
-                # ── LLM call starts ──────────────────────────────────────────
-                if kind == "on_chat_model_start" and node == "supervisor_node":
-                    in_supervisor_llm = True
-                    supervisor_buffer = []
+                # Normalise content — Gemini sometimes returns list[dict] instead of str
+                raw = getattr(chunk, "content", "")
+                if not raw:
+                    continue
+                content = (
+                    "".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in raw)
+                    if isinstance(raw, list) else raw
+                )
+                if not content:
+                    continue
 
-                # ── Token arrives ────────────────────────────────────────────
-                elif kind == "on_chat_model_stream":
-                    chunk   = event["data"]["chunk"]
-                    content = chunk.content
-                    if not content:
-                        continue
+                if node == "writer_node":
+                    has_writer_output = True
+                    yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
 
-                    if node == "writer_node":
-                        has_writer_output = True
-                        yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                elif node == "analytics_node":
+                    yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
 
-                    elif node == "analytics_node":
-                        yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
+                elif node == "supervisor_node":
+                    # Buffer — only forward to client once we know it's a direct answer,
+                    # not a routing signal. Flushed after the loop below.
+                    supervisor_buffer.append(content)
 
-                    elif node == "supervisor_node" and in_supervisor_llm:
-                        supervisor_buffer.append(content)
+            # Flush supervisor direct answer (drop routing sentinels)
+            full_sup = "".join(supervisor_buffer)
+            if not has_writer_output and "[HANDOFF:" not in full_sup and full_sup.strip():
+                yield f"data: {json.dumps({'type': 'token', 'content': full_sup})}\n\n"
 
-                # ── Supervisor LLM call ends ─────────────────────────────────
-                elif kind == "on_chat_model_end" and node == "supervisor_node":
-                    in_supervisor_llm = False
-                    full = "".join(supervisor_buffer)
-                    if not full:
-                        # non-streaming LLM call: on_chat_model_stream may not fire;
-                        # extract full content from the end-event output object
-                        output = event.get("data", {}).get("output")
-                        output_content = getattr(output, "content", "") if output is not None else ""
-                        if isinstance(output_content, str) and output_content:
-                            full = output_content
-                            supervisor_buffer = [full]
-                    # Only stream to user if this is a direct answer (no routing signal)
-                    if "[HANDOFF:" not in full and full.strip():
-                        for token in supervisor_buffer:
-                            yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
-                    supervisor_buffer = []
-
-            # ── Stream complete ──────────────────────────────────────────────
             if has_writer_output:
-                # Graph is paused at human_approval_node interrupt
                 yield f"data: {json.dumps({'type': 'done', 'status': 'awaiting_approval', 'thread_id': thread_id})}\n\n"
             else:
                 yield f"data: {json.dumps({'type': 'done', 'status': 'complete'})}\n\n"
@@ -140,9 +128,9 @@ async def stream_query(body: QueryRequest, user: User = Depends(get_current_user
         generate(),
         media_type="text/event-stream",
         headers={
-            "Cache-Control":    "no-cache",
-            "X-Accel-Buffering": "no",   # disable nginx/proxy buffering
-            "Connection":       "keep-alive",
+            "Cache-Control":     "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection":        "keep-alive",
         },
     )
 

@@ -13,6 +13,7 @@ _llm = ChatGoogleGenerativeAI(
     temperature=0.7,
     max_output_tokens=4096,
     google_api_key=settings.LANGCHAIN_API_KEY_GEMINI,
+    streaming=True,
 )
 
 _COLD_START_SYSTEM = """\
