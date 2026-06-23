@@ -75,21 +75,7 @@ function mockResponseFor(agent, note) {
 }
 
 // ── Mock chat history ────────────────────────────────────────────────────────
-const MOCK_CHATS = [
-  { group: 'Today', items: [
-    { id: 'c1', title: 'AI agents vs. SaaS — LinkedIn', snippet: 'Writer Agent · draft ready to review', dot: GREEN },
-    { id: 'c2', title: 'Newsletter hook ideas',          snippet: '12 openers generated',               dot: INDIGO },
-  ]},
-  { group: 'Yesterday', items: [
-    { id: 'c3', title: 'Repurpose webinar → X thread', snippet: 'Editor Agent · 7 tweets',       dot: AMBER },
-    { id: 'c4', title: 'Q3 content calendar',           snippet: 'Research Agent · 18 topics',   dot: BLUE },
-  ]},
-  { group: 'Previous 7 days', items: [
-    { id: 'c5', title: 'Carousel: creator onboarding', snippet: '8 slides drafted',             dot: '#0F9D6B' },
-    { id: 'c6', title: 'Cold outreach rewrite',         snippet: 'Approved · sent to vault',    dot: FAINT },
-    { id: 'c7', title: 'Brand voice tuning',            snippet: 'Voice profile updated',       dot: FAINT },
-  ]},
-]
+const MOCK_CHATS = []
 
 // ── Sub-components ───────────────────────────────────────────────────────────
 
@@ -687,8 +673,8 @@ export default function ChatPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
   const [draft,       setDraft]       = useState('')
   const [search,      setSearch]      = useState('')
-  const [activeChat,  setActiveChat]  = useState('c1')
-  const [chatTitle,   setChatTitle]   = useState('AI agents vs. SaaS — LinkedIn post')
+  const [activeChat,  setActiveChat]  = useState(null)
+  const [chatTitle,   setChatTitle]   = useState('New chat')
   const [chats,       setChats]       = useState(MOCK_CHATS)
   const [messages,    setMessages]    = useState([])
   const [seq,         setSeq]         = useState(100)
@@ -697,14 +683,6 @@ export default function ChatPage() {
   const abortRef  = useRef(null)
   const scrollRef = useRef(null)
   const taRef     = useRef(null)
-
-  // Seed initial exchange so the HITL UI is visible immediately
-  useEffect(() => {
-    setMessages([
-      { id: 1, role: 'user',  text: 'Write a punchy LinkedIn post arguing that AI agents will quietly replace most SaaS tools.', isRefine: false },
-      { id: 2, role: 'ai',   agent: 'Writer', phase: 'done', text: DRAFT_TEXT, decision: null, modifyOpen: false, modifyText: '', thread_id: null },
-    ])
-  }, [])
 
   const scrollDown = useCallback(() => {
     requestAnimationFrame(() => {
@@ -849,9 +827,10 @@ export default function ChatPage() {
 
   function handleSelectChat(id) {
     setActiveChat(id)
-    const all = MOCK_CHATS.flatMap(g => g.items)
+    const all = chats.flatMap(g => g.items)
     const c = all.find(x => x.id === id)
     setChatTitle(c ? c.title : 'Chat')
+    setMessages([])
   }
 
   function handleDeleteChat(id) {
