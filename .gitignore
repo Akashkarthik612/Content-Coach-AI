@@ -41,3 +41,6 @@ frontend/dist/
 frontend/.env
 frontend/.env.local
 frontend/.env.*.local
+
+# Runtime logs — auto-created by _log_setup.py, not source code
+backend/ai/logs/

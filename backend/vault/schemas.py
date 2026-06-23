@@ -63,6 +63,7 @@ class VersionSave(BaseModel):
     content: str
     version_label: Optional[str] = None
     source: str = "manual"
+    is_final: bool = False  # True → triggers vectorisation; regular saves skip embedding
 
 
 class VersionResponse(BaseModel):
@@ -101,6 +102,10 @@ class PostRename(BaseModel):
 
 class PostPin(BaseModel):
     is_pinned: bool
+
+class PostStatusUpdate(BaseModel):
+    status: PostStatus
+    scheduled_at: Optional[datetime] = None
 
 class VersionRename(BaseModel):
     version_label: str

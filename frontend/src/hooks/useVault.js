@@ -52,5 +52,38 @@ export function useVault() {
     return post
   }
 
-  return { folders, postsByFolder, loading, refetch, addFolder, addPost }
+  function removeFolder(folderId) {
+    setFolders(prev => prev.filter(f => f.id !== folderId))
+    setPostsByFolder(prev => {
+      const next = { ...prev }
+      delete next[folderId]
+      return next
+    })
+  }
+
+  function updateFolder(folderId, updates) {
+    setFolders(prev => prev.map(f => f.id === folderId ? { ...f, ...updates } : f))
+  }
+
+  function removePost(postId) {
+    setPostsByFolder(prev => {
+      const next = {}
+      for (const [fid, posts] of Object.entries(prev)) {
+        next[fid] = posts.filter(p => p.id !== postId)
+      }
+      return next
+    })
+  }
+
+  function updatePost(postId, updates) {
+    setPostsByFolder(prev => {
+      const next = {}
+      for (const [fid, posts] of Object.entries(prev)) {
+        next[fid] = posts.map(p => p.id === postId ? { ...p, ...updates } : p)
+      }
+      return next
+    })
+  }
+
+  return { folders, postsByFolder, loading, refetch, addFolder, addPost, removePost, updatePost, removeFolder, updateFolder }
 }

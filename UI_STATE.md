@@ -1,6 +1,6 @@
 # ContentCoach AI — UI State & Design System
 > Single source of truth for all UI decisions. Never deviate from constraints without updating this file.
-> Last updated: 2026-06-16 (MyWorkPage's browsing view replaced with a faithful Content Vault port per `ContentCoachAI-Vault-ClaudeCode-Prompt.md`; Dashboard's sidebar extracted into shared `AppSidebar` component, reused by both pages; "Content" nav renamed "Start Writing" and wired to jump straight into the editor)
+> Last updated: 2026-06-23 (feat/analyser branch: PostCard rebuilt with 3-dot ContextMenu (Rename/Pin/Delete); FolderRail built with 3-dot ContextMenu (Rename/Delete); useVault expanded with removePost/updatePost/removeFolder/updateFolder; status chip now persisted to DB on Publish; status workflow updated)
 
 ---
 
@@ -390,6 +390,10 @@ Faithful port of the approved `ContentCoach AI - Vault.dc.html` design per `Cont
 
 **Deviates from the prompt's literal §B1 ("mock data now"):** `useVault()` is wired to the **real backend** (`getFolders`/`getPostsInFolder`/`createFolder`/`createPost`) instead of the spec's hardcoded LinkedIn/Blog/Newsletter/Reddit/Research mock set — a deliberate call so the page shows the user's actual folders/posts and "Open" leads to a working editor. Import Content (§B4) and the Trending/Audience-style extras are left as disclosed TODO stubs; New Folder (§B3) is real (creates via `createFolder`, no color/platform field since real folders don't have one). Folder rail's responsive collapse-to-scroller under ~720px (§D5) was not implemented.
 
+**3-dot menus (added 2026-06-23):**
+- **PostCard** — rebuilt as `<div>` (was `<a>`); `···` button in top-right corner opens a ContextMenu (`variant="dashboard"`) with: **Rename** (inline input replaces title text; `PATCH /posts/{id}`), **Pin** (toggles `is_pinned` pin badge; `PATCH /posts/{id}/pin`), **Delete** (`window.confirm` → `DELETE /posts/{id}` → `removePost()` optimistic state; pgvector rows cascade automatically via FK). Signature: `PostCard({ post, index, onOpen, onDelete, onRename, onPin })`.
+- **FolderRail** — `···` button per folder item opens a ContextMenu with: **Rename** (inline input replaces folder name text; `PATCH /folders/{id}`), **Delete** (count-aware `window.confirm` → `DELETE /folders/{id}` → `removeFolder()` + resets `selectedFolderId` to the next remaining folder if the deleted folder was selected). Signature: `FolderRail({ folders, postsByFolder, selectedId, onSelect, onDeleteFolder, onRenameFolder })`.
+
 ### DocEditor (post open) — built 2026-06-16, unchanged by the Vault rebuild
 
 Redesigned to match `ContentCoachAI-TextEditor-ClaudeCode-Prompt.md` + the `image_text_editor.pdf` mockup, using dashboard tokens (`Newsreader`/`Hanken Grotesk`/`JetBrains Mono`, local JS consts — same as `DashboardPage.jsx`).
@@ -404,7 +408,7 @@ Redesigned to match `ContentCoachAI-TextEditor-ClaudeCode-Prompt.md` + the `imag
 
 **Right-click on the writing surface** → `ContextMenu` with Send to review (→ `useReviewQueue().addToQueue` + `api/publishing.js`'s `sendToReview` stub) / Rename (focuses title) / Pin / Delete.
 
-**Status workflow:** `draft` → (Send to review) → `in_review` (local state + real review-queue push, no backend persistence) → (Publish sheet) → `scheduled`/`published` (local state + `publishPost` stub — **the actual LinkedIn/X/Reddit integration is intentionally left as a TODO in `api/publishing.js`**).
+**Status workflow:** `draft` → (Send to review) → `in_review` (local state + real review-queue push, no backend persistence) → (Publish sheet) → `scheduled`/`published` (**now persisted to DB** via `PATCH /posts/{id}/status` + fires `sync_check_and_refresh_style_memory` as BackgroundTask; then calls `publishPost()` stub for eventual LinkedIn/X/Reddit delivery — **actual platform API integration is intentionally left as a TODO in `api/publishing.js`**).
 
 **Reused, not rebuilt:** `components/shared/ContextMenu.jsx` (generalized with a `variant="dashboard"` skin + right-click-to-close), `hooks/useResizableRail.js`, `components/AIAssistant/useAIChat.js`, `api/publishing.js`, `updatePostAnalytics` in `api/vault.js` — all were built in an earlier pass and survived because only `MyWorkPage.jsx` + the legacy `/app` stack were deleted.
 
@@ -501,7 +505,7 @@ No page currently uses this pattern (the vault-app pages that did were deleted 2
 | `useAnalytics()` | `useAnalytics.js` | `GET /api/vault/analytics/summary` → real backend | ✅ Connected |
 | `useIdeas()` | `useIdeas.js` | Mock list of 4 ideas (source: HN/News labels) | ⚠️ Mock — TODO: connect HN + Google News |
 | `useResizableRail()` | `useResizableRail.js` | N/A — drag-to-resize a rail, `localStorage`-persisted (`cc_leftW`/`cc_rightW`) | ✅ Wired into `MyWorkPage.jsx`'s History rail + inspector rail |
-| `useVault()` | `useVault.js` | Real backend — `getFolders`/`getPostsInFolder`/`createFolder`/`createPost` | ✅ Connected — feeds `MyWorkPage.jsx`'s Content Vault view; returns `{folders, postsByFolder, loading, addFolder, addPost}` |
+| `useVault()` | `useVault.js` | Real backend — `getFolders`/`getPostsInFolder`/`createFolder`/`createPost` | ✅ Connected — feeds `MyWorkPage.jsx`'s Content Vault view; returns `{folders, postsByFolder, loading, refetch, addFolder, addPost, removePost, updatePost, removeFolder, updateFolder}` |
 | `useAIChat()` | `components/AIAssistant/useAIChat.js` | `queryAI`/`resumeAI` via `api/ai.js` | ✅ Shared by `AIAssistant.jsx` (unmounted) and `MyWorkPage.jsx`'s `AICommandBar` |
 
 **`useAnalytics()` return shape:**

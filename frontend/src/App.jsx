@@ -4,6 +4,7 @@ import LandingPage from './pages/landing/LandingPage';
 import DashboardPage from './pages/DashboardPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import MyWorkPage from './pages/MyWorkPage';
+import ChatPage from './pages/ChatPage';
 import { ReviewQueueProvider } from './context/ReviewQueueContext';
 
 function RequireAuth({ children }) {
@@ -21,6 +22,7 @@ export default function App() {
         <Route path="/analytics"  element={<RequireAuth><AnalyticsPage /></RequireAuth>} />
         <Route path="/my-work"    element={<RequireAuth><MyWorkPage /></RequireAuth>} />
         <Route path="/vault"      element={<RequireAuth><MyWorkPage /></RequireAuth>} />
+        <Route path="/chat"       element={<RequireAuth><ChatPage /></RequireAuth>} />
         <Route path="*"          element={<Navigate to="/" replace />} />
       </Routes>
     </ReviewQueueProvider>

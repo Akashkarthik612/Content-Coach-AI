@@ -12,11 +12,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from backend.vault.models import Folder, Post, PostAnalytics, PostPublishLog, PostVersion, _utcnow
+from backend.vault.models import PostStatus
 from backend.vault.schemas import (
     FolderCreate,
     FolderRename,
     PostCreate,
     PostRename,
+    PostStatusUpdate,
     SearchResult,
     VersionRename,
     VersionSave,
@@ -106,6 +108,24 @@ def get_post(db: Session, user_id: UUID, post_id: UUID) -> Post:
 def rename_post(db: Session, user_id: UUID, post_id: UUID, data: PostRename) -> Post:
     post = _own_post(db, user_id, post_id)
     post.title = data.title
+    post.updated_at = _utcnow()
+    db.commit()
+    db.refresh(post)
+    return post
+
+
+def update_post_status(
+    db: Session,
+    user_id: UUID,
+    post_id: UUID,
+    data: PostStatusUpdate,
+) -> Post:
+    post = _own_post(db, user_id, post_id)
+    post.status = data.status
+    if data.status == PostStatus.scheduled:
+        post.scheduled_at = data.scheduled_at
+    elif data.status == PostStatus.published:
+        post.scheduled_at = None
     post.updated_at = _utcnow()
     db.commit()
     db.refresh(post)

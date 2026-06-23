@@ -1,6 +1,6 @@
 # Content Coach — Project State
 > Living reference for Claude. Update when architecture, decisions, or status change.
-> Last updated: 2026-06-16 (My Work / Text Editor rebuilt per `ContentCoachAI-TextEditor-ClaudeCode-Prompt.md` + `image_text_editor.pdf`; legacy `/app` MainApp stack deleted — see UI_STATE.md for full editor design)
+> Last updated: 2026-06-23 (feat/analyser branch: PATCH /posts/{id}/status endpoint added; style memory widened to count scheduled+published; style_analyzer.py downgraded to gemini-2.0-flash; PostCard + FolderRail 3-dot menus wired to real backend; delete_post/delete_folder now invalidate Redis tool cache via BackgroundTask; save_version no longer fires sync_check_and_refresh_style_memory; useVault expanded with removePost/updatePost/removeFolder/updateFolder)
 
 ---
 
@@ -34,7 +34,8 @@
 | Auth | bcrypt direct (`bcrypt.hashpw/checkpw`) — **no passlib** (incompatible with bcrypt ≥ 4.0) |
 | AI / RAG | LangChain, LangGraph, Google Gemini API |
 | Embeddings | `models/gemini-embedding-001` — 768 dims (`output_dimensionality=768`) |
-| LLM | `gemini-2.5-flash-lite` |
+| LLM (writer / supervisor / analytics) | `gemini-2.5-flash-lite` |
+| LLM (style analyzer) | `gemini-2.0-flash` (cheaper; sufficient for 9-key structured JSON extraction) |
 | Tracing | LangSmith (`linkedin-coach-rag` project) |
 
 ---
@@ -181,12 +182,15 @@ post_analytics(id UUID PK, post_id UUID UNIQUE FK→posts CASCADE, user_id UUID 
 | GET/POST | `/folders/{id}/posts` | List / Create posts in folder |
 | GET/PATCH/DELETE | `/posts/{id}` | Get / Rename / Delete |
 | PATCH | `/posts/{id}/pin` | `{is_pinned: bool}` |
+| PATCH | `/posts/{id}/status` | `{status, scheduled_at?}` — persists `post_status_enum` to DB; fires `sync_check_and_refresh_style_memory` as BackgroundTask when status is `published` or `scheduled` |
 | POST/GET | `/posts/{id}/versions` | Save / List versions |
 | GET/PATCH/DELETE | `/versions/{id}` | Get / Rename label / Delete |
 | GET | `/search?q=` | Keyword search across posts |
 | PATCH | `/posts/{id}/analytics` | `{impressions, reactions}` — upsert user-logged metrics; invalidates analytics tool cache |
 | GET | `/analytics/summary` | Returns `AnalyticsSummaryResponse` — total_impressions, avg_reactions, top_platform, monthly_trend |
 | GET | `/posts/recent?limit=N` | Returns last N posts (`PostListResponse[]`) ordered by updated_at DESC — must be declared BEFORE `/posts/{post_id}` in router |
+| DELETE | `/posts/{id}` | Deletes post + cascades to post_embeddings (FK CASCADE); invalidates Redis tool cache via BackgroundTask |
+| DELETE | `/folders/{id}` | Deletes folder + cascades all posts + embeddings; invalidates Redis tool cache via BackgroundTask |
 
 ### AI — `/api/ai`
 | Method | Path | Body | Notes |
@@ -219,6 +223,7 @@ deleteVersion(versionId)            → {}
 search(query)                       → result[]
 getAnalyticsSummary()               → {total_impressions, avg_reactions, top_platform, monthly_trend}
 getRecentPosts(limit=2)             → post[]  // used by Dashboard Writer card to show currentDraft title
+updatePostStatus(id, status, scheduledAt?) → post  // PATCH /posts/{id}/status — persists published/scheduled/draft to DB; triggers style extraction
 ```
 
 **No global getPosts().** To get all user posts: `getFolders()` → `Promise.all(folders.map(f => getPostsInFolder(f.id)))` → flatten.
@@ -364,7 +369,7 @@ Uses `llm.with_structured_output(ClassificationResult)` for reliable JSON — no
 | Dashboard analytics UI | ✅ Done | Analytics card in DashboardPage wired to `useAnalytics()` hook → `GET /api/vault/analytics/summary`; shows impressions, avgLikes, topPlatform |
 | Post analytics UI | ✅ Done | `MetricsCard` in `MyWorkPage.jsx`'s inspector rail calls `updatePostAnalytics()`; doesn't refetch existing values on reopen (no GET-single-post-analytics endpoint) |
 | Chunk size backfill | Pending | Chunk size changed 300→650; existing embeddings need re-embedding for consistent retrieval quality |
-| LinkedIn/X/Reddit publish integration | TODO stub | `api/publishing.js`'s `sendToReview()`/`publishPost()` resolve locally only — intentionally left as the integration point for real platform APIs later |
+| LinkedIn/X/Reddit publish integration | Partially wired | `PATCH /posts/{id}/status` now persists `published`/`scheduled` to DB and triggers style extraction; `api/publishing.js`'s `sendToReview()`/`publishPost()` remain stubs — intentionally deferred as the integration point for real platform APIs (LinkedIn/X/Reddit) later |
 | Floating AIAssistant FAB | Unmounted | `AIAssistant.jsx` + its FAB/panel chrome aren't rendered anywhere currently; `useAIChat()` (its extracted hook) is reused by `MyWorkPage.jsx`'s bottom AI command bar instead |
 
 ---
@@ -381,7 +386,7 @@ Uses `llm.with_structured_output(ClassificationResult)` for reliable JSON — no
 - **Embedding on save** — `embed_and_store_version()` fires as FastAPI `BackgroundTask` after every `save_version`; HTTP 201 returns immediately; old version chunks deleted before new ones inserted
 - **Async agent nodes** — all `backend/ai/agents/*.py` functions are `async def` + `await llm.ainvoke()` for multi-tenant I/O concurrency; never use sync `llm.invoke()` inside graph nodes
 - **post_embeddings only** — `langchain_pg_embedding` + `langchain_pg_collection` dropped in migration 0007; single custom table with user_id scoping
-- **Style Memory system** — `user_style_memory` table (migration 0008); `style_analyzer.py` + `style_memory.py`; window-based trigger (short-term every 3 new published posts, long-term every 10); `analyze_style()` uses `gemini-2.5-flash-lite` sync at temp=0.1; outputs 9-key JSON; stored as JSONB in PostgreSQL (source of truth) and cached in Redis (`style:lt:{uid}` 24 h, `style:st:{uid}` 1 h); Redis is RAM-only so DB is always the durable source — Redis re-warms on any DB hit; `get_style_samples` tool reads memory first, falls back to 2 raw posts on cold start; `writer_node` prompt updated to consume compressed style JSON
+- **Style Memory system** — `user_style_memory` table (migration 0008); `style_analyzer.py` + `style_memory.py`; window-based trigger (short-term every 3 new committed posts, long-term every 10); `analyze_style()` uses `gemini-2.0-flash` sync at temp=0.1, max_output_tokens=512 (downgraded from `gemini-2.5-flash-lite` — cheaper, sufficient for 9-key JSON); outputs 9-key JSON; stored as JSONB in PostgreSQL (source of truth) and cached in Redis (`style:lt:{uid}` 24 h, `style:st:{uid}` 1 h); Redis is RAM-only so DB is always the durable source — Redis re-warms on any DB hit; `get_style_samples` tool reads memory first, falls back to 2 raw posts on cold start; `writer_node` prompt updated to consume compressed style JSON; trigger fires only from `PATCH /posts/{id}/status` (never from `save_version`) — counting both `published` AND `scheduled` posts since both represent committed content
 - **Chunk size 650 / overlap 80** — changed from 300/60 (2026-06-09); LinkedIn posts average 700–2500 chars; 650-char chunks keep one coherent idea per chunk; requires re-embedding existing posts (backfill pending)
 - **No search_vault_posts fallback** — removed (2026-06-09); fallback dumped full post content into the LLM; embeddings are always written on `save_version` so fallback is dead code; returns `[NO_CONTEXT_FOUND]` when fewer than 1 vector hit exists
 - **analytics_node offload** — analytics synthesis moved out of supervisor into a dedicated `analytics_node` (temp=0.0, tight prompt, 1024 max tokens); supervisor Pass 2 only routes for analytics, never synthesizes; reduces supervisor token spend per analytics query

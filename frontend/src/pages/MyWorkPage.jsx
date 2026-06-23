@@ -9,8 +9,10 @@ import {
 } from 'lucide-react'
 import {
   renamePost, deletePost, pinPost,
+  renameFolder, deleteFolder,
   saveVersion, getVersions, getVersion,
   renameVersion, deleteVersion, updatePostAnalytics, getRecentPosts,
+  updatePostStatus,
 } from '../api/vault'
 import { sendToReview, publishPost } from '../api/publishing'
 import { useAIChat } from '../components/AIAssistant/useAIChat'
@@ -131,7 +133,7 @@ function relativeVersionLabel(createdAt, isLatest) {
 }
 
 // ── Left rail: History (§A.1 + image mockup — vertical version cards) ───────────
-function HistoryRail({ width, isDragging, onStartDrag, versions, activeIdx, onSelect, nextVersionNumber, onSave, saving, canSave, diffMode, onToggleDiff, menuFor, onOpenMenu, onCloseMenu, onRenameVersion, onDeleteVersion }) {
+function HistoryRail({ width, isDragging, onStartDrag, versions, activeIdx, onSelect, nextVersionNumber, onSave, onSaveFinal, saving, canSave, diffMode, onToggleDiff, menuFor, onOpenMenu, onCloseMenu, onRenameVersion, onDeleteVersion }) {
   return (
     <div style={{ width, flexShrink: 0, position: 'relative', borderRight: `1px solid ${BDR}`, background: TINT, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div
@@ -160,6 +162,20 @@ function HistoryRail({ width, isDragging, onStartDrag, versions, activeIdx, onSe
           }}>
           <Plus size={14} /> {saving ? 'Saving…' : `Save as v${nextVersionNumber}`}
         </button>
+
+        <button onClick={onSaveFinal} disabled={!canSave || saving} className="cc-press"
+          title="Saves this version and makes it searchable by your AI agents"
+          style={{
+            marginTop: 6, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            background: canSave ? '#059669' : '#E5E7EB', color: canSave ? WHITE : FAINT,
+            border: 'none', borderRadius: 10, padding: '10px 0', fontSize: 13, fontWeight: 600,
+            cursor: canSave ? 'pointer' : 'default', fontFamily: FONT,
+          }}>
+          <Check size={14} /> {saving ? 'Saving…' : 'Save as Final'}
+        </button>
+        <p style={{ margin: '6px 0 0', fontSize: 10.5, color: FAINT, fontFamily: FONT, textAlign: 'center', lineHeight: 1.4 }}>
+          Final versions are indexed for AI search
+        </p>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -799,7 +815,7 @@ function StyleAgentModal({ open, onClose }) {
 }
 
 // ── Doc Editor (Column 3 canvas when a post is active) ─────────────────────────
-function DocEditor({ post, panelsCollapsed, onTogglePanels, onClose, onTitleChange, onPinPost, onDeletePost, plan = 'pro' }) {
+function DocEditor({ post, panelsCollapsed, onTogglePanels, onClose, onTitleChange, onPinPost, onDeletePost, onStatusChange, plan = 'pro' }) {
   const [title,    setTitle]    = useState(post.title)
   const [content,  setContent]  = useState('')
   const [saving,   setSaving]   = useState(false)
@@ -865,7 +881,19 @@ function DocEditor({ post, panelsCollapsed, onTogglePanels, onClose, onTitleChan
     if (!content.trim() || saving) return
     setSaving(true)
     try {
-      await saveVersion(post.id, content, null)
+      await saveVersion(post.id, content, null, false)
+      await loadVersions()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleSaveFinalVersion() {
+    if (!content.trim() || saving) return
+    setSaving(true)
+    try {
+      // is_final=true → backend triggers vectorisation for AI search
+      await saveVersion(post.id, content, 'Final', true)
       await loadVersions()
     } finally {
       setSaving(false)
@@ -921,9 +949,15 @@ function DocEditor({ post, panelsCollapsed, onTogglePanels, onClose, onTitleChan
   async function handleConfirmPublish(mode) {
     setConfirming(true)
     try {
+      const newStatus = mode === 'scheduled' ? 'scheduled' : 'published'
       const scheduledAtValue = mode === 'scheduled' ? scheduledAt : null
+      // Persist status to DB — triggers style_memory window check on published/scheduled
+      await updatePostStatus(post.id, newStatus, scheduledAtValue)
+      // publishing.js stub — LinkedIn/X/Reddit integration wired here later (VVIMP)
       await publishPost({ postId: post.id, platforms: schedulePlatforms, scheduledAt: scheduledAtValue })
-      setStatus(mode === 'scheduled' ? 'scheduled' : 'published')
+      setStatus(newStatus)
+      // Notify parent so PostCard + activePost both reflect the new status without reload
+      onStatusChange?.(post.id, newStatus, scheduledAtValue)
       setScheduleOpen(false)
     } finally {
       setConfirming(false)
@@ -978,6 +1012,7 @@ function DocEditor({ post, panelsCollapsed, onTogglePanels, onClose, onTitleChan
           onSelect={handleVersionSelect}
           nextVersionNumber={versions.length + 1}
           onSave={handleSaveVersion}
+          onSaveFinal={handleSaveFinalVersion}
           saving={saving}
           canSave={!!content.trim() && !isReadOnly}
           diffMode={diffMode}
@@ -1179,7 +1214,23 @@ function VaultSearch({ value, onChange }) {
 }
 
 // ── Content Vault — left folder rail ──────────────────────────────────────────
-function FolderRail({ folders, postsByFolder, selectedId, onSelect }) {
+function FolderRail({ folders, postsByFolder, selectedId, onSelect, onDeleteFolder, onRenameFolder }) {
+  const [menuFor, setMenuFor] = useState(null)   // { x, y, folderId }
+  const [renamingId, setRenamingId] = useState(null)
+  const [renameVal, setRenameVal] = useState('')
+
+  function handleFolderMenuBtn(e, folderId) {
+    e.stopPropagation()
+    const r = e.currentTarget.getBoundingClientRect()
+    setMenuFor({ x: r.left, y: r.bottom + 4, folderId })
+  }
+
+  function submitRename() {
+    const trimmed = renameVal.trim()
+    if (trimmed && renamingId) onRenameFolder(renamingId, trimmed)
+    setRenamingId(null)
+  }
+
   return (
     <div style={{ width: 260, flexShrink: 0, borderRight: `1px solid ${BDR}`, background: '#FCFDFF', padding: '16px 14px', overflowY: 'auto' }}>
       <p style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: '.12em', color: FAINT, padding: '4px 8px 12px', margin: 0, textTransform: 'uppercase' }}>Folders</p>
@@ -1188,27 +1239,67 @@ function FolderRail({ folders, postsByFolder, selectedId, onSelect }) {
           const tint = FOLDER_TINTS[i % FOLDER_TINTS.length]
           const active = selectedId === folder.id
           const count = postsByFolder[folder.id]?.length ?? 0
+          const isRenaming = renamingId === folder.id
           return (
-            <button key={folder.id} onClick={() => onSelect(folder.id)} className="cc-press"
-              style={{
-                display: 'flex', gap: 12, width: '100%', padding: '11px 12px', textAlign: 'left',
-                border: `1px solid ${active ? 'rgba(37,99,235,.35)' : BDR}`,
-                background: active ? '#EAF0FF' : WHITE,
-                borderRadius: 13, cursor: 'pointer', transition: 'background .15s ease, border-color .15s ease',
-              }}
-              onMouseEnter={e => { if (!active) e.currentTarget.style.borderColor = 'rgba(37,99,235,.3)' }}
-              onMouseLeave={e => { if (!active) e.currentTarget.style.borderColor = BDR }}>
-              <span style={{ width: 38, height: 38, borderRadius: 11, background: tint.tint, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Folder size={17} color={tint.color} />
-              </span>
-              <span style={{ overflow: 'hidden' }}>
-                <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{folder.name}</span>
-                <span style={{ display: 'block', fontSize: 12, color: MUTED }}>{count} post{count === 1 ? '' : 's'}</span>
-              </span>
-            </button>
+            <div key={folder.id} style={{ position: 'relative' }}>
+              <div
+                onClick={() => { if (!isRenaming) onSelect(folder.id) }}
+                className="cc-press"
+                style={{
+                  display: 'flex', gap: 12, width: '100%', padding: '11px 12px', textAlign: 'left',
+                  border: `1px solid ${active ? 'rgba(37,99,235,.35)' : BDR}`,
+                  background: active ? '#EAF0FF' : WHITE,
+                  borderRadius: 13, cursor: 'pointer', transition: 'background .15s ease, border-color .15s ease',
+                  boxSizing: 'border-box', alignItems: 'center',
+                }}
+                onMouseEnter={e => { if (!active) e.currentTarget.style.borderColor = 'rgba(37,99,235,.3)' }}
+                onMouseLeave={e => { if (!active) e.currentTarget.style.borderColor = active ? 'rgba(37,99,235,.35)' : BDR }}>
+                <span style={{ width: 38, height: 38, borderRadius: 11, background: tint.tint, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Folder size={17} color={tint.color} />
+                </span>
+                <span style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
+                  {isRenaming ? (
+                    <input
+                      autoFocus
+                      value={renameVal}
+                      onChange={e => setRenameVal(e.target.value)}
+                      onClick={e => e.stopPropagation()}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') { e.preventDefault(); submitRename() }
+                        if (e.key === 'Escape') setRenamingId(null)
+                      }}
+                      onBlur={submitRename}
+                      style={{ width: '100%', fontSize: 13.5, fontWeight: 600, fontFamily: FONT, color: INK, border: `1.5px solid ${BLUE}`, borderRadius: 6, padding: '3px 7px', outline: 'none', background: WHITE, boxSizing: 'border-box' }}
+                    />
+                  ) : (
+                    <span style={{ display: 'block', fontSize: 14, fontWeight: 600, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{folder.name}</span>
+                  )}
+                  <span style={{ display: 'block', fontSize: 12, color: MUTED }}>{count} post{count === 1 ? '' : 's'}</span>
+                </span>
+                <button
+                  onClick={e => handleFolderMenuBtn(e, folder.id)}
+                  title="More options"
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '3px 5px', borderRadius: 6, color: FAINT, flexShrink: 0, fontSize: 15, fontWeight: 700, letterSpacing: '.05em', lineHeight: 1 }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#EEF2FF'; e.currentTarget.style.color = INDIGO }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = FAINT }}>
+                  ···
+                </button>
+              </div>
+            </div>
           )
         })}
       </div>
+      {menuFor && (
+        <ContextMenu
+          x={menuFor.x} y={menuFor.y}
+          variant="dashboard"
+          onClose={() => setMenuFor(null)}
+          items={[
+            { label: 'Rename', onClick: () => { setRenameVal(folders.find(f => f.id === menuFor.folderId)?.name || ''); setRenamingId(menuFor.folderId) } },
+            { label: 'Delete folder', onClick: () => onDeleteFolder(menuFor.folderId), danger: true },
+          ]}
+        />
+      )}
     </div>
   )
 }
@@ -1226,42 +1317,102 @@ function VaultEmptyState({ searching }) {
 }
 
 // ── Content Vault — post card ─────────────────────────────────────────────────
-function PostCard({ post, index, onOpen }) {
+function PostCard({ post, index, onOpen, onDelete, onRename, onPin }) {
+  const [menuPos, setMenuPos] = useState(null)
+  const [renaming, setRenaming] = useState(false)
+  const [renameVal, setRenameVal] = useState(post.title)
+  const renameRef = useRef(null)
   const st = STATUS_STYLE[post.status] || STATUS_STYLE.draft
+
+  function handleMenuBtn(e) {
+    e.stopPropagation()
+    const r = e.currentTarget.getBoundingClientRect()
+    setMenuPos({ x: r.left, y: r.bottom + 4 })
+  }
+
+  function handleRenameSubmit() {
+    const trimmed = renameVal.trim()
+    if (trimmed && trimmed !== post.title) onRename(post.id, trimmed)
+    setRenaming(false)
+  }
+
   return (
-    <a
-      href="#"
-      onClick={e => { e.preventDefault(); onOpen(post) }}
-      title="Open in editor"
+    <div
       className={`cc-stagger cc-stagger-${Math.min(index + 1, 5)}`}
       style={{
         display: 'flex', flexDirection: 'column', gap: 14, background: WHITE,
         border: `1px solid ${BDR}`, borderRadius: 16, padding: '16px 16px 14px',
-        boxShadow: '0 8px 22px -18px rgba(17,24,39,.4)', textDecoration: 'none',
+        boxShadow: '0 8px 22px -18px rgba(17,24,39,.4)', cursor: 'pointer',
         transition: 'transform .16s cubic-bezier(.16,1,.3,1), box-shadow .16s cubic-bezier(.16,1,.3,1), border-color .16s cubic-bezier(.16,1,.3,1)',
       }}
+      onClick={() => { if (!renaming) onOpen(post) }}
       onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 16px 32px -16px rgba(17,24,39,.3)'; e.currentTarget.style.borderColor = 'rgba(37,99,235,.35)' }}
       onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 8px 22px -18px rgba(17,24,39,.4)'; e.currentTarget.style.borderColor = BDR }}>
+
+      {/* Top row: status pill + version + 3-dot menu */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <span style={{ height: 26, padding: '0 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 600, background: st.bg, color: st.color, display: 'inline-flex', alignItems: 'center' }}>{st.label}</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: MONO, fontSize: 11, color: FAINT }}>
-          <Clock size={12} /> v{post.current_version}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: MONO, fontSize: 11, color: FAINT }}>
+            <Clock size={12} /> v{post.current_version}
+          </span>
+          <button
+            onClick={handleMenuBtn}
+            title="More options"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 5px', borderRadius: 6, color: FAINT, display: 'flex', alignItems: 'center', lineHeight: 1, fontSize: 16, fontWeight: 700, letterSpacing: '.05em' }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#EEF2FF'; e.currentTarget.style.color = INDIGO }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = FAINT }}>
+            ···
+          </button>
+        </div>
       </div>
-      <h3 style={{
-        fontFamily: SERIF, fontWeight: 600, fontSize: 19, lineHeight: 1.25, color: INK, margin: 0,
-        minHeight: 48, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
-      }}>{post.title}</h3>
+
+      {/* Title — or inline rename input */}
+      {renaming ? (
+        <input
+          ref={renameRef}
+          autoFocus
+          value={renameVal}
+          onChange={e => setRenameVal(e.target.value)}
+          onClick={e => e.stopPropagation()}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleRenameSubmit() } if (e.key === 'Escape') { setRenaming(false); setRenameVal(post.title) } }}
+          onBlur={handleRenameSubmit}
+          style={{ fontFamily: SERIF, fontWeight: 600, fontSize: 17, color: INK, border: `1.5px solid ${BLUE}`, borderRadius: 8, padding: '6px 10px', outline: 'none', width: '100%', boxSizing: 'border-box', background: '#F8FAFF' }}
+        />
+      ) : (
+        <h3 style={{
+          fontFamily: SERIF, fontWeight: 600, fontSize: 19, lineHeight: 1.25, color: INK, margin: 0,
+          minHeight: 48, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+        }}>{post.title}</h3>
+      )}
+
+      {/* Footer */}
       <div style={{ marginTop: 'auto', paddingTop: 12, borderTop: `1px solid rgba(17,24,39,.06)`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 12, color: FAINT }}>Updated {relativeTimeAgo(post.updated_at)}</span>
+        <span style={{ fontSize: 12, color: FAINT }}>
+          {post.is_pinned && <span style={{ marginRight: 6, color: INDIGO, fontWeight: 600 }}>📌</span>}
+          Updated {relativeTimeAgo(post.updated_at)}
+        </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 12, fontWeight: 600, color: BLUE }}>Open <ArrowUpRight size={13} /></span>
       </div>
-    </a>
+
+      {menuPos && (
+        <ContextMenu
+          x={menuPos.x} y={menuPos.y}
+          variant="dashboard"
+          onClose={() => setMenuPos(null)}
+          items={[
+            { label: 'Rename', onClick: () => { setRenameVal(post.title); setRenaming(true) } },
+            { label: post.is_pinned ? 'Unpin' : 'Pin to top', onClick: () => onPin(post.id, post.is_pinned) },
+            { label: 'Delete', onClick: () => onDelete(post.id), danger: true },
+          ]}
+        />
+      )}
+    </div>
   )
 }
 
 // ── Content Vault — main posts panel ──────────────────────────────────────────
-function VaultMain({ folders, postsByFolder, selectedId, searchQuery, onOpen, onCreatePost, creatingPost }) {
+function VaultMain({ folders, postsByFolder, selectedId, searchQuery, onOpen, onCreatePost, creatingPost, onDelete, onRename, onPin }) {
   const searching = searchQuery.trim().length > 0
   const selectedFolder = folders.find(f => f.id === selectedId)
 
@@ -1302,7 +1453,7 @@ function VaultMain({ folders, postsByFolder, selectedId, searchQuery, onOpen, on
         <VaultEmptyState searching={searching} />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(268px,1fr))', gap: 14 }}>
-          {posts.map((post, i) => <PostCard key={post.id} post={post} index={i} onOpen={onOpen} />)}
+          {posts.map((post, i) => <PostCard key={post.id} post={post} index={i} onOpen={onOpen} onDelete={onDelete} onRename={onRename} onPin={onPin} />)}
         </div>
       )}
     </div>
@@ -1353,7 +1504,7 @@ export default function MyWorkPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(window.innerWidth < 768)
 
   // ── Vault data (real backend) ──────────────────────────────────────────────
-  const { folders, postsByFolder, loading: vaultLoading, addFolder, addPost } = useVault()
+  const { folders, postsByFolder, loading: vaultLoading, addFolder, addPost, removePost, updatePost, removeFolder, updateFolder } = useVault()
   const [selectedFolderId, setSelectedFolderId] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [creatingPost, setCreatingPost] = useState(false)
@@ -1385,6 +1536,29 @@ export default function MyWorkPage() {
       setNewFolderOpen(false)
     } catch (err) { console.error('Create folder failed:', err) }
     finally { setCreatingFolder(false) }
+  }
+
+  async function handleDeleteFolder(folderId) {
+    const count = (postsByFolder[folderId] || []).length
+    const msg = count > 0
+      ? `Delete this folder and its ${count} post${count === 1 ? '' : 's'}? This cannot be undone.`
+      : 'Delete this folder? This cannot be undone.'
+    if (!window.confirm(msg)) return
+    try {
+      await deleteFolder(folderId)
+      removeFolder(folderId)
+      if (selectedFolderId === folderId) {
+        const remaining = folders.filter(f => f.id !== folderId)
+        setSelectedFolderId(remaining[0]?.id ?? null)
+      }
+    } catch (err) { console.error('Delete folder failed:', err) }
+  }
+
+  async function handleRenameFolder(folderId, newName) {
+    try {
+      const updated = await renameFolder(folderId, newName)
+      updateFolder(folderId, { name: updated.name })
+    } catch (err) { console.error('Rename folder failed:', err) }
   }
 
   async function handleCreatePost(folderId) {
@@ -1427,21 +1601,39 @@ export default function MyWorkPage() {
     setSidebarCollapsed(c => !c)
   }
 
-  function handleEditorTitleChange(id, title) {
+  function handleEditorTitleChange(_id, title) {
     setActivePost(prev => ({ ...prev, title }))
   }
 
   async function handleDeletePost(postId) {
-    if (!window.confirm('Delete this post and all its versions?')) return
+    if (!window.confirm('Delete this post and all its versions? This cannot be undone.')) return
     try {
       await deletePost(postId)
+      removePost(postId)
       if (activePost?.id === postId) setActivePost(null)
     } catch (err) { console.error('Delete post failed:', err) }
   }
 
+  async function handleRenamePost(postId, newTitle) {
+    try {
+      const updated = await renamePost(postId, newTitle)
+      updatePost(postId, { title: updated.title, updated_at: updated.updated_at })
+      if (activePost?.id === postId) setActivePost(prev => ({ ...prev, title: updated.title }))
+    } catch (err) { console.error('Rename post failed:', err) }
+  }
+
   async function handlePinPost(postId, currentlyPinned) {
-    try { await pinPost(postId, !currentlyPinned) }
-    catch (err) { console.error('Pin post failed:', err) }
+    try {
+      const updated = await pinPost(postId, !currentlyPinned)
+      updatePost(postId, { is_pinned: updated.is_pinned })
+    } catch (err) { console.error('Pin post failed:', err) }
+  }
+
+  function handlePostStatusChange(postId, newStatus, scheduledAt) {
+    // Update the shared vault state so PostCard reflects the change immediately
+    updatePost(postId, { status: newStatus, scheduled_at: scheduledAt ?? null })
+    // Also update activePost so re-opening the editor seeds the correct status
+    setActivePost(prev => prev?.id === postId ? { ...prev, status: newStatus } : prev)
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -1467,6 +1659,7 @@ export default function MyWorkPage() {
             onTitleChange={handleEditorTitleChange}
             onPinPost={handlePinPost}
             onDeletePost={handleDeletePost}
+            onStatusChange={handlePostStatusChange}
             plan="pro"
           />
         ) : vaultLoading ? (
@@ -1476,7 +1669,7 @@ export default function MyWorkPage() {
             <VaultHeader onImport={() => setImportOpen(true)} onNewFolder={() => setNewFolderOpen(true)} />
             <VaultSearch value={searchQuery} onChange={setSearchQuery} />
             <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '260px minmax(0,1fr)', borderTop: `1px solid ${BDR}` }}>
-              <FolderRail folders={folders} postsByFolder={postsByFolder} selectedId={selectedFolderId} onSelect={handleSelectFolder} />
+              <FolderRail folders={folders} postsByFolder={postsByFolder} selectedId={selectedFolderId} onSelect={handleSelectFolder} onDeleteFolder={handleDeleteFolder} onRenameFolder={handleRenameFolder} />
               <VaultMain
                 folders={folders}
                 postsByFolder={postsByFolder}
@@ -1485,6 +1678,9 @@ export default function MyWorkPage() {
                 onOpen={handleOpenPost}
                 onCreatePost={handleCreatePost}
                 creatingPost={creatingPost}
+                onDelete={handleDeletePost}
+                onRename={handleRenamePost}
+                onPin={handlePinPost}
               />
             </div>
           </>

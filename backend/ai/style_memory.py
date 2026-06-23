@@ -157,9 +157,13 @@ def format_style_memory_for_writer(memory: dict) -> str:
 def _count_published_posts(db, user_id: str) -> int:
     from backend.vault.models import Post, PostStatus
     from uuid import UUID
+    # Count both published and scheduled — scheduled = committed content queued for delivery
     return (
         db.query(func.count(Post.id))
-        .filter(Post.user_id == UUID(user_id), Post.status == PostStatus.published)
+        .filter(
+            Post.user_id == UUID(user_id),
+            Post.status.in_([PostStatus.published, PostStatus.scheduled]),
+        )
         .scalar()
         or 0
     )
@@ -174,7 +178,7 @@ def _fetch_published_post_contents(db, user_id: str, limit: int) -> list[str]:
         .join(Post, Post.id == PostVersion.post_id)
         .filter(
             Post.user_id == UUID(user_id),
-            Post.status == PostStatus.published,
+            Post.status.in_([PostStatus.published, PostStatus.scheduled]),
             PostVersion.version_number == Post.current_version,
         )
         .order_by(Post.updated_at.desc())

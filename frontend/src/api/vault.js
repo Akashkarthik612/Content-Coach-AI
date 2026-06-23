@@ -44,11 +44,12 @@ export const pinPost = (id, is_pinned) =>
   api.patch(`/posts/${id}/pin`, { is_pinned }).then(r => r.data);
 
 // ── Versions ──────────────────────────────────────────────────
-export const saveVersion = (postId, content, versionLabel) =>
+export const saveVersion = (postId, content, versionLabel, isFinal = false) =>
   api.post(`/posts/${postId}/versions`, {
     content,
     version_label: versionLabel || null,
     source: 'manual',
+    is_final: isFinal,
   }).then(r => r.data);
 
 export const getVersions = (postId) =>
@@ -66,6 +67,12 @@ export const deleteVersion = (versionId) =>
 // ── Analytics (per-post) ─────────────────────────────────────
 export const updatePostAnalytics = (postId, impressions, reactions) =>
   api.patch(`/posts/${postId}/analytics`, { impressions, reactions }).then(r => r.data);
+
+export const updatePostStatus = (id, status, scheduledAt = null) =>
+  api.patch(`/posts/${id}/status`, {
+    status,
+    ...(scheduledAt ? { scheduled_at: scheduledAt } : {}),
+  }).then(r => r.data);
 
 // ── Search ────────────────────────────────────────────────────
 export const search = (query) =>
