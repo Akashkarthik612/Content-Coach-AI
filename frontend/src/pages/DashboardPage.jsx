@@ -1,10 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAnalytics }    from '../hooks/useAnalytics';
 import { useIdeas }        from '../hooks/useIdeas';
 import { useReviewQueue }  from '../context/ReviewQueueContext';
 import { getRecentPosts }  from '../api/vault';
-import { queryAI, resumeAI } from '../api/ai';
 import { AppSidebar } from '../components/shared/AppSidebar';
 
 // ── Design tokens (exact from §A) ─────────────────────────────────────────────
@@ -225,113 +224,6 @@ function GrowthTrend({ data }) {
   );
 }
 
-// ── AI Assistance drawer (§B8) ────────────────────────────────────────────────
-function AIPanel({ open, onClose, initialInput = '' }) {
-  const [messages, setMessages] = useState([
-    { role: 'assistant', text: "Hi! Ask me to research, write, or analyse your content." },
-  ]);
-  const [input, setInput]   = useState('');
-  const [busy, setBusy]     = useState(false);
-  const [hitl, setHitl]     = useState(null);
-  const bottomRef           = useRef(null);
-  const prevOpen            = useRef(false);
-
-  // Pre-fill input when panel opens with an initialInput
-  useEffect(() => {
-    if (open && !prevOpen.current && initialInput) {
-      setInput(initialInput);
-    }
-    prevOpen.current = open;
-  }, [open, initialInput]);
-
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-
-  const send = useCallback(async (text) => {
-    if (!text.trim() || busy) return;
-    setMessages(m => [...m, { role: 'user', text }]);
-    setInput('');
-    setBusy(true);
-    try {
-      const res = await queryAI(text);
-      if (res.status === 'hitl' || res.status === 'awaiting_approval') {
-        setHitl({ threadId: res.thread_id, draft: res.draft });
-        setMessages(m => [...m, { role: 'assistant', text: res.draft, isDraft: true }]);
-      } else {
-        setMessages(m => [...m, { role: 'assistant', text: res.answer ?? res.response ?? res.message ?? JSON.stringify(res) }]);
-      }
-    } catch (e) {
-      setMessages(m => [...m, { role: 'assistant', text: `Error: ${e.message}` }]);
-    } finally { setBusy(false); }
-  }, [busy]);
-
-  const resolve = useCallback(async (action) => {
-    if (!hitl) return;
-    setBusy(true);
-    try {
-      const res = await resumeAI(hitl.threadId, action, hitl.draft);
-      setMessages(m => [...m, { role: 'assistant', text: res.answer ?? res.response ?? 'Done.' }]);
-    } catch (e) {
-      setMessages(m => [...m, { role: 'assistant', text: `Error: ${e.message}` }]);
-    } finally { setHitl(null); setBusy(false); }
-  }, [hitl]);
-
-  return (
-    <>
-      {open && <div onClick={onClose} className="cc-scrim" style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,.35)', zIndex: 39, transition: 'opacity .22s' }} />}
-      <div className="cc-panel" style={{
-        position: 'fixed', top: 0, right: 0, height: '100vh', width: 380,
-        background: WHITE, borderLeft: `1px solid ${BDR}`,
-        display: 'flex', flexDirection: 'column', fontFamily: FONT,
-        transform: open ? 'translateX(0)' : 'translateX(100%)',
-        transition: 'transform .28s cubic-bezier(.16,1,.3,1)',
-        zIndex: 40, boxShadow: '-8px 0 32px -8px rgba(17,24,39,.1)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: `1px solid ${BDR}` }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 16 }}>✦</span>
-            <span style={{ fontSize: 14, fontWeight: 700, color: INK }}>AI Assistance</span>
-          </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: MUTED, lineHeight: 1 }}>×</button>
-        </div>
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {messages.map((m, i) => (
-            <div key={i} style={{ alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '88%' }}>
-              <div style={{
-                padding: '9px 13px',
-                borderRadius: m.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-                background: m.role === 'user' ? BLUE : m.isDraft ? '#EEF0FF' : '#F1F5F9',
-                color: m.role === 'user' ? WHITE : INK,
-                fontSize: 13, lineHeight: 1.55, whiteSpace: 'pre-wrap',
-              }}>{m.text}</div>
-              {m.isDraft && hitl && (
-                <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                  <button className="cc-press" onClick={() => resolve('approved')} style={{ background: '#DCFCE7', border: 'none', color: GREEN_D, borderRadius: 6, padding: '5px 12px', fontSize: 11, fontWeight: 600, fontFamily: FONT, cursor: 'pointer' }}>Approve</button>
-                  <button className="cc-press" onClick={() => resolve('rejected')}  style={{ background: '#FEF2F2', border: 'none', color: '#B91C1C', borderRadius: 6, padding: '5px 12px', fontSize: 11, fontWeight: 600, fontFamily: FONT, cursor: 'pointer' }}>Revise</button>
-                </div>
-              )}
-            </div>
-          ))}
-          {busy && <div style={{ fontSize: 12, color: FAINT, alignSelf: 'flex-start' }}>Thinking…</div>}
-          <div ref={bottomRef} />
-        </div>
-        <div style={{ padding: '12px 16px', borderTop: `1px solid ${BDR}`, display: 'flex', gap: 8 }}>
-          <input
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(input); } }}
-            placeholder="Ask AI anything…"
-            style={{ flex: 1, padding: '9px 12px', border: `1px solid ${BDR}`, borderRadius: 8, fontSize: 13, fontFamily: FONT, color: INK, outline: 'none', background: '#F8FAFC' }}
-          />
-          <button className="cc-press" onClick={() => send(input)} disabled={busy}
-            style={{ background: BLUE, border: 'none', color: WHITE, borderRadius: 8, padding: '8px 16px', fontFamily: FONT, fontWeight: 600, fontSize: 13, cursor: 'pointer', opacity: busy ? .6 : 1 }}>
-            Send
-          </button>
-        </div>
-      </div>
-    </>
-  );
-}
-
 // ── Calendar side panel ────────────────────────────────────────────────────────
 function CalendarPanel({ open, onClose }) {
   return (
@@ -375,8 +267,6 @@ export default function DashboardPage() {
   const plan         = 'pro'; // TODO: from session
 
   const [panelOpen,        setPanelOpen]        = useState(false);
-  const [aiOpen,           setAiOpen]           = useState(false);
-  const [aiInitialInput,   setAiInitialInput]   = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [recentPosts,      setRecentPosts]      = useState([]);
   const [currentDraft,     setCurrentDraft]     = useState('Drafting LinkedIn Post');
@@ -419,19 +309,17 @@ export default function DashboardPage() {
               <svg viewBox="0 0 20 20" fill="none" stroke={MUTED} strokeWidth="1.6" width="17" height="17"><path d="M10 2a6 6 0 016 6v3l1.5 3H2.5L4 11V8a6 6 0 016-6zM8.5 17a1.5 1.5 0 003 0"/></svg>
               <span style={{ position: 'absolute', top: 7, right: 8, width: 6, height: 6, borderRadius: '50%', background: '#EF4444', border: `1.5px solid ${WHITE}` }} />
             </button>
-            {/* AI Assistance toggle (§B8) */}
+            {/* Quick Actions → Chat */}
             <button
               className="cc-press"
-              onClick={() => setAiOpen(v => !v)}
+              onClick={() => navigate('/chat')}
               style={{
                 display: 'flex', alignItems: 'center', gap: 7, padding: '10px 16px', borderRadius: 11, border: 'none',
-                background: aiOpen ? 'linear-gradient(135deg,#3B82F6,#8B5CF6)' : INK,
-                color: WHITE, fontSize: 13.5, fontWeight: 600, fontFamily: FONT, cursor: 'pointer',
-                transition: 'background .2s',
+                background: INK, color: WHITE, fontSize: 13.5, fontWeight: 600, fontFamily: FONT, cursor: 'pointer',
               }}
             >
               <svg viewBox="0 0 16 16" fill="currentColor" width="13" height="13"><path d="M8 1l1.5 4.5L14 7l-4.5 1.5L8 13l-1.5-4.5L2 7l4.5-1.5L8 1z"/></svg>
-              {aiOpen ? 'AI Assistance' : 'Quick Actions'}
+              Quick Actions
             </button>
             {/* Avatar */}
             <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'linear-gradient(135deg,#3B82F6,#6366F1)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
@@ -462,7 +350,7 @@ export default function DashboardPage() {
               <ProgressBar pct={64} gradient="linear-gradient(90deg,#6366F1,#8B5CF6)" label="Progress" />
               <button
                 className="cc-press"
-                onClick={() => { setAiInitialInput('Write me a LinkedIn post in my style about'); setAiOpen(true); }}
+                onClick={() => navigate('/chat')}
                 style={{ marginTop: 10, background: 'linear-gradient(90deg,#6366F1,#8B5CF6)', border: 'none', color: WHITE, borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', width: '100%' }}
               >
                 Draft with AI →
@@ -670,11 +558,6 @@ export default function DashboardPage() {
 
       </main>
 
-      <AIPanel
-        open={aiOpen}
-        onClose={() => { setAiOpen(false); setAiInitialInput(''); }}
-        initialInput={aiInitialInput}
-      />
       <CalendarPanel open={panelOpen} onClose={() => setPanelOpen(false)} />
     </div>
   );
