@@ -6,6 +6,7 @@ on:
       - feat/analyser
     paths:
       - 'frontend/**'
+  workflow_dispatch:
 
 jobs:
   frontend:
