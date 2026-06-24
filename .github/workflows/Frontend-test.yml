@@ -3,43 +3,43 @@ name: Frontend CI
 on:
   push:
     branches:
-      - "feat/**'
+      - feat/analyser
     paths:
       - 'frontend/**'
 
 jobs:
   frontend:
-  runs-on: ubunutu- latest
+    runs-on: ubunutu-latest
 
-  defaults:
-    run:
-    working-directory: frontend
+    defaults:
+      run:
+        working-directory: frontend
 
-  steps:
+    steps:
 
-    - name: Checkout Code
-      uses: actions/chckout@v4
+      - name: Checkout Code
+        uses: actions/chckout@v4
 
-    - name: setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
+      - name: setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-    - name: Install Dependencies
-      run: npm ci
+      - name: Install Dependencies
+        run: npm ci
 
-    - name: Run Tests
-      run: npm test -- -- watchALL=False
-      continue-on-error:  true
+      - name: Run Tests
+        run: npm test -- -- watchALL=False
+        continue-on-error:  true
 
-    - name: Build Frontend
-      run: npm run build
+      - name: Build Frontend
+        run: npm run build
 
-    - name: Trivy Filesystem Scan
-      uses: aquasecurity/trivy-action@v0.36.0
-      with:
-        scan-type: fs
-        scan-ref: frontend
+      - name: Trivy Filesystem Scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: frontend
 
     
 
