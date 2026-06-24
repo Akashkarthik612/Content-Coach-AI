@@ -4,8 +4,7 @@ on:
   push:
     branches:
       - feat/analyser
-    paths:
-      - 'frontend/**'
+   
   workflow_dispatch:
 
 jobs:
