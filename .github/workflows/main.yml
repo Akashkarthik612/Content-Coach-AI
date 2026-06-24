@@ -9,7 +9,7 @@ on:
 
 jobs:
   frontend:
-    runs-on: ubunutu-latest
+    runs-on: ubuntu-latest
 
     defaults:
       run:
