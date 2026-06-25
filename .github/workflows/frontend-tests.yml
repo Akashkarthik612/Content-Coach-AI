@@ -41,7 +41,7 @@ jobs:
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@v6
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN_FEAT }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       - name: Trivy Filesystem Scan
         uses: aquasecurity/trivy-action@v0.36.0
