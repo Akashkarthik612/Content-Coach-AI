@@ -7,7 +7,7 @@ from langgraph.types import Send
 
 from backend.ai.state import AgentState
 from backend.ai.agents.supervisor             import supervisor_node
-from backend.ai.agents.style_retriever_node   import style_retriever_node
+from backend.ai.agents.style_agent            import style_retriever_node
 from backend.ai.agents.writer_node            import writer_node
 from backend.ai.agents.analytics_node         import analytics_node
 from backend.ai.agents.human_approval_node    import human_approval_node

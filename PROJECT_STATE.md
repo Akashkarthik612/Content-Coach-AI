@@ -1,6 +1,6 @@
 # Content Coach — Project State
 > Living reference for Claude. Update when architecture, decisions, or status change.
-> Last updated: 2026-06-23 (feat/analyser branch: PATCH /posts/{id}/status endpoint added; style memory widened to count scheduled+published; style_analyzer.py downgraded to gemini-2.0-flash; PostCard + FolderRail 3-dot menus wired to real backend; delete_post/delete_folder now invalidate Redis tool cache via BackgroundTask; save_version no longer fires sync_check_and_refresh_style_memory; useVault expanded with removePost/updatePost/removeFolder/updateFolder)
+> Last updated: 2026-06-24 (feat/analyser branch: style_analyzer.py + style_retriever_node.py merged into agents/style_agent.py — both are LLM nodes so they now live together in the agents folder per SOLID/SRP; circular import broken via local import inside style_retriever_node(); LLM for style analysis is gemini-2.5-flash-lite — NOT gemini-2.0-flash; design patterns catalogued)
 
 ---
 
@@ -35,7 +35,7 @@
 | AI / RAG | LangChain, LangGraph, Google Gemini API |
 | Embeddings | `models/gemini-embedding-001` — 768 dims (`output_dimensionality=768`) |
 | LLM (writer / supervisor / analytics) | `gemini-2.5-flash-lite` |
-| LLM (style analyzer) | `gemini-2.0-flash` (cheaper; sufficient for 9-key structured JSON extraction) |
+| LLM (style analyzer) | `gemini-2.5-flash-lite` (same as other nodes — kept consistent after merge into style_agent.py) |
 | Tracing | LangSmith (`linkedin-coach-rag` project) |
 
 ---
@@ -70,21 +70,20 @@ f:\My_first_product\
 │   │   │   ├── errors.log        ← ERROR+ only
 │   │   │   └── style_debug.log   ← full style JSON dumps on every style extraction
 │   │   ├── embeddings.py         ← embed_and_store_version() — BackgroundTask, writes post_embeddings
-│   │   ├── style_analyzer.py     ← analyze_style() — 9-key JSON; now calls log_style_json() after extraction
 │   │   ├── style_memory.py       ← Style memory lifecycle: window trigger, DB UPSERT, Redis cache
 │   │   ├── rag_chain.py          ← Legacy RAG chain (reference only — superseded by graph)
 │   │   ├── state.py              ← AgentState TypedDict
 │   │   ├── worker_states.py      ← StyleRetrieverState, WriterState, AnalyticsState, ResearcherState
 │   │   ├── graph.py              ← LangGraph StateGraph, 6 nodes + ToolNode, MemorySaver
 │   │   └── agents/
-│   │       ├── supervisor.py          ← COGNITIVE: tool caller + router; direct answer sets state["answer"]
+│   │       ├── supervisor.py          ← COGNITIVE: routes via [HANDOFF:WRITE]/[HANDOFF:ANALYTICS] tokens; direct answer sets state["answer"]
+│   │       ├── style_agent.py         ← COGNITIVE: analyze_style() LLM fn + style_retriever_node (MERGED — both are LLM nodes)
+│   │       ├── writer_node.py         ← COGNITIVE: style-aware LinkedIn post drafter; Strategy: cold-start vs personalised
+│   │       ├── analytics_node.py      ← COGNITIVE: LinkedIn analytics synthesizer
+│   │       ├── human_approval_node.py ← INTERRUPT: HITL checkpoint, saves on approve/edit
 │   │       ├── tools.py               ← 4 async @tool functions — DB reads + Redis cache layer
 │   │       ├── sql_fetch_node.py      ← WRITE ONLY: save_draft_to_vault()
 │   │       ├── vector_search_node.py  ← DEAD (kept for reference — logic lives in tools.py)
-│   │       ├── style_retriever_node.py← COGNITIVE: fetch/refresh style JSON; dispatched via Send API; calls log_style_json()
-│   │       ├── writer_node.py         ← COGNITIVE: style-aware LinkedIn post drafter; Gemini list-content handled
-│   │       ├── analytics_node.py      ← COGNITIVE: LinkedIn analytics synthesizer; FIXED: Gemini list-content bug
-│   │       ├── human_approval_node.py ← INTERRUPT: HITL checkpoint, saves on approve/edit
 │   │       └── helper.py              ← DEAD (superseded — delete when ready)
 │   ├── core/
 │   │   ├── config.py             ← Settings (DATABASE_URL, REDIS_URL, LANGCHAIN_API_KEY_GEMINI…)
@@ -258,12 +257,13 @@ resumeAI(thread_id, action, content='')     → {answer}
 
 | Node | Category | File | Status | Responsibility |
 |---|---|---|---|---|
-| `supervisor_node` | COGNITIVE + TOOL CALLER | `agents/supervisor.py` | ✅ Done | Pass 1: classify intent; call appropriate tool via `llm_agent.bind_tools()`. Pass 2: route to writer / analytics / direct — does NOT synthesize analytics. |
+| `supervisor_node` | COGNITIVE + TOOL CALLER | `agents/supervisor.py` | ✅ Done | Classifies intent; emits `[HANDOFF:WRITE]` / `[HANDOFF:ANALYTICS]` tokens or calls tools; does NOT synthesize analytics. `llm.bind_tools()` for tool loop. |
 | `tool_node` | EXECUTOR | `graph.py` (LangGraph `ToolNode`) | ✅ Done | Executes whatever tool the LLM called; writes result as `ToolMessage` into messages; loops back to supervisor. |
-| `writer_node` | COGNITIVE | `agents/writer_node.py` | ✅ Done | Style-aware LinkedIn post drafter. Reads compressed style memory JSON (long-term + short-term) from last `ToolMessage`. Falls back to 2 raw posts on cold start. Writes `draft`. |
-| `analytics_node` | COGNITIVE | `agents/analytics_node.py` | ✅ Done | LinkedIn analytics synthesizer. Reads `get_post_analytics` ToolMessage; uses `gemini-2.5-flash-lite` at `temp=0.0` with tight analytics prompt. Writes `answer`. |
+| `style_retriever_node` | COGNITIVE | `agents/style_agent.py` | ✅ Done | Dispatched via Send API with minimal state `{user_id, query}`. Redis → DB cache read; on miss: calls `analyze_style()` on-demand; fires background stale-check on cache hit. Writes `style_json`. |
+| `writer_node` | COGNITIVE | `agents/writer_node.py` | ✅ Done | Style-aware LinkedIn post drafter. Strategy pattern: cold-start prompt vs. `_build_system_prompt()` from `style_json`. Writes `draft`. |
+| `analytics_node` | COGNITIVE | `agents/analytics_node.py` | ✅ Done | LinkedIn analytics synthesizer. Reads `get_post_analytics` ToolMessage; `gemini-2.5-flash-lite` at `temp=0.0`. Writes `answer`. |
 | `human_approval_node` | INTERRUPT | `agents/human_approval_node.py` | ✅ Done | `interrupt()` HITL checkpoint. On approve/edit calls `save_draft_to_vault()`; on reject discards. |
-| `sql_fetch_node` | WRITE ONLY | `agents/sql_fetch_node.py` | ✅ Done | Contains only `save_draft_to_vault()`. All read queries moved to `tools.py`. |
+| `sql_fetch_node` | WRITE ONLY | `agents/sql_fetch_node.py` | ✅ Done | Contains only `save_draft_to_vault()`. All read queries live in `tools.py`. |
 
 > **Architecture rule:** All agent nodes and tool functions are `async def` using `await llm.ainvoke()` / `asyncio.to_thread()` — multi-tenant, all LLM + DB calls are I/O-bound. Never use sync `llm.invoke()` inside graph nodes or tools.
 
@@ -276,15 +276,15 @@ resumeAI(thread_id, action, content='')     → {answer}
 | `query` | str | router | original prompt, never mutated |
 | `user_id` | str | router | scopes ALL database operations |
 | `messages` | list[HumanMessage\|AIMessage] | add_messages reducer | includes HumanMessage, AIMessage (with tool_calls), ToolMessage (tool results) |
-| `task_type` | str | supervisor_node | `""` → `"general"/"research"/"write"/"analytics"/"suggest"` |
-| `route` | str | supervisor_node | edge key: `"tools"/"write"/"direct"` |
+| `task_type` | str | supervisor_node | legacy field — currently unused in routing (routing is token-based) |
+| `route` | str | supervisor_node | edge key read by `_supervisor_router`: `"style_retrieval"/"analytics"/"direct"` |
 | `draft` | str | writer_node | LinkedIn post draft |
 | `approval_status` | str | human_approval_node | `""/"approved"/"edited"/"rejected"` |
 | `answer` | str | supervisor_node | final response returned to frontend |
 
 ---
 
-### Graph Topology
+### Graph Topology (current — Orchestrator-Worker via Send API)
 
 ```
 START
@@ -294,45 +294,59 @@ supervisor_node ── tools bound via llm.bind_tools([...])
   │
   ├─ last msg has tool_calls? ──► tool_node (LangGraph ToolNode)
   │                                    │ result → ToolMessage into messages
-  │                                    └──► supervisor_node (loop — Pass 2)
+  │                                    └──► supervisor_node (loop)
   │
-  ├─ route == "write"     ──► writer_node ──► human_approval_node ──► END
-  ├─ route == "analytics" ──► analytics_node ──► END
-  └─ route == "direct"    ──► END
+  ├─ [HANDOFF:WRITE] in content ──► Send API ──► style_retriever_node  (worker, minimal state)
+  │                                                       │
+  │                                                  writer_node  (full merged state)
+  │                                                       │
+  │                                              human_approval_node ──► END
+  │
+  ├─ [HANDOFF:ANALYTICS] in content ──► analytics_node ──► END
+  │
+  └─ direct answer ──► END
 ```
 
-**Routing rule:** `supervisor_node` is the sole router. Pass 1 classifies and triggers a tool call (via `llm_agent`). After `tool_node` runs, supervisor is called again (Pass 2) to synthesize or route to writer.
+**Routing rule:** `supervisor_node` emits `[HANDOFF:WRITE]` or `[HANDOFF:ANALYTICS]` tokens in its text content. The `_supervisor_router` conditional edge reads these tokens and returns the appropriate edge key or a `[Send(...)]` list.
 
-**Supervisor pass detection:** `if state.get("task_type"):` → Pass 2; else → Pass 1.
+**Send API dispatch:** When route is `style_retrieval`, supervisor returns `[Send("style_retriever_node", {user_id, query})]` — the worker gets only the minimal slice it needs. Its output (`style_json`) merges back into global `AgentState`, which flows through the fixed edges to `writer_node` and `human_approval_node`.
+
+**Tool loop:** If the LLM emits tool calls (for analytics data fetching), `tool_node` executes them and loops back to supervisor. The supervisor then emits `[HANDOFF:ANALYTICS]` once data is in messages.
 
 **DB access pattern:**
-- READ: `tools.py` — 4 async `@tool` functions; SQL via `asyncio.to_thread()`; pgvector scan inside `search_vault_posts`
+- READ: `tools.py` — async `@tool` functions; SQL via `asyncio.to_thread()`; pgvector scan inside `search_vault_posts`
 - WRITE: `save_draft_to_vault()` in `sql_fetch_node.py`, called by `human_approval_node` on approve/edit
-- Analytics is ephemeral — never written to DB
+- Analytics is ephemeral — never written to DB from the agent pipeline
 
 ### Tools (`backend/ai/agents/tools.py`)
 
 | Tool | Used for | Data source |
 |---|---|---|
-| `search_vault_posts(user_id, query)` | research | pgvector cosine scan (top 6 chunks, 650-char chunks, dedup by post); no fallback |
-| `get_style_samples(user_id)` | write | compressed style memory JSON (Redis → DB → 2 raw posts cold-start) |
-| `get_topic_inventory(user_id)` | suggest | all post titles + distinct tags |
-| `analyze_publish_history(user_id)` | — (legacy, kept) | publish log + version metadata |
+| `search_vault_posts(user_id, query)` | research / general Q&A | pgvector cosine scan (top 6 chunks, 650-char chunks); no fallback |
+| `get_style_samples(user_id)` | (legacy — style now owned by style_retriever_node) | compressed style memory JSON (Redis → DB → 2 raw posts cold-start) |
+| `get_topic_inventory(user_id)` | suggest / general Q&A | all post titles + distinct tags |
+| `analyze_publish_history(user_id)` | analytics | publish log + version metadata |
 | `get_post_analytics(user_id)` | analytics | `post_analytics` + publish log + posts (DISTINCT ON post_id); includes 150-char content preview |
 
 ---
 
-### Classifier (supervisor_node Pass 1)
+## Design Patterns in Use
 
-Uses `llm.with_structured_output(ClassificationResult)` for reliable JSON — no string parsing.
-
-| User intent | task_type | route |
+| Pattern | Where | How |
 |---|---|---|
-| Greetings, factual LinkedIn/writing Q&A | `general` | `direct` |
-| "What have I written about X?" | `research` | `tools` → `direct` |
-| "Write a post about X in my style" | `write` | `tools` → `write` |
-| "What topics should I cover next?" | `suggest` | `tools` → `direct` |
-| "When should I post / predict engagement?" | `analytics` | `tools` → `analytics` |
+| **Singleton** | `_llm` in each agent file | Module-level instance, created once per process by Python's module system |
+| **Orchestrator-Worker** | `graph.py` + `supervisor.py` | Supervisor dispatches specialist workers via LangGraph Send API; each worker gets only the state slice it needs |
+| **Pipeline / Chain of Responsibility** | `graph.py` fixed edges | `style_retriever_node → writer_node → human_approval_node → END` — each node enriches state and passes it downstream |
+| **State Machine** | `graph.py` `StateGraph` | Nodes are states, edges are transitions; `_supervisor_router` is the transition function |
+| **Strategy** | `agents/writer_node.py` | `if not style_json` → cold-start prompt; else → `_build_system_prompt()`. Same interface (`ainvoke`), swapped behaviour |
+| **Cache-Aside** | `agents/tools.py`, `style_memory.py` | Redis check → return on hit; DB query on miss → write back to Redis |
+| **Decorator** | `agents/tools.py` | `@tool` wraps plain async functions into LangChain Tool objects with schema inference |
+| **DTO (Data Transfer Object)** | `state.py`, `worker_states.py` | TypedDicts are pure data carriers with no behaviour; define the contracts between pipeline stages |
+| **Facade** | `style_memory.py` | Hides Redis + PostgreSQL dual-store, TTL logic, and window-threshold triggers behind 3 clean functions |
+| **Command** | `agents/supervisor.py` | `[HANDOFF:WRITE]` / `[HANDOFF:ANALYTICS]` tokens encode routing intent in the LLM's natural language output |
+| **Fire-and-Forget** | `agents/style_agent.py` | `asyncio.ensure_future(to_thread(sync_check_and_refresh...))` fires stale-check in background, returns cached result immediately |
+| **Builder** | `agents/writer_node.py` | `_build_system_prompt()` assembles a multi-section prompt from style block, evolution note, research brief, and action instruction |
+| **Human-in-the-Loop (Interrupt)** | `agents/human_approval_node.py` | `interrupt()` pauses graph mid-run, serialises state to MemorySaver, surfaces draft to frontend, resumes only on `/resume` |
 
 ---
 
@@ -343,14 +357,16 @@ Uses `llm.with_structured_output(ClassificationResult)` for reliable JSON — no
 | Step | Node/File | Status | Notes |
 |---|---|---|---|
 | — | `tools.py` | ✅ Done | 5 async `@tool` functions — all DB reads live here |
-| — | `supervisor_node` | ✅ Done | Pass 1: classify + trigger tool call. Pass 2: route to writer / analytics / direct. No longer synthesizes analytics. |
+| — | `supervisor_node` | ✅ Done | Emits `[HANDOFF:WRITE]` / `[HANDOFF:ANALYTICS]` tokens; tool-loop via `bind_tools()`; direct answers |
 | — | `tool_node` (LangGraph prebuilt) | ✅ Done | Executes tool called by LLM; appends ToolMessage; loops to supervisor |
-| — | `writer_node` | ✅ Done | Reads style from last ToolMessage in messages; **FIXED: same Gemini list-content bug** |
-| — | `analytics_node` | ✅ Done | Dedicated analytics synthesizer; temp=0.0; reads get_post_analytics ToolMessage; **FIXED: Gemini list-content bug** (response.content may be `[{"text":"..."}]`) |
+| — | `style_agent.py` | ✅ Done | `analyze_style()` + `style_retriever_node` merged into one file — both are LLM nodes; circular import broken via local import |
+| — | `writer_node` | ✅ Done | Strategy pattern: cold-start vs. `_build_system_prompt()` from style_json |
+| — | `analytics_node` | ✅ Done | Dedicated analytics synthesizer; temp=0.0 |
 | — | `human_approval_node` | ✅ Done | `interrupt()` HITL, saves on approve/edit |
 | — | `sql_fetch_node` | ✅ Done | Write-only: `save_draft_to_vault()` |
-| — | `router.py` | ✅ Done | `thread_id`, trimmed initial state, `/resume` endpoint |
+| — | `router.py` | ✅ Done | `thread_id`, trimmed initial state, `/stream` SSE, `/resume` HITL endpoint |
 | — | `helper.py` | Dead | Delete when cleaning up |
+| — | `vector_search_node.py` | Dead | Logic lives in `tools.py`; delete when cleaning up |
 
 ### Other Gaps
 
@@ -386,7 +402,7 @@ Uses `llm.with_structured_output(ClassificationResult)` for reliable JSON — no
 - **Embedding on save** — `embed_and_store_version()` fires as FastAPI `BackgroundTask` after every `save_version`; HTTP 201 returns immediately; old version chunks deleted before new ones inserted
 - **Async agent nodes** — all `backend/ai/agents/*.py` functions are `async def` + `await llm.ainvoke()` for multi-tenant I/O concurrency; never use sync `llm.invoke()` inside graph nodes
 - **post_embeddings only** — `langchain_pg_embedding` + `langchain_pg_collection` dropped in migration 0007; single custom table with user_id scoping
-- **Style Memory system** — `user_style_memory` table (migration 0008); `style_analyzer.py` + `style_memory.py`; window-based trigger (short-term every 3 new committed posts, long-term every 10); `analyze_style()` uses `gemini-2.0-flash` sync at temp=0.1, max_output_tokens=512 (downgraded from `gemini-2.5-flash-lite` — cheaper, sufficient for 9-key JSON); outputs 9-key JSON; stored as JSONB in PostgreSQL (source of truth) and cached in Redis (`style:lt:{uid}` 24 h, `style:st:{uid}` 1 h); Redis is RAM-only so DB is always the durable source — Redis re-warms on any DB hit; `get_style_samples` tool reads memory first, falls back to 2 raw posts on cold start; `writer_node` prompt updated to consume compressed style JSON; trigger fires only from `PATCH /posts/{id}/status` (never from `save_version`) — counting both `published` AND `scheduled` posts since both represent committed content
+- **Style Memory system** — `user_style_memory` table (migration 0008); `agents/style_agent.py` (merged from `style_analyzer.py` + `style_retriever_node.py`) + `style_memory.py`; window-based trigger (short-term every 3 new committed posts, long-term every 10); `analyze_style()` uses `gemini-2.5-flash-lite` at temp=0.1, max_output_tokens=512; outputs 9-key JSON; stored as JSONB in PostgreSQL (source of truth) and cached in Redis (`style:lt:{uid}` 24 h, `style:st:{uid}` 1 h); Redis is RAM-only so DB is always the durable source — Redis re-warms on any DB hit; `style_retriever_node` owns style fetching (not `get_style_samples` tool); trigger fires only from `PATCH /posts/{id}/status` — counting both `published` AND `scheduled` posts since both represent committed content
 - **Chunk size 650 / overlap 80** — changed from 300/60 (2026-06-09); LinkedIn posts average 700–2500 chars; 650-char chunks keep one coherent idea per chunk; requires re-embedding existing posts (backfill pending)
 - **No search_vault_posts fallback** — removed (2026-06-09); fallback dumped full post content into the LLM; embeddings are always written on `save_version` so fallback is dead code; returns `[NO_CONTEXT_FOUND]` when fewer than 1 vector hit exists
 - **analytics_node offload** — analytics synthesis moved out of supervisor into a dedicated `analytics_node` (temp=0.0, tight prompt, 1024 max tokens); supervisor Pass 2 only routes for analytics, never synthesizes; reduces supervisor token spend per analytics query

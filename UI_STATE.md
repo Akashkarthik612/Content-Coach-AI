@@ -1,6 +1,6 @@
 # ContentCoach AI — UI State & Design System
 > Single source of truth for all UI decisions. Never deviate from constraints without updating this file.
-> Last updated: 2026-06-23 (feat/analyser branch: PostCard rebuilt with 3-dot ContextMenu (Rename/Pin/Delete); FolderRail built with 3-dot ContextMenu (Rename/Delete); useVault expanded with removePost/updatePost/removeFolder/updateFolder; status chip now persisted to DB on Publish; status workflow updated)
+> Last updated: 2026-06-24 (feat/analyser branch: /chat route added → ChatPage.jsx — full Claude-style agent chat with SSE streaming, HITL approve/modify/decline, chat history rail; DashboardPage "Quick Actions" and "Draft with AI" buttons now navigate to /chat instead of opening inline AIPanel)
 
 ---
 
@@ -156,13 +156,15 @@ All respect `@media (prefers-reduced-motion: reduce)` — `animation:none; trans
 | `/dashboard` | `pages/DashboardPage.jsx` | RequireAuth | ✅ Redesigned |
 | `/analytics` | `pages/AnalyticsPage.jsx` | RequireAuth | ✅ Stub built |
 | `/vault`, `/my-work` | `pages/MyWorkPage.jsx` | RequireAuth | ✅ Rebuilt 2026-06-16 |
+| `/chat` | `pages/ChatPage.jsx` | RequireAuth | ✅ Built — primary AI interaction surface |
 | `/app` | — | — | ❌ Removed — legacy MainApp stack deleted, not rebuilt |
 
 **Post-login redirect:** login + register → `/dashboard`
 
 **App.jsx wiring:**
-- `<ReviewQueueProvider>` wraps the entire `<Routes>` tree (not just `/dashboard`) — so a future My Work page sharing the same provider instance can push into the same queue `/dashboard` reads.
-- `/analytics` wrapped in `<RequireAuth>` only
+- `<ReviewQueueProvider>` wraps the entire `<Routes>` tree — so any page can push into the shared review queue `/dashboard` reads.
+- `/analytics`, `/my-work`, `/vault`, `/chat` all wrapped in `<RequireAuth>`
+- `/vault` is an alias for `/my-work` (both render `MyWorkPage`)
 
 **Deleted 2026-06-16 (dead code, confirmed unreferenced anywhere else before removal):**
 `pages/MyWorkPage.jsx` · `components/Editor/` · `components/PostList/` · `components/Sidebar/` · `components/ui/button.jsx` · `lib/utils.js` · `AppContext.js` · `hooks/useFolders.js` · `hooks/usePosts.js` · `hooks/usePost.js` · `hooks/useTopics.js`. `components/shared/Button.jsx` / `Input.jsx` / `Badge.jsx` are now also unreferenced (only consumers were the deleted pages) but were left in place — not yet deleted.
@@ -329,12 +331,10 @@ Shared between `DashboardPage.jsx` and `MyWorkPage.jsx` so navigation is consist
 - Status pills row: single "4 Agents Active" pill with pulsing green dot — **no** "Tasks Running" pill
 - Top-right: bell icon (red dot) + AI Assistance toggle button + avatar
 
-### AI Assistance toggle
-- Button label: "Quick Actions" (closed) / "AI Assistance" (open)
-- Gradient background when open: `linear-gradient(135deg,#3B82F6,#8B5CF6)`
-- Opens `AIPanel` — slide-in from right (380px wide), `transform: translateX(0/100%)`, `.28s cubic-bezier(.16,1,.3,1)`
-- `AIPanel` accepts `initialInput` prop — pre-fills text field when panel opens with a seeded prompt
-- Wired to `queryAI()` / `resumeAI()` in `api/ai.js`; HITL approve/revise buttons shown on draft status
+### Quick Actions button
+- Button label: "Quick Actions" — navigates to `/chat` (no longer opens an inline AIPanel)
+- The "Draft with AI →" button on the Writer agent card also navigates to `/chat`
+- `AIPanel` and `CalendarPanel` still exist as side-panel components — `CalendarPanel` is still used; `AIPanel` is now unused since both entry points navigate to ChatPage instead
 
 ### Your agents (4 cards)
 | Card | Colour | Data source |
@@ -344,7 +344,7 @@ Shared between `DashboardPage.jsx` and `MyWorkPage.jsx` so navigation is consist
 | SEO Agent | Violet `#8B5CF6` | Static (score 92/100) |
 | Analytics Agent | Sky `#0EA5E9` | `useAnalytics()` real data |
 
-Writer card has **"Draft with AI →"** button → sets `aiInitialInput` to `"Write me a LinkedIn post in my style about"` + opens AIPanel.
+Writer card has **"Draft with AI →"** button → `navigate('/chat')` (opens ChatPage as primary AI surface).
 
 ### Content pipeline (5 stages)
 Stages: Ideas → Research (Pro-gated) → Drafting → Review (from `ReviewQueueContext`) → Published (Pro-gated)
@@ -377,6 +377,85 @@ Ideas from `useIdeas()` hook. Each idea has "Draft this →" button.
 - "Overview / Needs review" tab group section (removed entirely)
 - `OverviewTab` and `ReviewTab` components (deleted)
 - `overflowX: 'auto'` on pipeline (pipeline now fluid)
+
+---
+
+## ChatPage.jsx (`/chat`) — primary AI interaction surface
+
+Full-screen agent chat built in the warm palette (`#FAF6EF` canvas). The main entry point for all AI work — replaces the old inline `AIPanel` on Dashboard.
+
+### Design tokens (warm palette — distinct from Dashboard's cool blue)
+```js
+CANVAS='#FAF6EF'  WARM_WHITE='#FFFEFB'  WARM_INPUT='#F6F1E8'  INK='#2A241D'
+BODY='#3A332A'    MUTED='#8E8472'       FAINT='#A99E8C'
+BLUE='#2563EB'    INDIGO='#6366F1'      GREEN='#16A34A'        RED='#B42318'  AMBER='#B45309'
+FONT="'Hanken Grotesk'..."  SERIF="'Newsreader'..."  MONO="'JetBrains Mono'..."
+```
+
+### Layout
+```
+┌────────────┬────────────────┬──────────────────────────────────────┐
+│ AppSidebar │ ChatHistoryRail│ Chat window                          │
+│ (shared)   │ 286px          │  ChatHeader (sticky, blur)           │
+│ collapsed  │ warm white     │  Message stream (scrollable)         │
+│ by default │ search + list  │  Composer (quick chips + textarea)   │
+└────────────┴────────────────┴──────────────────────────────────────┘
+```
+
+### Sub-components (all inline, not exported)
+| Component | Responsibility |
+|---|---|
+| `ChatHistoryRail` | 286px aside; brand logo, New Chat button, search, grouped chat list, account footer |
+| `ChatHeader` | Sticky blurred header; chat title, agent avatar stack, "3 agents" label, Share button |
+| `EmptyState` | Centered empty-chat prompt with 4 quick-action chips |
+| `Composer` | 4 quick chips + auto-sizing textarea + send button; Supervisor badge inline in input row |
+| `UserMessage` | Right-aligned blue bubble; optional "Modification" amber pill for refine messages |
+| `AIMessage` | Left-aligned card with agent icon tile, routing label (Supervisor → Agent Name), streaming cursor, action row (Approve/Modify/Decline/Copy), modify box with preset chips |
+| `AgentIcon` | SVG icon coloured per agent |
+| `ThinkingDots` | 3-dot animated pulse during `routing` phase |
+
+### Agent routing (client-side, cosmetic)
+```js
+const AGENTS = { Writer, Research, SEO, Editor }
+// Routes by regex on the user's text — purely for UI labelling
+// Actual routing is done server-side by supervisor_node
+```
+
+### Message lifecycle
+Each exchange creates two messages: a `user` message and an `ai` message. The AI message goes through phases:
+- `routing` — ThinkingDots shown, routing label displayed
+- `streaming` — text accumulates token by token, blinking cursor shown
+- `done` — action row visible (Approve / Modify / Decline / Copy)
+
+### Real API calls (SSE streaming)
+```js
+streamQuery(userText, onToken, onDone, onError)  // SSE — primary path
+resumeAI(thread_id, action, content)             // HITL resume
+```
+On SSE error → falls back to `simulateStream()` (character-by-character mock from `MOCK_RESPONSES`).
+
+`onDone` receives `{answer?, draft?, thread_id?, status?}`. If `status === 'awaiting_approval'`, HITL action row is shown.
+
+### HITL actions
+| Action | What happens |
+|---|---|
+| **Approve** | `resumeAI(thread_id, 'approved')` → green "Approved · added to draft" pill |
+| **Modify** | Opens modify box; user types note + sends → `resumeAI(thread_id, 'edited', note)` + new exchange |
+| **Decline** | `resumeAI(thread_id, 'rejected')` → red "Declined" pill + Regenerate button |
+| **Regenerate** | Re-runs mock stream (no new API call) |
+
+### Chat history (current state)
+`MOCK_CHATS = []` — history rail starts empty, conversations are not persisted to DB. New Chat / Select / Delete work only in local React state. **Pending:** backend chat persistence table + API.
+
+### What's real vs mock
+| Feature | Status |
+|---|---|
+| SSE streaming to backend | ✅ Real — `streamQuery()` hits `/api/ai/stream` |
+| HITL approve/modify/decline | ✅ Real — `resumeAI()` hits `/api/ai/resume` |
+| Agent routing labels (Writer/Research/SEO/Editor) | ⚠️ Mock — client-side regex, cosmetic only |
+| Chat history rail | ⚠️ Mock — local state only, not persisted |
+| Share button | ⚠️ No-op |
+| Streaming fallback | ⚠️ Mock character simulation on SSE error |
 
 ---
 
@@ -569,11 +648,16 @@ Floating panel wired to the AI backend via `api/ai.js`. **Not currently mounted 
 Separate Axios instance from `vault.js`. Same `X-User-Id` interceptor pattern.
 
 ```js
-queryAI(prompt)                          → Promise<{status, answer?, draft?, thread_id?}>
-resumeAI(thread_id, action, content='') → Promise<{answer}>
+queryAI(prompt)                              → Promise<{status, answer?, draft?, thread_id?}>
+resumeAI(thread_id, action, content='')     → Promise<{answer}>
+streamQuery(prompt, onToken, onDone, onErr)  → abortFn   // SSE — primary path used by ChatPage
 ```
 
-**Do NOT add `.data` at call site** — both functions already unwrap with `.then(r => r.data)`.
+`streamQuery` opens an SSE connection to `GET /api/ai/stream?prompt=...`, calls `onToken(chunk)` for each streamed token, `onDone(data)` when the `done` event fires, and `onError(err)` on failure. Returns an abort function.
+
+**Do NOT add `.data` at call site for `queryAI`/`resumeAI`** — both already unwrap with `.then(r => r.data)`.
+
+**ChatPage uses `streamQuery` as primary path; falls back to simulated mock stream on error.**
 
 ---
 

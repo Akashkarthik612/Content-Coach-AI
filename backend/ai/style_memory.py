@@ -29,7 +29,7 @@ from backend.core.cache import (
     _TOOL_TTL,
 )
 from backend.core.database import SessionLocal
-from backend.ai.style_analyzer import analyze_style
+from backend.ai.agents.style_agent import analyze_style
 
 logger = logging.getLogger(__name__)
 
