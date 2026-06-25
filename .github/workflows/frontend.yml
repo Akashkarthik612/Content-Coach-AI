@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feat/analyser
+    paths: 
+      - 'frontend/**'
+      - '.github/workflows/frontend.yml'
    
   workflow_dispatch:
 
@@ -34,6 +37,11 @@ jobs:
 
       - name: Build Frontend
         run: npm run build
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       - name: Trivy Filesystem Scan
         uses: aquasecurity/trivy-action@v0.36.0
