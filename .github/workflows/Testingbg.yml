@@ -14,7 +14,7 @@ on:
       - 'requirements-test.txt'
       - 'pytest.ini'
       - 'alembic.ini'
-      - '.github/workflows/backend-tests.yml'
+      - '.github/workflows/Testingbg.yml'
   pull_request:
     branches:
       - main
