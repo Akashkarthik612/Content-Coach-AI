@@ -104,7 +104,7 @@ jobs:
         with:
           name: coverage-report
       - name: SonarCloud Scan
-        uses: SonarSource/sonarqube-scan-action@v5
+        uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
@@ -136,7 +136,7 @@ jobs:
             -f backend/Dockerfile \
             -t content-coach-backend .
       - name: Run Trivy Scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           image-ref: content-coach-backend
           format: table
