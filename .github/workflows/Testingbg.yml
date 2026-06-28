@@ -142,8 +142,9 @@ jobs:
         with:
           image-ref: content-coach-backend
           format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
           exit-code: 1
-          severity: CRITICAL
 
 
       - name: Configure AWS Credentials
