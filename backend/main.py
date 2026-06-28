@@ -17,6 +17,7 @@ app.add_middleware(
         "http://localhost:5173",   # Vite dev server
         "http://localhost",        # Docker nginx (port 80)
         "http://localhost:80",
+        "https://YOUR-CLOUDFRONT-ID.cloudfront.net",   # deployed frontend
     ],
     allow_methods=["*"],
     allow_headers=["*"],
