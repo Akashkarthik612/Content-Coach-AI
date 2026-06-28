@@ -1,15 +1,23 @@
 FROM python:3.12-slim
 
+# Python best practices
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
-# Install deps first (layer cache — only rebuilds when requirements.txt changes)
+# Update OS packages
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source
+# Copy application
 COPY . .
 
 EXPOSE 8000
 
-# Run migrations then start the server
 CMD ["sh", "-c", "alembic upgrade head && uvicorn backend.main:app --host 0.0.0.0 --port 8000"]
