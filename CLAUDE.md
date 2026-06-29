@@ -1,5 +1,6 @@
 # Content Coach — Project State
 > Living reference for Claude. Update when architecture, decisions, or status change.
+> **UI/Frontend state:** See [claude_ui.md](claude_ui.md) for component map, design tokens, and UI conventions.
 > Last updated: 2026-06-24 (feat/analyser branch: style_analyzer.py + style_retriever_node.py merged into agents/style_agent.py — both are LLM nodes so they now live together in the agents folder per SOLID/SRP; circular import broken via local import inside style_retriever_node(); LLM for style analysis is gemini-2.5-flash-lite — NOT gemini-2.0-flash; design patterns catalogued)
 
 ---

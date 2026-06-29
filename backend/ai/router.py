@@ -122,6 +122,7 @@ async def stream_query(body: QueryRequest, user: User = Depends(get_current_user
                 yield f"data: {json.dumps({'type': 'done', 'status': 'complete'})}\n\n"
 
         except Exception as exc:
+            logger.error("stream_query: unhandled exception in graph — %s: %s", type(exc).__name__, exc, exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
 
     return StreamingResponse(

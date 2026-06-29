@@ -36,7 +36,7 @@ export function ContextMenu({ x, y, items, onClose, variant }) {
         <button
           key={i}
           className={`${styles.item} ${variant === 'dashboard' ? styles.itemDashboard : ''} ${item.danger ? styles.danger : ''}`}
-          onClick={() => { item.onClick(); onClose(); }}
+          onClick={(e) => { e.stopPropagation(); item.onClick(); onClose(); }}
         >
           {item.label}
         </button>

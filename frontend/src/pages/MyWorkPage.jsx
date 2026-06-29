@@ -6,6 +6,7 @@ import {
   Folder, PanelLeftClose, PanelLeftOpen, ArrowLeft, ArrowUpRight, Upload,
   Clock, Hash, Search, PenLine, Sparkles, Send, Check, Share2,
   Heading1, Heading2, Heading3, Bold, Italic, Quote, Link2, X, Settings,
+  BarChart2,
 } from 'lucide-react'
 import {
   renamePost, deletePost, pinPost,
@@ -46,8 +47,24 @@ const PLATFORMS = {
   reddit:   { label: 'Reddit',   bg: '#FF4500' },
 }
 
+// §A2 — platform-aware metric field definitions (extensible: add an entry, no layout changes needed)
+const PLATFORM_METRICS = {
+  linkedin:   ['Impressions', 'Likes', 'Comments'],
+  x:          ['Likes', 'Comments'],
+  reddit:     ['Upvotes', 'Comments'],
+  blog:       ['Views', 'Likes', 'Comments'],
+  newsletter: ['Opens', 'Clicks'],
+}
+const DEFAULT_METRICS_FIELDS = ['Likes', 'Comments']
+
+const PLATFORM_DISPLAY = {
+  ...PLATFORMS,
+  blog:       { label: 'Blog',       bg: '#059669' },
+  newsletter: { label: 'Newsletter', bg: '#7C3AED' },
+}
+
 const STATUS_STYLE = {
-  draft:     { label: 'Draft',     bg: '#EEF2FF', color: BLUE,    dot: BLUE },
+  draft:     { label: 'Draft',     bg: '#EEF2F7', color: '#6B7280', dot: '#9CA3AF' },
   in_review: { label: 'In review', bg: '#FEF3C7', color: AMBER_D, dot: AMBER },
   scheduled: { label: 'Scheduled', bg: '#DBEAFE', color: BLUE,    dot: BLUE },
   published: { label: 'Published', bg: '#DCFCE7', color: GREEN_D, dot: GREEN_D },
@@ -814,6 +831,177 @@ function StyleAgentModal({ open, onClose }) {
   )
 }
 
+// ── §C — MetricsModal (landscape, blurred backdrop, lifted above any transformed parent) ──
+function MetricsModal({ open, post, platform, existingMetrics, onSave, onClose }) {
+  const reduceMotion  = useReducedMotion()
+  const pl            = PLATFORM_DISPLAY[platform] || PLATFORM_DISPLAY.linkedin
+  const fields        = PLATFORM_METRICS[platform] || DEFAULT_METRICS_FIELDS
+  const [draft, setDraft] = useState({})
+  const modalRef      = useRef(null)
+  const firstInputRef = useRef(null)
+
+  // Reset fields and focus first input on open
+  useEffect(() => {
+    if (!open) return
+    const init = {}
+    fields.forEach(f => { init[f] = existingMetrics?.[f] ?? '' })
+    setDraft(init)
+    setTimeout(() => firstInputRef.current?.focus(), 40)
+  }, [open, post?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Focus trap + Esc to close
+  useEffect(() => {
+    if (!open) return
+    const el = modalRef.current
+    if (!el) return
+    function handleKey(e) {
+      if (e.key === 'Escape') { onClose(); return }
+      if (e.key === 'Tab') {
+        const focusable = el.querySelectorAll('button:not([disabled]), input')
+        const first = focusable[0], last = focusable[focusable.length - 1]
+        if (e.shiftKey) { if (document.activeElement === first) { e.preventDefault(); last?.focus() } }
+        else            { if (document.activeElement === last)  { e.preventDefault(); first?.focus() } }
+      }
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [open, onClose])
+
+  function handleSave() {
+    const values = {}
+    fields.forEach(f => { values[f] = Number(String(draft[f] ?? '').replace(/,/g, '')) || 0 })
+    onSave(post.id, values)
+    onClose()
+  }
+
+  return (
+    <AnimatePresence>
+      {open && post && (
+        // Scrim — covers full viewport, click closes, backdrop-filter blur
+        <motion.div
+          key="metrics-scrim"
+          onClick={onClose}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 60,
+            background: 'rgba(17,24,39,.35)',
+            backdropFilter: 'blur(6px)',
+            WebkitBackdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+          }}
+        >
+          {/* Modal card — landscape (700px wide) with spring entry */}
+          <motion.div
+            key="metrics-card"
+            ref={modalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mm-title"
+            onClick={e => e.stopPropagation()}
+            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 24, scale: 0.94 }}
+            animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
+            exit={reduceMotion  ? { opacity: 0 } : { opacity: 0, y: 24, scale: 0.94 }}
+            transition={reduceMotion
+              ? { duration: 0.18 }
+              : { type: 'spring', damping: 26, stiffness: 320, mass: 0.8 }
+            }
+            style={{
+              maxWidth: 700, width: '100%', background: WHITE, borderRadius: 20,
+              padding: '24px 28px', boxShadow: '0 40px 90px -30px rgba(17,24,39,.6)',
+              fontFamily: FONT,
+            }}
+          >
+            {/* ── Header (full-width row) ── */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 11, background: `${pl.bg}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <span style={{ color: pl.bg, fontWeight: 700, fontSize: 15, fontFamily: FONT }}>{pl.label[0]}</span>
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '.1em', color: '#9CA3AF', margin: '0 0 3px', textTransform: 'uppercase' }}>{pl.label} · METRICS</p>
+                  <p id="mm-title" style={{ fontFamily: SERIF, fontWeight: 600, fontSize: 20, color: INK, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{post.title}</p>
+                </div>
+              </div>
+              <motion.button
+                onClick={onClose}
+                aria-label="Close"
+                whileHover={{ scale: 1.1, background: '#EEF2F7' }}
+                whileTap={{ scale: 0.9 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+                style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid rgba(17,24,39,.1)', background: '#F8FAFC', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: MUTED, marginLeft: 14 }}>
+                <X size={15} />
+              </motion.button>
+            </div>
+
+            {/* ── Body (2-column landscape) ── */}
+            <div style={{ display: 'flex', gap: 22, alignItems: 'flex-start' }}>
+
+              {/* Left — streak nudge */}
+              <div style={{ width: 200, flexShrink: 0, display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', borderRadius: 12, background: '#FFFBEB', border: '1px solid #FDE68A' }}>
+                <span style={{ fontSize: 20, flexShrink: 0, lineHeight: 1 }}>🔥</span>
+                <span style={{ fontSize: 12.5, color: '#92400E', lineHeight: 1.55, fontWeight: 500 }}>
+                  If you don't track, you don't care...
+                  {/* TODO: increment/keep streak on first successful log of the day; surface real count in the nudge */}
+                </span>
+              </div>
+
+              {/* Right — fields + actions */}
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {/* Metric fields — responsive grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(116px,1fr))', gap: 12 }}>
+                  {fields.map((field, i) => (
+                    <label key={field} style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      <span style={{ fontFamily: MONO, fontSize: 9.5, textTransform: 'uppercase', color: '#9CA3AF', letterSpacing: '.06em' }}>{field}</span>
+                      <input
+                        ref={i === 0 ? firstInputRef : undefined}
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={draft[field] ?? ''}
+                        onChange={e => setDraft(prev => ({ ...prev, [field]: e.target.value }))}
+                        aria-label={field}
+                        style={{
+                          height: 46, border: '1px solid rgba(17,24,39,.14)', borderRadius: 11,
+                          fontSize: 16, fontWeight: 600, fontFamily: MONO,
+                          padding: '0 12px', boxSizing: 'border-box', outline: 'none', color: INK, background: WHITE,
+                        }}
+                        onFocus={e => { e.currentTarget.style.borderColor = BLUE; e.currentTarget.style.boxShadow = '0 0 0 4px rgba(37,99,235,.1)' }}
+                        onBlur={e => { e.currentTarget.style.borderColor = 'rgba(17,24,39,.14)'; e.currentTarget.style.boxShadow = 'none' }}
+                      />
+                    </label>
+                  ))}
+                </div>
+
+                {/* Actions */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                  <motion.button
+                    onClick={onClose}
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.96 }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 22 }}
+                    style={{ padding: '9px 18px', borderRadius: 10, border: '1px solid rgba(17,24,39,.12)', background: WHITE, fontSize: 13, fontWeight: 600, color: MUTED, cursor: 'pointer', fontFamily: FONT }}>
+                    Cancel
+                  </motion.button>
+                  <motion.button
+                    onClick={handleSave}
+                    whileHover={{ scale: 1.03, boxShadow: '0 16px 32px -12px rgba(37,99,235,.7)' }}
+                    whileTap={{ scale: 0.96 }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 22 }}
+                    style={{ padding: '9px 22px', borderRadius: 10, border: 'none', background: BLUE, color: WHITE, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: FONT, boxShadow: '0 12px 26px -12px rgba(37,99,235,.6)' }}>
+                    Save metrics
+                  </motion.button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
 // ── Doc Editor (Column 3 canvas when a post is active) ─────────────────────────
 function DocEditor({ post, panelsCollapsed, onTogglePanels, onClose, onTitleChange, onPinPost, onDeletePost, onStatusChange, plan = 'pro' }) {
   const [title,    setTitle]    = useState(post.title)
@@ -957,7 +1145,7 @@ function DocEditor({ post, panelsCollapsed, onTogglePanels, onClose, onTitleChan
       await publishPost({ postId: post.id, platforms: schedulePlatforms, scheduledAt: scheduledAtValue })
       setStatus(newStatus)
       // Notify parent so PostCard + activePost both reflect the new status without reload
-      onStatusChange?.(post.id, newStatus, scheduledAtValue)
+      onStatusChange?.(post.id, newStatus, scheduledAtValue, targetPlatform)
       setScheduleOpen(false)
     } finally {
       setConfirming(false)
@@ -1145,6 +1333,51 @@ function DocEditor({ post, panelsCollapsed, onTogglePanels, onClose, onTitleChan
   )
 }
 
+// ── §A3 — in-memory metrics store (single write on Save; reads are local) ────
+function useMetrics() {
+  const [metricsStore, setMetricsStore] = useState({})
+
+  function saveMetrics(postId, values) {
+    const record = { ...values, loggedAt: new Date().toISOString() }
+    setMetricsStore(prev => ({ ...prev, [postId]: record }))
+    // TODO: POST metrics (single write, includes loggedAt timestamp so the Analytics agent can build growth curves over time)
+    return record
+  }
+
+  function getMetrics(postId) {
+    // TODO: hydrate from backend
+    return metricsStore[postId]
+  }
+
+  return { saveMetrics, getMetrics }
+}
+
+// ── §B2 — MetricsBar (published-only card affordance) ────────────────────────
+function MetricsBar({ hasMetrics, onClick }) {
+  return (
+    <motion.button
+      onClick={e => { e.preventDefault(); e.stopPropagation(); onClick() }}
+      whileHover={{ scale: 1.015, filter: 'brightness(.97)' }}
+      whileTap={{ scale: 0.97 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '9px 12px', borderRadius: 11, cursor: 'pointer', gap: 8,
+        background: hasMetrics ? '#EAF0FF' : '#FFFBEB',
+        border: hasMetrics ? '1px solid rgba(37,99,235,.22)' : '1px solid #FDE68A',
+        color: hasMetrics ? '#1D4ED8' : '#92400E',
+        width: '100%', fontFamily: FONT, transformOrigin: 'center',
+      }}
+    >
+      <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600 }}>
+        <BarChart2 size={13} />
+        {hasMetrics ? 'Metrics updated · Edit' : 'Add metrics'}
+      </span>
+      <ChevronRight size={13} />
+    </motion.button>
+  )
+}
+
 // ── Content Vault — relative-time helper ──────────────────────────────────────
 function relativeTimeAgo(dateStr) {
   const diffMs = Date.now() - new Date(dateStr).getTime()
@@ -1317,12 +1550,13 @@ function VaultEmptyState({ searching }) {
 }
 
 // ── Content Vault — post card ─────────────────────────────────────────────────
-function PostCard({ post, index, onOpen, onDelete, onRename, onPin }) {
-  const [menuPos, setMenuPos] = useState(null)
-  const [renaming, setRenaming] = useState(false)
+function PostCard({ post, index, onOpen, onDelete, onRename, onPin, existingMetrics, onOpenMetrics }) {
+  const [menuPos, setMenuPos]     = useState(null)
+  const [renaming, setRenaming]   = useState(false)
   const [renameVal, setRenameVal] = useState(post.title)
   const renameRef = useRef(null)
   const st = STATUS_STYLE[post.status] || STATUS_STYLE.draft
+  const isPublished = post.status === 'published'
 
   function handleMenuBtn(e) {
     e.stopPropagation()
@@ -1349,9 +1583,12 @@ function PostCard({ post, index, onOpen, onDelete, onRename, onPin }) {
       onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = '0 16px 32px -16px rgba(17,24,39,.3)'; e.currentTarget.style.borderColor = 'rgba(37,99,235,.35)' }}
       onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 8px 22px -18px rgba(17,24,39,.4)'; e.currentTarget.style.borderColor = BDR }}>
 
-      {/* Top row: status pill + version + 3-dot menu */}
+      {/* Top row: status pill (§B1) + version + 3-dot menu */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ height: 26, padding: '0 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 600, background: st.bg, color: st.color, display: 'inline-flex', alignItems: 'center' }}>{st.label}</span>
+        <span style={{ height: 24, padding: '0 10px', borderRadius: 999, fontSize: 11, fontWeight: 600, background: st.bg, color: st.color, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: st.dot, flexShrink: 0 }} />
+          {st.label}
+        </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: MONO, fontSize: 11, color: FAINT }}>
             <Clock size={12} /> v{post.current_version}
@@ -1395,6 +1632,11 @@ function PostCard({ post, index, onOpen, onDelete, onRename, onPin }) {
         <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 12, fontWeight: 600, color: BLUE }}>Open <ArrowUpRight size={13} /></span>
       </div>
 
+      {/* §B2 — MetricsBar (published posts only; stopPropagation prevents card open) */}
+      {isPublished && (
+        <MetricsBar hasMetrics={!!existingMetrics} onClick={() => onOpenMetrics(post)} />
+      )}
+
       {menuPos && (
         <ContextMenu
           x={menuPos.x} y={menuPos.y}
@@ -1412,7 +1654,9 @@ function PostCard({ post, index, onOpen, onDelete, onRename, onPin }) {
 }
 
 // ── Content Vault — main posts panel ──────────────────────────────────────────
-function VaultMain({ folders, postsByFolder, selectedId, searchQuery, onOpen, onCreatePost, creatingPost, onDelete, onRename, onPin }) {
+function VaultMain({ folders, postsByFolder, selectedId, searchQuery, onOpen, onCreatePost, creatingPost, onDelete, onRename, onPin, getMetrics, onSaveMetrics }) {
+  const [metricsPost, setMetricsPost] = useState(null)
+
   const searching = searchQuery.trim().length > 0
   const selectedFolder = folders.find(f => f.id === selectedId)
 
@@ -1453,9 +1697,26 @@ function VaultMain({ folders, postsByFolder, selectedId, searchQuery, onOpen, on
         <VaultEmptyState searching={searching} />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(268px,1fr))', gap: 14 }}>
-          {posts.map((post, i) => <PostCard key={post.id} post={post} index={i} onOpen={onOpen} onDelete={onDelete} onRename={onRename} onPin={onPin} />)}
+          {posts.map((post, i) => (
+            <PostCard
+              key={post.id} post={post} index={i}
+              onOpen={onOpen} onDelete={onDelete} onRename={onRename} onPin={onPin}
+              existingMetrics={getMetrics(post.id)}
+              onOpenMetrics={setMetricsPost}
+            />
+          ))}
         </div>
       )}
+
+      {/* §C — single MetricsModal lifted above PostCard to avoid CSS transform stacking-context bug */}
+      <MetricsModal
+        open={!!metricsPost}
+        post={metricsPost}
+        platform={metricsPost?.platform || 'linkedin'}
+        existingMetrics={metricsPost ? getMetrics(metricsPost.id) : undefined}
+        onSave={onSaveMetrics}
+        onClose={() => setMetricsPost(null)}
+      />
     </div>
   )
 }
@@ -1505,6 +1766,9 @@ export default function MyWorkPage() {
 
   // ── Vault data (real backend) ──────────────────────────────────────────────
   const { folders, postsByFolder, loading: vaultLoading, addFolder, addPost, removePost, updatePost, removeFolder, updateFolder } = useVault()
+
+  // ── §A3 — in-memory metrics store ─────────────────────────────────────────
+  const { saveMetrics, getMetrics } = useMetrics()
   const [selectedFolderId, setSelectedFolderId] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [creatingPost, setCreatingPost] = useState(false)
@@ -1610,7 +1874,7 @@ export default function MyWorkPage() {
     try {
       await deletePost(postId)
       removePost(postId)
-      if (activePost?.id === postId) setActivePost(null)
+      setActivePost(prev => (prev?.id === postId ? null : prev))
     } catch (err) { console.error('Delete post failed:', err) }
   }
 
@@ -1629,11 +1893,11 @@ export default function MyWorkPage() {
     } catch (err) { console.error('Pin post failed:', err) }
   }
 
-  function handlePostStatusChange(postId, newStatus, scheduledAt) {
+  function handlePostStatusChange(postId, newStatus, scheduledAt, platform) {
     // Update the shared vault state so PostCard reflects the change immediately
-    updatePost(postId, { status: newStatus, scheduled_at: scheduledAt ?? null })
-    // Also update activePost so re-opening the editor seeds the correct status
-    setActivePost(prev => prev?.id === postId ? { ...prev, status: newStatus } : prev)
+    updatePost(postId, { status: newStatus, scheduled_at: scheduledAt ?? null, platform: platform ?? 'linkedin' })
+    // Also update activePost so re-opening the editor seeds the correct status + platform
+    setActivePost(prev => prev?.id === postId ? { ...prev, status: newStatus, platform: platform ?? 'linkedin' } : prev)
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -1681,6 +1945,8 @@ export default function MyWorkPage() {
                 onDelete={handleDeletePost}
                 onRename={handleRenamePost}
                 onPin={handlePinPost}
+                getMetrics={getMetrics}
+                onSaveMetrics={saveMetrics}
               />
             </div>
           </>

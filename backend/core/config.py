@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     APP_NAME: str = "LinkedIn Coach"
     ENV: str = "development"
 
+    # LinkedIn OAuth
+    LINKEDIN_CLIENT_ID: str = ""
+    LINKEDIN_CLIENT_SECRET: str = ""
+    LINKEDIN_REDIRECT_URI: str = "http://localhost:8000/api/linkedin/auth/callback"
+    FRONTEND_URL: str = "http://localhost:5173"
+
 
 @lru_cache
 def get_settings() -> Settings:

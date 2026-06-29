@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # ── LLM instance ──────────────────────────────────────────────────────────────
 
 _llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash-lite",
+    model="gemini-2.0-flash-lite",
     temperature=0.1,
     max_output_tokens=512,
     google_api_key=settings.LANGCHAIN_API_KEY_GEMINI,

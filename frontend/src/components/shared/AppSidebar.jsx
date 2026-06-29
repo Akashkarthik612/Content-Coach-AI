@@ -21,7 +21,7 @@ export const NAV_ITEMS = [
     icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" width="17" height="17"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg> },
   { key: 'content',     label: 'Start Writing',  path: '/my-work?new=1',
     icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" width="17" height="17"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> },
-  { key: 'agents',      label: 'Agents',         path: '/dashboard',
+  { key: 'agents',      label: 'Agents',         path: '/agents',
     icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" width="17" height="17"><rect x="4" y="7" width="16" height="13" rx="2"/><path d="M8 7V5a2 2 0 014 0v2M12 7V5a2 2 0 014 0v2M9 14h.01M15 14h.01"/></svg> },
   { key: 'vault',       label: 'Content Vault',  path: '/vault',
     icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" width="17" height="17"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg> },

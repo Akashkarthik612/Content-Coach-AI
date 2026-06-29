@@ -53,14 +53,16 @@ function PlatformBadge({ p = 'linkedin', size = 13 }) {
 
 // ── Sidebar nav ───────────────────────────────────────────────────────────────
 // ── Agent card ─────────────────────────────────────────────────────────────────
-function AgentCard({ tileBg, tileColor, icon, name, task, status, statusBg, statusColor, dotColor, children, staggerClass }) {
+function AgentCard({ tileBg, tileColor, icon, name, task, status, statusBg, statusColor, dotColor, children, staggerClass, onClick }) {
   return (
     <div
       className={`cc-hover-lift cc-stagger ${staggerClass}`}
+      onClick={onClick}
       style={{
         background: WHITE, border: `1px solid ${BDR}`, borderRadius: 20, padding: 20,
         boxShadow: '0 16px 38px -28px rgba(17,24,39,.2)',
         display: 'flex', flexDirection: 'column',
+        cursor: onClick ? 'pointer' : 'default',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -330,27 +332,33 @@ export default function DashboardPage() {
 
         {/* ── Your agents (§A + §B1) ── */}
         <div style={{ marginBottom: 26 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div style={{ marginBottom: 14 }}>
             <h2 style={{ fontSize: 17, fontWeight: 600, color: INK, margin: 0 }}>Your agents</h2>
-            <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: BLUE, fontWeight: 600, fontFamily: FONT }}>View all →</button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16 }}>
             {/* Research */}
             <AgentCard tileBg="#EAF0FF" tileColor={BLUE} staggerClass="cc-stagger-1"
+              onClick={() => navigate('/agents')}
               icon={<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" width="20" height="20"><circle cx="9" cy="9" r="6"/><path d="M15 15l3 3"/></svg>}
               name="Research Agent" task="Finding AI Trends"
               status="Active" statusBg="#DCFCE7" statusColor={GREEN_D} dotColor={GREEN}>
-              <ProgressBar pct={82} gradient="linear-gradient(90deg,#3B82F6,#6366F1)" />
+              <span
+                onClick={e => { e.stopPropagation(); navigate('/chat'); }}
+                style={{ fontSize: 13.5, color: BLUE, fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted' }}
+              >
+                Want to do some research on your previous posts?
+              </span>
             </AgentCard>
             {/* Writer (§B1 dynamic draft) */}
             <AgentCard tileBg="#EEF0FF" tileColor={INDIGO} staggerClass="cc-stagger-2"
+              onClick={() => navigate('/agents')}
               icon={<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" width="20" height="20"><path d="M13.5 3.5a2.121 2.121 0 013 3L7 16l-4 1 1-4 9.5-9.5z"/></svg>}
               name="Writer Agent" task={currentDraft}
               status="Drafting" statusBg="#EEF0FF" statusColor={INDIGO} dotColor={INDIGO}>
               <ProgressBar pct={64} gradient="linear-gradient(90deg,#6366F1,#8B5CF6)" label="Progress" />
               <button
                 className="cc-press"
-                onClick={() => navigate('/chat')}
+                onClick={e => { e.stopPropagation(); navigate('/chat'); }}
                 style={{ marginTop: 10, background: 'linear-gradient(90deg,#6366F1,#8B5CF6)', border: 'none', color: WHITE, borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 600, fontFamily: FONT, cursor: 'pointer', width: '100%' }}
               >
                 Draft with AI →
@@ -358,6 +366,7 @@ export default function DashboardPage() {
             </AgentCard>
             {/* SEO (§B1 performance signal) */}
             <AgentCard tileBg="#F3EEFF" tileColor={VIOLET} staggerClass="cc-stagger-3"
+              onClick={() => navigate('/agents')}
               icon={<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" width="20" height="20"><path d="M3 14l5-5 4 4 5-6"/></svg>}
               name="SEO Agent" task="Optimizing Content"
               status="Optimizing" statusBg="#F3EEFF" statusColor={VIOLET} dotColor={VIOLET}>
@@ -372,6 +381,7 @@ export default function DashboardPage() {
             </AgentCard>
             {/* Analytics (§B1 real metrics) */}
             <AgentCard tileBg="#E6F6FE" tileColor={SKY} staggerClass="cc-stagger-4"
+              onClick={() => navigate('/agents')}
               icon={<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.7" width="20" height="20"><path d="M3 15V9M7 15V6M11 15v-4M15 15V3"/></svg>}
               name="Analytics Agent" task="Analyzing Performance"
               status="Processing" statusBg="#E6F6FE" statusColor={SKY} dotColor={SKY}>
@@ -381,7 +391,7 @@ export default function DashboardPage() {
                 <>
                   <MetRow label="Impressions"   value={analytics?.impressions?.toLocaleString() ?? '—'} />
                   <MetRow label="Avg likes/post" value={analytics?.avgLikes ?? '—'} />
-                  <button onClick={() => navigate('/analytics')} style={{ background: 'none', border: 'none', padding: '6px 0 0', cursor: 'pointer', fontSize: 12, color: SKY, fontWeight: 600, fontFamily: FONT, display: 'block' }}>View detailed analytics →</button>
+                  <button onClick={e => { e.stopPropagation(); navigate('/analytics'); }} style={{ background: 'none', border: 'none', padding: '6px 0 0', cursor: 'pointer', fontSize: 12, color: SKY, fontWeight: 600, fontFamily: FONT, display: 'block' }}>View detailed analytics →</button>
                 </>
               )}
             </AgentCard>

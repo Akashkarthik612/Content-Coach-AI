@@ -554,3 +554,23 @@ google.genai.errors.ClientError: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429,
 2026-06-23 22:21:28,282 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=10 st_count=10 lt_count=7 run_st=False run_lt=False
 2026-06-23 22:21:28,284 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
 2026-06-23 22:21:34,776 INFO     backend.ai.agents.writer_node — writer_node: draft generated, char_count=1892
+2026-06-27 16:29:30,810 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 route=
+2026-06-27 16:33:57,484 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 route=
+2026-06-27 16:34:30,353 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 route=
+2026-06-27 16:50:17,183 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 route=
+2026-06-27 16:50:24,923 INFO     backend.ai.agents.supervisor — supervisor_node: dispatching write pipeline via Send
+2026-06-27 16:50:24,924 DEBUG    backend.ai.graph — supervisor_router: Send → style_retriever_node
+2026-06-27 16:50:24,929 DEBUG    backend.ai.agents.style_agent — style_retriever_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
+2026-06-27 16:50:33,132 DEBUG    backend.ai.style_memory — Style memory Redis miss, reading from DB: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
+2026-06-27 16:50:41,472 DEBUG    backend.ai.style_memory — Repopulated Redis style cache: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
+2026-06-27 16:50:41,472 DEBUG    backend.ai.agents.style_agent — style_retriever_node: returning cached style_json, stale-check fired
+2026-06-27 16:50:41,473 DEBUG    backend.ai.agents.style_agent — style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — style_json keys=['long_term', 'short_term']
+2026-06-27 16:50:41,475 DEBUG    backend.ai.agents.writer_node — writer_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
+2026-06-27 16:50:41,537 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=10 st_count=10 lt_count=7 run_st=False run_lt=False
+2026-06-27 16:50:41,537 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
+2026-06-27 16:50:48,440 INFO     backend.ai.agents.writer_node — writer_node: draft generated, char_count=1344
+2026-06-28 15:21:25,879 DEBUG    backend.ai.embeddings — embed_and_store_version: post_id=721e3455-3c56-41a9-b457-c49c144a58b1 version_id=91fcde11-9472-41d2-9ef0-3da3eaf4a0b5 content_len=55
+2026-06-28 15:21:25,927 DEBUG    backend.ai.embeddings — Chunked into 1 chunk(s): post_id=721e3455-3c56-41a9-b457-c49c144a58b1
+2026-06-28 15:21:26,407 DEBUG    backend.ai.embeddings — Generated 1 embedding vector(s): post_id=721e3455-3c56-41a9-b457-c49c144a58b1
+2026-06-28 15:21:26,414 DEBUG    backend.ai.embeddings — Deleted existing embeddings: post_id=721e3455-3c56-41a9-b457-c49c144a58b1
+2026-06-28 15:21:26,459 INFO     backend.ai.embeddings — Embedded 1 chunk(s) for post 721e3455-3c56-41a9-b457-c49c144a58b1 version 91fcde11-9472-41d2-9ef0-3da3eaf4a0b5
