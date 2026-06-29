@@ -6,7 +6,7 @@ on:
       - feat/analyser
     paths: 
       - 'frontend/**'
-      - 'Frontenddeploy.yml'
+      - '.github/workflows/Frontenddeploy.yml'
    
   workflow_dispatch:
 
