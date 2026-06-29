@@ -2,7 +2,7 @@ import os
 from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from aws_secrets import get_secret
+from backend.core.aws_secrets import get_secret
 
 
 class Settings(BaseSettings):
