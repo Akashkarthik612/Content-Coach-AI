@@ -13,7 +13,6 @@ on:
       - 'requirements.txt'
       - 'requirements-test.txt'
       - 'pytest.ini'
-      - 'alembic.ini'
       - '.github/workflows/Testingbg.yml'
   pull_request:
     branches:
