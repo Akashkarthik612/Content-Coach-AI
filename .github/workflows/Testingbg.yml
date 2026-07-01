@@ -166,15 +166,6 @@ jobs:
       - name: Deploy using SSM
         run: |
           aws ssm send-command \
-          --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+          --instance-ids "$INSTANCE_ID" \
           --document-name "AWS-RunShellScript" \
-          --parameters 'commands=[
-            "mkdir -p /home/ubuntu/content-coach",
-            "cd /home/ubuntu/content-coach",
-            "aws s3 cp s3://${{ secrets.S3_BUCKET_NAME }}/deployment/docker-compose.yml ./docker-compose.yml",
-            "aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com",
-            "docker compose pull",
-            "docker compose up -d",
-            "docker image prune -f"
-            ]
-      
+          --parameters file://commands.json
