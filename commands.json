@@ -1,0 +1,11 @@
+{
+  "commands": [
+    "mkdir -p /home/ubuntu/content-coach",
+    "cd /home/ubuntu/content-coach",
+    "aws s3 cp s3://YOUR_BUCKET/deployment/docker-compose.yml ./docker-compose.yml",
+    "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin YOUR_ACCOUNT.dkr.ecr.us-east-1.amazonaws.com",
+    "docker compose pull",
+    "docker compose up -d",
+    "docker image prune -f"
+  ]
+}
