@@ -14,16 +14,8 @@ on:
       - 'requirements-test.txt'
       - 'pytest.ini'
       - '.github/workflows/Testingbg.yml'
-  pull_request:
-    branches:
-      - main
-      - develop
-    paths:
-      - 'backend/**'
-      - 'tests/**'
-      - 'requirements.txt'
-      - 'requirements-test.txt'
-      - 'pytest.ini'
+      
+
 
 jobs:
   test:
@@ -184,4 +176,5 @@ jobs:
             "docker compose pull",
             "docker compose up -d",
             "docker image prune -f"
-      ]'
+            ]
+      
