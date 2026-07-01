@@ -163,6 +163,22 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      - name: Create SSM commands file
+        run: |
+         cat > commands.json <<EOF
+           {
+            "commands": [
+            "mkdir -p /home/ubuntu/content-coach",
+            "cd /home/ubuntu/content-coach",
+            "aws s3 cp s3://${{ secrets.S3_BUCKET }}/deployment/docker-compose.yml ./docker-compose.yml",
+            "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com",
+            "docker compose pull",
+            "docker compose up -d",
+            "docker image prune -f"
+           ]
+         }
+         EOF
+
       - name: Deploy using SSM
         run: |
           aws ssm send-command \
