@@ -1,35 +1,16 @@
-name: testing backend
+name: Backend CI/CD
+
 on:
   push:
     branches:
       - main
-      - develop
-      - 'feat/**'
-      - 'feature/**'
-      - 'fix/**'
-    paths:
-      - 'backend/**'
-      - 'tests/**'
-      - 'requirements.txt'
-      - 'requirements-test.txt'
-      - 'pytest.ini'
-      - '.github/workflows/Testingbg.yml'
-  pull_request:
-    branches:
-      - main
-      - develop
-    paths:
-      - 'backend/**'
-      - 'tests/**'
-      - 'requirements.txt'
-      - 'requirements-test.txt'
-      - 'pytest.ini'
 
 jobs:
+
   test:
     name: Backend Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -44,151 +25,101 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+
       redis:
         image: redis:7-alpine
         ports:
           - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 5
+
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_content_coach
       REDIS_URL: redis://localhost:6379/1
-      LANGCHAIN_API_KEY_GEMINI: ci-placeholder
-      OPENAI_API_KEY: ci-placeholder
+      OPENAI_API_KEY: dummy
+      LANGCHAIN_API_KEY_GEMINI: dummy
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-          cache: pip
-      - name: Install Production Dependencies
-        run: |
-          pip install -r requirements.txt
-      - name: Install Test Dependencies
-        run: |
-          pip install -r requirements-test.txt
-      - name: Run Database Migrations
-        run: |
-          python -m alembic upgrade head
-      - name: Run Backend Tests
-        run: |
-          pytest tests/ \
-            --tb=short \
-            --cov=backend \
-            --cov-report=term-missing \
-            --cov-report=xml:coverage.xml \
-            -v
-        continue-on-error: true
-      - name: Upload Coverage Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: coverage.xml
 
-  sonarqube:
-    name: SonarCloud Scan
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Download Coverage Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: coverage-report
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarqube-scan-action@v6
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN_FEAT }}
+      - run: pip install -r requirements.txt
+      - run: pip install -r requirements-test.txt
+
+      - run: alembic upgrade head
+
+      - run: pytest tests/ -v
+
 
   docker:
-    name: Docker Build
-    needs:
-      - test
-      - sonarqube
+    name: Build Docker Image
+    needs: test
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-      - name: Build Backend Docker Image
-        run: |
-          docker build \
-            -f Dockerfile \
-            -t content-coach-backend .
 
-  trivy:
-    name: Trivy Security Scan
-    needs: docker
-    runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-      - name: Build Backend Docker Image
+
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Image
         run: |
           docker build \
-            -f Dockerfile \
-            -t content-coach-backend .
-      - name: Run Trivy Scan
+            -t ${{ secrets.ECR_REPOSITORY }}:latest .
+
+      - name: Trivy Scan
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: content-coach-backend
+          image-ref: ${{ secrets.ECR_REPOSITORY }}:latest
           format: table
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-          exit-code: 0   # report only; set to 1 to block deploy on HIGH/CRITICAL CVEs
+          exit-code: 0
 
-  push:
-    name: Push to ECR
-    needs: trivy
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-      - name: Build, Tag, and Push Docker Image
+      - name: Tag Image
         run: |
-          docker build -t ${{ secrets.ECR_REPOSITORY }} .
           docker tag \
-            ${{ secrets.ECR_REPOSITORY }}:latest \
-            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
+          ${{ secrets.ECR_REPOSITORY }}:latest \
+          ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
+
+      - name: Push Image
+        run: |
           docker push \
-            ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
+          ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
+
 
   deploy:
     name: Deploy Backend
-    needs: push
+    needs: docker
     runs-on: ubuntu-latest
+
     steps:
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
+
       - name: Deploy using SSM
         run: |
+
           aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --parameters 'commands=[
-            "aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com",
-            "docker pull ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest",
-            "docker stop content-coach-backend || true",
-            "docker rm content-coach-backend || true",
-            "docker run -d --name content-coach-backend --restart unless-stopped -p 8000:8000 -e ENV=production -e AWS_SECRET_NAME=${{ secrets.AWS_SECRET_NAME }} -e AWS_REGION=${{ secrets.AWS_REGION }} ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest"
-          ]'
+            --parameters commands='[
+              "cd /home/ubuntu/content-coach",
+              "aws ecr get-login-password --region '${{ secrets.AWS_REGION }}' | docker login --username AWS --password-stdin '${{ secrets.AWS_ACCOUNT_ID }}'.dkr.ecr.'${{ secrets.AWS_REGION }}'.amazonaws.com",
+              "docker compose pull",
+              "docker compose up -d"
+            ]'
