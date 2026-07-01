@@ -1,16 +1,35 @@
-name: Backend CI/CD
-
+name: testing backend
 on:
   push:
     branches:
       - main
+      - develop
+      - 'feat/**'
+      - 'feature/**'
+      - 'fix/**'
+    paths:
+      - 'backend/**'
+      - 'tests/**'
+      - 'requirements.txt'
+      - 'requirements-test.txt'
+      - 'pytest.ini'
+      - '.github/workflows/Testigbg.yml'
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'backend/**'
+      - 'tests/**'
+      - 'requirements.txt'
+      - 'requirements-test.txt'
+      - 'pytest.ini'
 
 jobs:
-
   test:
     name: Backend Tests
     runs-on: ubuntu-latest
-
+    timeout-minutes: 15
     services:
       postgres:
         image: pgvector/pgvector:pg17
@@ -25,32 +44,69 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-
       redis:
         image: redis:7-alpine
         ports:
           - 6379:6379
-
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/test_content_coach
       REDIS_URL: redis://localhost:6379/1
-      OPENAI_API_KEY: dummy
       LANGCHAIN_API_KEY_GEMINI: dummy
-
+      OPENAI_API_KEY: dummy
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+          cache: pip
+      - name: Install Production Dependencies
+        run: |
+          pip install -r requirements.txt
+      - name: Install Test Dependencies
+        run: |
+          pip install -r requirements-test.txt
+      - name: Run Database Migrations
+        run: |
+          python -m alembic upgrade head
+      - name: Run Backend Tests
+        run: |
+          pytest tests/ \
+            --tb=short \
+            --cov=backend \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            -v
+        continue-on-error: true
+      - name: Upload Coverage Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
 
-      - run: pip install -r requirements.txt
-      - run: pip install -r requirements-test.txt
-
-      - run: alembic upgrade head
-
-      - run: pytest tests/ -v
-
+  sonarqube:
+    name: SonarCloud Scan
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Download Coverage Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN_FEAT }}
 
   docker:
     name: Build Docker Image
@@ -95,7 +151,11 @@ jobs:
         run: |
           docker push \
           ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
-
+          
+      - name: Upload docker-compose.yml to S3
+        run: |
+          aws s3 cp docker-compose.yml \
+          s3://${{ secrets.S3_BUCKET_NAME }}/deployment/docker-compose.yml
 
   deploy:
     name: Deploy Backend
@@ -113,13 +173,15 @@ jobs:
 
       - name: Deploy using SSM
         run: |
-
           aws ssm send-command \
-            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
-            --document-name "AWS-RunShellScript" \
-            --parameters commands='[
-              "cd /home/ubuntu/content-coach",
-              "aws ecr get-login-password --region '${{ secrets.AWS_REGION }}' | docker login --username AWS --password-stdin '${{ secrets.AWS_ACCOUNT_ID }}'.dkr.ecr.'${{ secrets.AWS_REGION }}'.amazonaws.com",
-              "docker compose pull",
-              "docker compose up -d"
-            ]'
+          --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+          --document-name "AWS-RunShellScript" \
+          --parameters 'commands=[
+            "mkdir -p /home/ubuntu/content-coach",
+            "cd /home/ubuntu/content-coach",
+            "aws s3 cp s3://${{ secrets.S3_BUCKET_NAME }}/deployment/docker-compose.yml ./docker-compose.yml",
+            "aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com",
+            "docker compose pull",
+            "docker compose up -d",
+            "docker image prune -f"
+      ]'
