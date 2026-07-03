@@ -185,7 +185,7 @@ supervisor_node  ── llm.bind_tools([search_vault, get_topics, get_analytics,
 
 ## 👤 Built by
 
-**Akash Balamurugan** — [Live Demo](#) *(coming soon)* · [LinkedIn](https://linkedin.com/in/akashbalamurugan)
+**Akash Balamurugan, Abinesh K, Afnan Zoheb , Agilan G** — [Live Demo](#) *(coming soon)* · [LinkedIn](https://linkedin.com/in/akashbalamurugan)
 
 ---
 
