@@ -16,6 +16,7 @@ import {
   updatePostStatus,
 } from '../api/vault'
 import { sendToReview, publishPost } from '../api/publishing'
+import { getLinkedInStatus, getLinkedInAuthUrl } from '../api/linkedin'
 import { useAIChat } from '../components/AIAssistant/useAIChat'
 import { ContextMenu } from '../components/shared/ContextMenu'
 import { useResizableRail } from '../hooks/useResizableRail'
@@ -606,9 +607,20 @@ function AICommandBar({ onInsertDraft }) {
 }
 
 // ── Schedule / Publish sheet (Pro-gated) ──────────────────────────────────────
-function SchedulePublishSheet({ open, onClose, plan, platforms, onTogglePlatform, scheduledAt, onScheduledAtChange, onConfirm, confirming }) {
+function SchedulePublishSheet({ open, onClose, plan, platforms, onTogglePlatform, scheduledAt, onScheduledAtChange, onConfirm, confirming, linkedInStatus, onConnectLinkedIn }) {
   const [mode, setMode] = useState('now') // 'now' | 'scheduled'
-  const isPro = plan === 'pro'
+  const [showConfirm, setShowConfirm] = useState(false)
+
+  // Reset confirmation state whenever the sheet closes or the user changes options
+  useEffect(() => { if (!open) setShowConfirm(false) }, [open])
+  useEffect(() => { setShowConfirm(false) }, [mode, platforms])
+
+  // LinkedIn must be connected when selected for "Publish now"
+  const linkedInSelected = platforms.includes('linkedin')
+  const linkedInConnected = linkedInStatus?.connected === true
+  const publishBlocked = linkedInSelected && !linkedInConnected && mode === 'now'
+  // Live LinkedIn publish = the action that needs a confirmation gate
+  const isLiveLinkedIn = linkedInSelected && linkedInConnected && mode === 'now'
 
   return (
     <>
@@ -648,6 +660,38 @@ function SchedulePublishSheet({ open, onClose, plan, platforms, onTogglePlatform
                 )
               })}
             </div>
+
+            {/* LinkedIn connection indicator — only shown when LinkedIn is selected */}
+            {linkedInSelected && (
+              <div style={{
+                marginTop: 10, display: 'flex', alignItems: 'center', gap: 8,
+                padding: '8px 12px', borderRadius: 8,
+                background: linkedInConnected ? '#F0FDF4' : '#FFF7ED',
+                border: `1px solid ${linkedInConnected ? '#86EFAC' : '#FED7AA'}`,
+              }}>
+                {linkedInConnected ? (
+                  <>
+                    <span style={{ color: '#16A34A', fontWeight: 700, fontSize: 13 }}>✓</span>
+                    <span style={{ fontSize: 12, color: '#15803D', flex: 1 }}>
+                      Connected as {linkedInStatus.display_name}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ fontSize: 12, color: '#C2410C', flex: 1 }}>LinkedIn not connected</span>
+                    <button
+                      onClick={onConnectLinkedIn}
+                      style={{
+                        fontSize: 11.5, fontWeight: 600, color: '#0A66C2',
+                        background: 'none', border: '1px solid #0A66C2',
+                        borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontFamily: FONT,
+                      }}>
+                      Connect
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           <div>
@@ -670,32 +714,66 @@ function SchedulePublishSheet({ open, onClose, plan, platforms, onTogglePlatform
                 style={{ width: '100%', border: `1px solid ${BDR}`, borderRadius: 8, padding: '9px 12px', fontSize: 13, fontFamily: MONO, color: INK, outline: 'none', boxSizing: 'border-box' }} />
             )}
           </div>
-
-          {!isPro && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 10, background: '#FFFBEB', border: '1px solid #FDE68A' }}>
-              <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 20, background: '#FEF3C7', color: AMBER_D, fontWeight: 700, fontFamily: MONO }}>Pro</span>
-              <span style={{ fontSize: 12, color: AMBER_D }} title="Available on Pro · integrations coming soon">
-                Available on Pro · integrations coming soon
-              </span>
-            </div>
-          )}
-          {isPro && (
-            <p style={{ fontSize: 11.5, color: FAINT, margin: 0 }} title="Available on Pro · integrations coming soon">
-              Real LinkedIn/X/Reddit publishing — integrations coming soon.
-            </p>
-          )}
         </div>
 
-        <div style={{ padding: 16, borderTop: `1px solid ${BDR}` }}>
-          <button onClick={() => onConfirm(mode)} disabled={confirming || platforms.length === 0} className="cc-press"
-            style={{
-              width: '100%', background: BLUE, color: WHITE, border: 'none', borderRadius: 10,
-              padding: '11px 0', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', fontFamily: FONT,
-              opacity: platforms.length === 0 ? 0.5 : 1,
+        {showConfirm ? (
+          <div style={{ padding: '14px 16px', borderTop: `1px solid ${BDR}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{
+              background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 10, padding: '10px 14px',
+              display: 'flex', gap: 10, alignItems: 'flex-start',
             }}>
-            {confirming ? 'Confirming…' : mode === 'now' ? 'Publish now' : 'Schedule post'}
-          </button>
-        </div>
+              <span style={{ fontSize: 16, lineHeight: 1 }}>⚠️</span>
+              <div>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#92400E', fontFamily: FONT }}>
+                  This will publish immediately to LinkedIn
+                </p>
+                <p style={{ margin: '3px 0 0', fontSize: 12, color: '#B45309', fontFamily: FONT, lineHeight: 1.5 }}>
+                  {linkedInStatus?.display_name
+                    ? `Posting as ${linkedInStatus.display_name}. This cannot be undone from here.`
+                    : 'This cannot be undone from here.'}
+                </p>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setShowConfirm(false)}
+                className="cc-press"
+                style={{
+                  flex: 1, padding: '10px 0', borderRadius: 10, fontFamily: FONT,
+                  fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                  background: WHITE, border: `1px solid ${BDR}`, color: MUTED,
+                }}>
+                Cancel
+              </button>
+              <button
+                onClick={() => { setShowConfirm(false); onConfirm(mode) }}
+                disabled={confirming}
+                className="cc-press"
+                style={{
+                  flex: 1, padding: '10px 0', borderRadius: 10, fontFamily: FONT,
+                  fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                  background: '#0A66C2', color: WHITE, border: 'none',
+                  opacity: confirming ? 0.6 : 1,
+                }}>
+                {confirming ? 'Publishing…' : 'Yes, publish now'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ padding: 16, borderTop: `1px solid ${BDR}` }}>
+            <button
+              onClick={() => isLiveLinkedIn ? setShowConfirm(true) : onConfirm(mode)}
+              disabled={confirming || platforms.length === 0 || publishBlocked}
+              className="cc-press"
+              style={{
+                width: '100%', background: BLUE, color: WHITE, border: 'none', borderRadius: 10,
+                padding: '11px 0', fontSize: 13.5, fontWeight: 600, cursor: publishBlocked ? 'not-allowed' : 'pointer', fontFamily: FONT,
+                opacity: (platforms.length === 0 || publishBlocked) ? 0.5 : 1,
+              }}>
+              {confirming ? 'Publishing…' : publishBlocked ? 'Connect LinkedIn first' : mode === 'now' ? 'Publish now' : 'Schedule post'}
+            </button>
+          </div>
+        )}
       </div>
     </>
   )
@@ -1024,12 +1102,18 @@ function DocEditor({ post, panelsCollapsed, onTogglePanels, onClose, onTitleChan
   const [confirming,     setConfirming]     = useState(false)
   const [styleModalOpen, setStyleModalOpen] = useState(false)
   const [metrics,        setMetrics]        = useState({ impressions: 0, reactions: 0, lastUpdated: null })
+  const [linkedInStatus, setLinkedInStatus] = useState(null)
 
   const titleInputRef = useRef(null)
   const textareaRef   = useRef(null)
   const { addToQueue } = useReviewQueue()
   const leftRail  = useResizableRail('cc_leftW', 240, 420, 300)
   const rightRail = useResizableRail('cc_rightW', 240, 460, 300)
+
+  // Fetch LinkedIn connection status once on editor mount
+  useEffect(() => {
+    getLinkedInStatus().then(setLinkedInStatus).catch(() => {})
+  }, [])
 
   async function loadVersions(forceIdx) {
     setLoading(true)
@@ -1132,21 +1216,45 @@ function DocEditor({ post, panelsCollapsed, onTogglePanels, onClose, onTitleChan
   function handleOpenPublishSheet() {
     setSchedulePlatforms([targetPlatform])
     setScheduleOpen(true)
+    // Refresh LinkedIn status each time the sheet opens so it reflects current state
+    getLinkedInStatus().then(setLinkedInStatus).catch(() => {})
+  }
+
+  async function handleConnectLinkedIn() {
+    try {
+      const { auth_url } = await getLinkedInAuthUrl()
+      window.location.href = auth_url  // full redirect — OAuth requires it
+    } catch (err) {
+      console.error('Failed to get LinkedIn auth URL', err)
+    }
   }
 
   async function handleConfirmPublish(mode) {
     setConfirming(true)
     try {
-      const newStatus = mode === 'scheduled' ? 'scheduled' : 'published'
-      const scheduledAtValue = mode === 'scheduled' ? scheduledAt : null
-      // Persist status to DB — triggers style_memory window check on published/scheduled
-      await updatePostStatus(post.id, newStatus, scheduledAtValue)
-      // publishing.js stub — LinkedIn/X/Reddit integration wired here later (VVIMP)
-      await publishPost({ postId: post.id, platforms: schedulePlatforms, scheduledAt: scheduledAtValue })
-      setStatus(newStatus)
-      // Notify parent so PostCard + activePost both reflect the new status without reload
-      onStatusChange?.(post.id, newStatus, scheduledAtValue, targetPlatform)
+      if (mode === 'now' && schedulePlatforms.includes('linkedin')) {
+        // Real LinkedIn publish — backend handles status update + publish log + style memory
+        const result = await publishPost({ postId: post.id, platforms: schedulePlatforms, scheduledAt: null })
+        if (result.needs_auth) {
+          // Token missing / expired / revoked — redirect to OAuth
+          window.location.href = result.auth_url
+          return
+        }
+        setStatus('published')
+        onStatusChange?.(post.id, 'published', null, 'linkedin')
+      } else {
+        // Scheduled or non-LinkedIn: update status via vault then use stub
+        const newStatus = mode === 'scheduled' ? 'scheduled' : 'published'
+        const scheduledAtValue = mode === 'scheduled' ? scheduledAt : null
+        await updatePostStatus(post.id, newStatus, scheduledAtValue)
+        await publishPost({ postId: post.id, platforms: schedulePlatforms, scheduledAt: scheduledAtValue })
+        setStatus(newStatus)
+        onStatusChange?.(post.id, newStatus, scheduledAtValue, targetPlatform)
+      }
       setScheduleOpen(false)
+    } catch (err) {
+      console.error('Publish failed', err)
+      // Keep sheet open so user can retry
     } finally {
       setConfirming(false)
     }
@@ -1326,6 +1434,8 @@ function DocEditor({ post, panelsCollapsed, onTogglePanels, onClose, onTitleChan
         onScheduledAtChange={setScheduledAt}
         onConfirm={handleConfirmPublish}
         confirming={confirming}
+        linkedInStatus={linkedInStatus}
+        onConnectLinkedIn={handleConnectLinkedIn}
       />
 
       <StyleAgentModal open={styleModalOpen} onClose={() => setStyleModalOpen(false)} />
@@ -1775,6 +1885,21 @@ export default function MyWorkPage() {
   const [newFolderOpen, setNewFolderOpen] = useState(false)
   const [creatingFolder, setCreatingFolder] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [linkedInToast, setLinkedInToast] = useState(null)  // 'connected' | 'error' | null
+
+  // Handle return from LinkedIn OAuth — LinkedIn redirects back with ?linkedin_connected=true
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    if (params.get('linkedin_connected') === 'true') {
+      setLinkedInToast('connected')
+      setTimeout(() => setLinkedInToast(null), 4000)
+      window.history.replaceState({}, '', location.pathname)
+    } else if (params.get('linkedin_error') === 'true') {
+      setLinkedInToast('error')
+      setTimeout(() => setLinkedInToast(null), 4000)
+      window.history.replaceState({}, '', location.pathname)
+    }
+  }, [location.search])
 
   // Default-select the first folder once loaded (matches spec's "default selected folder")
   useEffect(() => {
@@ -1903,6 +2028,19 @@ export default function MyWorkPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+
+      {/* ── LinkedIn OAuth return toast ───────────────────────────────────────── */}
+      {linkedInToast && (
+        <div style={{
+          position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)',
+          zIndex: 9999, padding: '10px 20px', borderRadius: 10, fontSize: 13.5, fontWeight: 600,
+          fontFamily: FONT, boxShadow: '0 8px 24px rgba(17,24,39,0.18)',
+          background: linkedInToast === 'connected' ? '#16A34A' : '#DC2626',
+          color: WHITE,
+        }}>
+          {linkedInToast === 'connected' ? '✓ LinkedIn connected successfully!' : 'LinkedIn connection failed — please try again'}
+        </div>
+      )}
 
       {/* ── COLUMN 1: Shared app sidebar (same component as Dashboard) ──────── */}
       <AppSidebar

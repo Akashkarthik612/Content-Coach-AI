@@ -64,10 +64,17 @@ def _build_system_prompt(style_json: dict, research_brief: dict, writer_task: di
     if research_brief:
         points = "\n".join(f"- {p}" for p in research_brief.get("talking_points", []))
         avoid  = research_brief.get("avoid_repeating") or ""
+        hook   = research_brief.get("suggested_hook") or ""
+        evidence = "\n".join(
+            f"- {e.get('point', '')}" + (f" (source: {e.get('source_title')})" if e.get("source_title") else "")
+            for e in research_brief.get("supporting_evidence", [])
+        )
         research_section = (
             f"\nCONTENT BRIEF (from researcher — use for WHAT to say, not HOW):\n"
             f"angle: {research_brief.get('recommended_angle', '')}\n"
             f"talking points:\n{points}\n"
+            + (f"supporting facts (weave in naturally, no formal citations):\n{evidence}\n" if evidence else "")
+            + (f"a hook you could open with (adapt to the style rules above): {hook}\n" if hook else "")
             + (f"avoid: {avoid}\n" if avoid else "")
             + f"length: {research_brief.get('suggested_length', 'medium')}\n"
         )

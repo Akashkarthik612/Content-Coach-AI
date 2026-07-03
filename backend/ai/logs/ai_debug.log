@@ -1,134 +1,41 @@
-2026-06-20 16:38:37,412 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=1 st_count=0 lt_count=0 run_st=False run_lt=False
-2026-06-20 16:38:37,414 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
-2026-06-20 16:43:20,818 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=2 st_count=0 lt_count=0 run_st=False run_lt=False
-2026-06-20 16:43:20,820 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
-2026-06-20 16:44:10,699 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=2 st_count=0 lt_count=0 run_st=False run_lt=False
-2026-06-20 16:44:10,699 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
-2026-06-20 16:44:18,565 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=2 st_count=0 lt_count=0 run_st=False run_lt=False
-2026-06-20 16:44:18,565 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
-2026-06-20 16:44:34,326 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=2 st_count=0 lt_count=0 run_st=False run_lt=False
-2026-06-20 16:44:34,326 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
-2026-06-20 16:44:51,007 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=3 st_count=0 lt_count=0 run_st=True run_lt=False
-2026-06-20 16:44:54,215 DEBUG    backend.ai.style_analyzer — style_analyzer output — style_json keys=['hook_style', 'tone', 'sentence_rhythm', 'paragraph_structure', 'emoji_usage', 'cta_style', 'vocabulary_level', 'structural_patterns', 'recurring_themes']
-2026-06-20 16:44:54,215 INFO     backend.ai.style_memory — Short-term style updated for user f0644cff-04d6-4c1e-a7fb-19a4459d0811 (3 posts)
-2026-06-20 16:44:54,216 INFO     backend.ai.style_memory — Inserting new user_style_memory row: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-20 16:45:09,292 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=4 st_count=3 lt_count=0 run_st=False run_lt=False
-2026-06-20 16:45:09,292 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
-2026-06-20 16:56:06,335 DEBUG    backend.ai.embeddings — embed_and_store_version: post_id=e3550a40-953b-431b-8796-b244e3c58d79 version_id=f664ffa4-5788-44e5-8d09-f691110613c9 content_len=1732
-2026-06-20 16:56:06,349 DEBUG    backend.ai.embeddings — Chunked into 3 chunk(s): post_id=e3550a40-953b-431b-8796-b244e3c58d79
-2026-06-20 16:56:06,938 DEBUG    backend.ai.embeddings — Generated 3 embedding vector(s): post_id=e3550a40-953b-431b-8796-b244e3c58d79
-2026-06-20 16:56:06,973 DEBUG    backend.ai.embeddings — Deleted existing embeddings: post_id=e3550a40-953b-431b-8796-b244e3c58d79
-2026-06-20 16:56:07,137 INFO     backend.ai.embeddings — Embedded 3 chunk(s) for post e3550a40-953b-431b-8796-b244e3c58d79 version f664ffa4-5788-44e5-8d09-f691110613c9
-2026-06-20 16:56:11,260 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=3 st_count=3 lt_count=0 run_st=False run_lt=False
-2026-06-20 16:56:11,262 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
-2026-06-20 16:56:42,692 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=4 st_count=3 lt_count=0 run_st=False run_lt=False
-2026-06-20 16:56:42,692 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
-2026-06-20 16:57:18,872 DEBUG    backend.ai.embeddings — embed_and_store_version: post_id=bbf8071c-b923-4aae-ab8d-ec6d61afce40 version_id=f9684a3b-8230-4abe-8502-0aad3fcfbf41 content_len=1921
-2026-06-20 16:57:18,872 DEBUG    backend.ai.embeddings — Chunked into 4 chunk(s): post_id=bbf8071c-b923-4aae-ab8d-ec6d61afce40
-2026-06-20 16:57:19,574 DEBUG    backend.ai.embeddings — Generated 4 embedding vector(s): post_id=bbf8071c-b923-4aae-ab8d-ec6d61afce40
-2026-06-20 16:57:19,590 DEBUG    backend.ai.embeddings — Deleted existing embeddings: post_id=bbf8071c-b923-4aae-ab8d-ec6d61afce40
-2026-06-20 16:57:19,633 INFO     backend.ai.embeddings — Embedded 4 chunk(s) for post bbf8071c-b923-4aae-ab8d-ec6d61afce40 version f9684a3b-8230-4abe-8502-0aad3fcfbf41
-2026-06-20 16:57:23,717 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=4 st_count=3 lt_count=0 run_st=False run_lt=False
-2026-06-20 16:57:23,717 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
-2026-06-20 16:57:36,141 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=4 st_count=3 lt_count=0 run_st=False run_lt=False
-2026-06-20 16:57:36,141 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
-2026-06-20 16:57:54,635 DEBUG    backend.ai.embeddings — embed_and_store_version: post_id=bbf8071c-b923-4aae-ab8d-ec6d61afce40 version_id=abfd02d9-9047-4207-bde5-3f2375f55bfe content_len=1921
-2026-06-20 16:57:54,635 DEBUG    backend.ai.embeddings — Chunked into 4 chunk(s): post_id=bbf8071c-b923-4aae-ab8d-ec6d61afce40
-2026-06-20 16:57:55,222 DEBUG    backend.ai.embeddings — Generated 4 embedding vector(s): post_id=bbf8071c-b923-4aae-ab8d-ec6d61afce40
-2026-06-20 16:57:55,222 DEBUG    backend.ai.embeddings — Deleted existing embeddings: post_id=bbf8071c-b923-4aae-ab8d-ec6d61afce40
-2026-06-20 16:57:55,245 INFO     backend.ai.embeddings — Embedded 4 chunk(s) for post bbf8071c-b923-4aae-ab8d-ec6d61afce40 version abfd02d9-9047-4207-bde5-3f2375f55bfe
-2026-06-20 16:57:57,691 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=5 st_count=3 lt_count=0 run_st=False run_lt=False
-2026-06-20 16:57:57,691 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
-2026-06-20 16:57:59,330 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=5 st_count=3 lt_count=0 run_st=False run_lt=False
-2026-06-20 16:57:59,330 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
-2026-06-20 16:58:18,969 DEBUG    backend.ai.embeddings — embed_and_store_version: post_id=aa397892-90e4-4431-8d50-f2745e52fb9c version_id=94d72fdd-69c0-44bf-b53d-7b584c11f0e5 content_len=1792
-2026-06-20 16:58:18,969 DEBUG    backend.ai.embeddings — Chunked into 4 chunk(s): post_id=aa397892-90e4-4431-8d50-f2745e52fb9c
-2026-06-20 16:58:19,494 DEBUG    backend.ai.embeddings — Generated 4 embedding vector(s): post_id=aa397892-90e4-4431-8d50-f2745e52fb9c
-2026-06-20 16:58:19,506 DEBUG    backend.ai.embeddings — Deleted existing embeddings: post_id=aa397892-90e4-4431-8d50-f2745e52fb9c
-2026-06-20 16:58:19,578 INFO     backend.ai.embeddings — Embedded 4 chunk(s) for post aa397892-90e4-4431-8d50-f2745e52fb9c version 94d72fdd-69c0-44bf-b53d-7b584c11f0e5
-2026-06-20 16:58:23,663 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=5 st_count=3 lt_count=0 run_st=False run_lt=False
-2026-06-20 16:58:23,663 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
-2026-06-20 16:58:33,496 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=6 st_count=3 lt_count=0 run_st=True run_lt=False
-2026-06-20 16:58:36,191 DEBUG    backend.ai.style_analyzer — style_analyzer output — style_json keys=['hook_style', 'tone', 'sentence_rhythm', 'paragraph_structure', 'emoji_usage', 'cta_style', 'vocabulary_level', 'structural_patterns', 'recurring_themes']
-2026-06-20 16:58:36,191 INFO     backend.ai.style_memory — Short-term style updated for user f0644cff-04d6-4c1e-a7fb-19a4459d0811 (6 posts)
-2026-06-20 16:58:36,194 INFO     backend.ai.style_memory — Updating user_style_memory: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 lt=False st=True
-2026-06-20 16:59:47,718 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=7 st_count=6 lt_count=0 run_st=False run_lt=False
-2026-06-20 16:59:47,718 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
-2026-06-20 17:00:02,972 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=8 st_count=6 lt_count=0 run_st=False run_lt=False
-2026-06-20 17:00:02,972 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
-2026-06-20 17:00:17,283 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=9 st_count=6 lt_count=0 run_st=True run_lt=False
-2026-06-20 17:00:19,921 DEBUG    backend.ai.style_analyzer — style_analyzer output — style_json keys=['hook_style', 'tone', 'sentence_rhythm', 'paragraph_structure', 'emoji_usage', 'cta_style', 'vocabulary_level', 'structural_patterns', 'recurring_themes']
-2026-06-20 17:00:19,921 INFO     backend.ai.style_memory — Short-term style updated for user f0644cff-04d6-4c1e-a7fb-19a4459d0811 (9 posts)
-2026-06-20 17:00:19,924 INFO     backend.ai.style_memory — Updating user_style_memory: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 lt=False st=True
-2026-06-20 17:02:51,078 DEBUG    backend.ai.embeddings — embed_and_store_version: post_id=aa397892-90e4-4431-8d50-f2745e52fb9c version_id=8f4c8b13-1853-4a4a-9558-1b11adb439ae content_len=1792
-2026-06-20 17:02:51,078 DEBUG    backend.ai.embeddings — Chunked into 4 chunk(s): post_id=aa397892-90e4-4431-8d50-f2745e52fb9c
-2026-06-20 17:02:51,676 DEBUG    backend.ai.embeddings — Generated 4 embedding vector(s): post_id=aa397892-90e4-4431-8d50-f2745e52fb9c
-2026-06-20 17:02:51,678 DEBUG    backend.ai.embeddings — Deleted existing embeddings: post_id=aa397892-90e4-4431-8d50-f2745e52fb9c
-2026-06-20 17:02:51,703 INFO     backend.ai.embeddings — Embedded 4 chunk(s) for post aa397892-90e4-4431-8d50-f2745e52fb9c version 8f4c8b13-1853-4a4a-9558-1b11adb439ae
-2026-06-20 17:02:55,794 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=9 st_count=9 lt_count=0 run_st=False run_lt=False
-2026-06-20 17:02:55,796 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
-2026-06-20 17:03:50,938 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 route=
-2026-06-20 17:03:53,962 INFO     backend.ai.agents.supervisor — supervisor_node: dispatching write pipeline via Send
-2026-06-20 17:03:53,962 DEBUG    backend.ai.graph — supervisor_router: Send → style_retriever_node
-2026-06-20 17:03:53,962 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-20 17:04:02,146 DEBUG    backend.ai.style_memory — Style memory Redis miss, reading from DB: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-20 17:04:02,150 DEBUG    backend.ai.style_memory — No style memory found in DB: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-20 17:04:02,150 INFO     backend.ai.agents.style_retriever_node — style_retriever_node: no style memory — running on-demand analysis
-2026-06-20 17:04:03,536 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 route=
-2026-06-20 17:04:06,320 INFO     backend.ai.agents.supervisor — supervisor_node: dispatching write pipeline via Send
-2026-06-20 17:04:06,322 DEBUG    backend.ai.graph — supervisor_router: Send → style_retriever_node
-2026-06-20 17:04:06,324 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-20 17:04:08,266 DEBUG    backend.ai.style_analyzer — style_analyzer output — style_json keys=['hook_style', 'tone', 'sentence_rhythm', 'paragraph_structure', 'emoji_usage', 'cta_style', 'vocabulary_level', 'structural_patterns', 'recurring_themes']
-2026-06-20 17:04:11,132 DEBUG    backend.ai.style_analyzer — style_analyzer output — style_json keys=['hook_style', 'tone', 'sentence_rhythm', 'paragraph_structure', 'emoji_usage', 'cta_style', 'vocabulary_level', 'structural_patterns', 'recurring_themes']
-2026-06-20 17:04:11,132 INFO     backend.ai.style_memory — Updating user_style_memory: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 lt=True st=True
-2026-06-20 17:04:14,419 DEBUG    backend.ai.style_memory — Style memory Redis miss, reading from DB: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-20 17:04:19,292 INFO     backend.ai.agents.style_retriever_node — style_retriever_node: analysis complete, post_count=7
-2026-06-20 17:04:19,294 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node on-demand user=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — style_json keys=['long_term', 'short_term']
-2026-06-20 17:04:19,296 DEBUG    backend.ai.agents.writer_node — writer_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-20 17:04:22,242 INFO     backend.ai.agents.writer_node — writer_node: draft generated, char_count=1837
-2026-06-20 17:04:22,242 INFO     backend.ai.router — query: state after invoke — draft="What's the most exciting thing about Generative AI right now?\n\nFor me, it's the " answer='' route='style_retrieval'
-2026-06-20 17:04:22,563 DEBUG    backend.ai.style_memory — Repopulated Redis style cache: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-20 17:04:22,563 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node: returning cached style_json, stale-check fired
-2026-06-20 17:04:22,563 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — style_json keys=['long_term', 'short_term']
-2026-06-20 17:04:22,567 DEBUG    backend.ai.agents.writer_node — writer_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-20 17:04:22,574 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=9 st_count=7 lt_count=7 run_st=False run_lt=False
-2026-06-20 17:04:22,574 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
-2026-06-20 17:04:26,800 INFO     backend.ai.agents.writer_node — writer_node: draft generated, char_count=1382
-2026-06-20 17:04:26,803 INFO     backend.ai.router — query: state after invoke — draft="What if I told you we're on the cusp of a creative revolution, powered by AI?\n\nG" answer='' route='style_retrieval'
-2026-06-23 14:14:25,409 DEBUG    backend.ai.embeddings — embed_and_store_version: post_id=ba72ecf3-3055-460f-8250-c14d87bf1447 version_id=1c3e259c-d07b-4f44-bc44-82b81c5493dc content_len=1653
-2026-06-23 14:14:25,451 DEBUG    backend.ai.embeddings — Chunked into 3 chunk(s): post_id=ba72ecf3-3055-460f-8250-c14d87bf1447
-2026-06-23 14:14:26,009 DEBUG    backend.ai.embeddings — Generated 3 embedding vector(s): post_id=ba72ecf3-3055-460f-8250-c14d87bf1447
-2026-06-23 14:14:26,009 DEBUG    backend.ai.embeddings — Deleted existing embeddings: post_id=ba72ecf3-3055-460f-8250-c14d87bf1447
-2026-06-23 14:14:26,059 INFO     backend.ai.embeddings — Embedded 3 chunk(s) for post ba72ecf3-3055-460f-8250-c14d87bf1447 version 1c3e259c-d07b-4f44-bc44-82b81c5493dc
-2026-06-23 14:29:14,483 DEBUG    backend.ai.embeddings — embed_and_store_version: post_id=ba72ecf3-3055-460f-8250-c14d87bf1447 version_id=d6530543-63c8-430a-8c61-68a5c6f23a29 content_len=1653
-2026-06-23 14:29:14,483 DEBUG    backend.ai.embeddings — Chunked into 3 chunk(s): post_id=ba72ecf3-3055-460f-8250-c14d87bf1447
-2026-06-23 14:29:15,029 DEBUG    backend.ai.embeddings — Generated 3 embedding vector(s): post_id=ba72ecf3-3055-460f-8250-c14d87bf1447
-2026-06-23 14:29:15,033 DEBUG    backend.ai.embeddings — Deleted existing embeddings: post_id=ba72ecf3-3055-460f-8250-c14d87bf1447
-2026-06-23 14:29:15,056 INFO     backend.ai.embeddings — Embedded 3 chunk(s) for post ba72ecf3-3055-460f-8250-c14d87bf1447 version d6530543-63c8-430a-8c61-68a5c6f23a29
-2026-06-23 14:29:28,997 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=10 st_count=7 lt_count=7 run_st=True run_lt=False
-2026-06-23 14:30:03,380 ERROR    backend.ai.style_memory — sync_check_and_refresh_style_memory failed for user f0644cff-04d6-4c1e-a7fb-19a4459d0811
+2026-07-02 16:10:09,593 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=00000000-0000-0000-0000-000000000001 route=
+2026-07-02 16:10:19,193 DEBUG    backend.ai.agents.supervisor — supervisor_node: 1 tool call(s) requested
+2026-07-02 16:10:19,294 DEBUG    backend.ai.agents.tools — search_vault_posts: user_id=00000000-0000-0000-0000-000000000001 query_len=13
+2026-07-02 16:10:31,816 DEBUG    backend.ai.agents.tools — search_vault_posts: 0 vector results for user_id=00000000-0000-0000-0000-000000000001
+2026-07-02 16:10:35,930 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=00000000-0000-0000-0000-000000000001 route=
+2026-07-02 16:10:45,390 INFO     backend.ai.agents.supervisor — supervisor_node: direct answer, char_count=309
+2026-07-02 16:12:26,535 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=00000000-0000-0000-0000-000000000001 route=
+2026-07-02 16:12:46,266 INFO     backend.ai.agents.supervisor — supervisor_node: dispatching researcher via Send
+2026-07-02 16:12:46,266 DEBUG    backend.ai.graph — supervisor_router: Send → researcher_node (route=research)
+2026-07-02 16:12:46,267 DEBUG    backend.ai.agents.researcher_node — researcher_node invoked: user_id=00000000-0000-0000-0000-000000000001 query_len=76
+2026-07-02 16:12:46,267 DEBUG    backend.ai.agents.researcher_node — researcher_node: grounded fetch start, query_len=76
+2026-07-02 16:47:44,928 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 route=
+2026-07-02 16:48:18,499 ERROR    backend.ai.router — stream_query: unhandled exception in graph — ChatGoogleGenerativeAIError: Error calling model 'gemini-2.5-flash-lite' (Too Many Requests): 429 Too Many Requests. {'message': '{\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash-lite\\nPlease retry in 42.487501196s.",\n    "status": "RESOURCE_EXHAUSTED",\n    "details": [\n      {\n        "@type": "type.googleapis.com/google.rpc.Help",\n        "links": [\n          {\n            "description": "Learn more about Gemini API quotas",\n            "url": "https://ai.google.dev/gemini-api/docs/rate-limits"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.QuotaFailure",\n        "violations": [\n          {\n            "quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests",\n            "quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier",\n            "quotaDimensions": {\n              "location": "global",\n              "model": "gemini-2.5-flash-lite"\n            },\n            "quotaValue": "20"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.RetryInfo",\n        "retryDelay": "42s"\n      }\n    ]\n  }\n}\n', 'status': 'Too Many Requests'}
 Traceback (most recent call last):
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_google_genai\chat_models.py", line 3071, in _generate
-    response: GenerateContentResponse = self.client.models.generate_content(
-                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\models.py", line 6331, in generate_content
-    response = self._generate_content(
-               ^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\models.py", line 4767, in _generate_content
-    response = self._api_client.request(
-               ^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1605, in request
-    response = self._request(http_request, http_options, stream=False)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1396, in _request
-    return retry(self._request_once, http_request, stream)  # type: ignore[no-any-return]
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 470, in __call__
-    do = self.iter(retry_state=retry_state)
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 371, in iter
-    result = action(retry_state)
-             ^^^^^^^^^^^^^^^^^^^
+  File "F:\My_first_product\venv\Lib\site-packages\langchain_google_genai\chat_models.py", line 3227, in _astream
+    stream = await self.client.aio.models.generate_content_stream(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\My_first_product\venv\Lib\site-packages\google\genai\models.py", line 8575, in generate_content_stream
+    response = await self._generate_content_stream(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\My_first_product\venv\Lib\site-packages\google\genai\models.py", line 7061, in _generate_content_stream
+    response_stream = await self._api_client.async_request_streamed(
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1668, in async_request_streamed
+    response = await self._async_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1583, in _async_request
+    return await retry(self._async_request_once, http_request, stream)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\My_first_product\venv\Lib\site-packages\tenacity\asyncio\__init__.py", line 112, in __call__
+    do = await self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\My_first_product\venv\Lib\site-packages\tenacity\asyncio\__init__.py", line 157, in iter
+    result = await action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\My_first_product\venv\Lib\site-packages\tenacity\_utils.py", line 111, in inner
+    return call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
   File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 413, in exc_check
     raise retry_exc.reraise()
           ^^^^^^^^^^^^^^^^^^^
@@ -140,437 +47,57 @@ Traceback (most recent call last):
            ^^^^^^^^^^^^^^^^^^^
   File "C:\Program Files\Python312\Lib\concurrent\futures\_base.py", line 401, in __get_result
     raise self._exception
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 473, in __call__
-    result = fn(*args, **kwargs)
-             ^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1375, in _request_once
-    errors.APIError.raise_for_response(response)
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\errors.py", line 155, in raise_for_response
-    cls.raise_error(response.status_code, response_json, response)
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\errors.py", line 184, in raise_error
+  File "F:\My_first_product\venv\Lib\site-packages\tenacity\asyncio\__init__.py", line 116, in __call__
+    result = await fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1469, in _async_request_once
+    await errors.APIError.raise_for_async_response(response)
+  File "F:\My_first_product\venv\Lib\site-packages\google\genai\errors.py", line 247, in raise_for_async_response
+    await cls.raise_error_async(status_code, response_json, response)
+  File "F:\My_first_product\venv\Lib\site-packages\google\genai\errors.py", line 269, in raise_error_async
     raise ClientError(status_code, response_json, response)
-google.genai.errors.ClientError: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.0-flash\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.0-flash\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-2.0-flash\nPlease retry in 9.364743205s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'model': 'gemini-2.0-flash', 'location': 'global'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'model': 'gemini-2.0-flash', 'location': 'global'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerMinute-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.0-flash'}}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '9s'}]}}
+google.genai.errors.ClientError: 429 Too Many Requests. {'message': '{\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash-lite\\nPlease retry in 42.487501196s.",\n    "status": "RESOURCE_EXHAUSTED",\n    "details": [\n      {\n        "@type": "type.googleapis.com/google.rpc.Help",\n        "links": [\n          {\n            "description": "Learn more about Gemini API quotas",\n            "url": "https://ai.google.dev/gemini-api/docs/rate-limits"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.QuotaFailure",\n        "violations": [\n          {\n            "quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests",\n            "quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier",\n            "quotaDimensions": {\n              "location": "global",\n              "model": "gemini-2.5-flash-lite"\n            },\n            "quotaValue": "20"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.RetryInfo",\n        "retryDelay": "42s"\n      }\n    ]\n  }\n}\n', 'status': 'Too Many Requests'}
 
 The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
-  File "F:\My_first_product\backend\ai\style_memory.py", line 86, in sync_check_and_refresh_style_memory
-    new_st = analyze_style(posts[:_ST_WINDOW])
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\backend\ai\style_analyzer.py", line 62, in analyze_style
-    response = _llm.invoke([
-               ^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_google_genai\chat_models.py", line 2559, in invoke
-    return super().invoke(input, config, stop=stop, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 476, in invoke
-    self.generate_prompt(
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1849, in generate_prompt
-    return self.generate(prompt_messages, stop=stop, callbacks=callbacks, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1656, in generate
-    self._generate_with_cache(
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1994, in _generate_with_cache
-    result = self._generate(
-             ^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_google_genai\chat_models.py", line 3075, in _generate
+  File "F:\My_first_product\backend\ai\router.py", line 91, in generate
+    async for chunk, metadata in assistant.astream(
+  File "F:\My_first_product\venv\Lib\site-packages\langgraph\pregel\main.py", line 3407, in astream
+    async for _ in runner.atick(
+  File "F:\My_first_product\venv\Lib\site-packages\langgraph\pregel\_runner.py", line 557, in atick
+    _panic_or_proceed(
+  File "F:\My_first_product\venv\Lib\site-packages\langgraph\pregel\_runner.py", line 687, in _panic_or_proceed
+    raise exc
+  File "F:\My_first_product\venv\Lib\site-packages\langgraph\pregel\_retry.py", line 706, in arun_with_retry
+    return await task.proc.ainvoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\My_first_product\venv\Lib\site-packages\langgraph\_internal\_runnable.py", line 733, in ainvoke
+    input = await asyncio.create_task(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\My_first_product\venv\Lib\site-packages\langgraph\_internal\_runnable.py", line 501, in ainvoke
+    ret = await self.afunc(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\My_first_product\backend\ai\agents\supervisor.py", line 85, in supervisor_node
+    response: AIMessage = await _llm_agent.ainvoke([system, *state["messages"]])
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\runnables\base.py", line 5990, in ainvoke
+    return await self.bound.ainvoke(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 499, in ainvoke
+    llm_result = await self.agenerate_prompt(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1860, in agenerate_prompt
+    return await self.agenerate(
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1818, in agenerate
+    raise exceptions[0]
+  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 2108, in _agenerate_with_cache
+    async for chunk in self._astream(messages, stop=stop, **kwargs):
+  File "F:\My_first_product\venv\Lib\site-packages\langchain_google_genai\chat_models.py", line 3231, in _astream
     _handle_client_error(e, request)
   File "F:\My_first_product\venv\Lib\site-packages\langchain_google_genai\chat_models.py", line 166, in _handle_client_error
     raise ChatGoogleGenerativeAIError(msg) from e
-langchain_google_genai.chat_models.ChatGoogleGenerativeAIError: Error calling model 'gemini-2.0-flash' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.0-flash\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.0-flash\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-2.0-flash\nPlease retry in 9.364743205s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'model': 'gemini-2.0-flash', 'location': 'global'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'model': 'gemini-2.0-flash', 'location': 'global'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerMinute-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.0-flash'}}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '9s'}]}}
-2026-06-23 19:58:50,118 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 route=
-2026-06-23 19:58:56,484 INFO     backend.ai.agents.supervisor — supervisor_node: dispatching write pipeline via Send
-2026-06-23 19:58:56,484 DEBUG    backend.ai.graph — supervisor_router: Send → style_retriever_node
-2026-06-23 19:58:56,489 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 19:59:04,595 DEBUG    backend.ai.style_memory — Style memory Redis miss, reading from DB: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 19:59:12,736 DEBUG    backend.ai.style_memory — Repopulated Redis style cache: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 19:59:12,736 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node: returning cached style_json, stale-check fired
-2026-06-23 19:59:12,760 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — style_json keys=['long_term', 'short_term']
-2026-06-23 19:59:12,760 DEBUG    backend.ai.agents.writer_node — writer_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 19:59:12,822 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=10 st_count=7 lt_count=7 run_st=True run_lt=False
-2026-06-23 19:59:17,266 INFO     backend.ai.agents.writer_node — writer_node: draft generated, char_count=1690
-2026-06-23 19:59:46,735 ERROR    backend.ai.style_memory — sync_check_and_refresh_style_memory failed for user f0644cff-04d6-4c1e-a7fb-19a4459d0811
-Traceback (most recent call last):
-  File "F:\My_first_product\backend\ai\style_memory.py", line 86, in sync_check_and_refresh_style_memory
-    new_st = analyze_style(posts[:_ST_WINDOW])
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\backend\ai\style_analyzer.py", line 62, in analyze_style
-    response = _llm.invoke([
-               ^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_google_genai\chat_models.py", line 2559, in invoke
-    return super().invoke(input, config, stop=stop, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 476, in invoke
-    self.generate_prompt(
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1849, in generate_prompt
-    return self.generate(prompt_messages, stop=stop, callbacks=callbacks, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1656, in generate
-    self._generate_with_cache(
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1953, in _generate_with_cache
-    for chunk in self._stream(messages, stop=stop, **kwargs):
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_google_genai\chat_models.py", line 3164, in _stream
-    for chunk in response:
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\models.py", line 6509, in generate_content_stream
-    for chunk in response:
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\models.py", line 4875, in _generate_content_stream
-    for response in self._api_client.request_streamed(
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1622, in request_streamed
-    session_response = self._request(http_request, http_options, stream=True)
-                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1396, in _request
-    return retry(self._request_once, http_request, stream)  # type: ignore[no-any-return]
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 470, in __call__
-    do = self.iter(retry_state=retry_state)
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 371, in iter
-    result = action(retry_state)
-             ^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 413, in exc_check
-    raise retry_exc.reraise()
-          ^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 184, in reraise
-    raise self.last_attempt.result()
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python312\Lib\concurrent\futures\_base.py", line 449, in result
-    return self.__get_result()
-           ^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python312\Lib\concurrent\futures\_base.py", line 401, in __get_result
-    raise self._exception
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 473, in __call__
-    result = fn(*args, **kwargs)
-             ^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1375, in _request_once
-    errors.APIError.raise_for_response(response)
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\errors.py", line 155, in raise_for_response
-    cls.raise_error(response.status_code, response_json, response)
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\errors.py", line 184, in raise_error
-    raise ClientError(status_code, response_json, response)
-google.genai.errors.ClientError: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-2.0-flash\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.0-flash\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.0-flash\nPlease retry in 25.702088678s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerMinute-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.0-flash'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'model': 'gemini-2.0-flash', 'location': 'global'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'model': 'gemini-2.0-flash', 'location': 'global'}}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '25s'}]}}
-2026-06-23 20:03:43,938 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 route=
-2026-06-23 20:03:49,442 INFO     backend.ai.agents.supervisor — supervisor_node: dispatching write pipeline via Send
-2026-06-23 20:03:49,442 DEBUG    backend.ai.graph — supervisor_router: Send → style_retriever_node
-2026-06-23 20:03:49,442 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 20:03:57,538 DEBUG    backend.ai.style_memory — Style memory Redis miss, reading from DB: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 20:04:05,751 DEBUG    backend.ai.style_memory — Repopulated Redis style cache: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 20:04:05,752 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node: returning cached style_json, stale-check fired
-2026-06-23 20:04:05,752 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — style_json keys=['long_term', 'short_term']
-2026-06-23 20:04:05,752 DEBUG    backend.ai.agents.writer_node — writer_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 20:04:05,764 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=10 st_count=7 lt_count=7 run_st=True run_lt=False
-2026-06-23 20:04:12,202 INFO     backend.ai.agents.writer_node — writer_node: draft generated, char_count=2035
-2026-06-23 20:04:40,172 ERROR    backend.ai.style_memory — sync_check_and_refresh_style_memory failed for user f0644cff-04d6-4c1e-a7fb-19a4459d0811
-Traceback (most recent call last):
-  File "F:\My_first_product\backend\ai\style_memory.py", line 86, in sync_check_and_refresh_style_memory
-    new_st = analyze_style(posts[:_ST_WINDOW])
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\backend\ai\style_analyzer.py", line 62, in analyze_style
-    response = _llm.invoke([
-               ^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_google_genai\chat_models.py", line 2559, in invoke
-    return super().invoke(input, config, stop=stop, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 476, in invoke
-    self.generate_prompt(
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1849, in generate_prompt
-    return self.generate(prompt_messages, stop=stop, callbacks=callbacks, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1656, in generate
-    self._generate_with_cache(
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1953, in _generate_with_cache
-    for chunk in self._stream(messages, stop=stop, **kwargs):
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_google_genai\chat_models.py", line 3164, in _stream
-    for chunk in response:
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\models.py", line 6509, in generate_content_stream
-    for chunk in response:
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\models.py", line 4875, in _generate_content_stream
-    for response in self._api_client.request_streamed(
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1622, in request_streamed
-    session_response = self._request(http_request, http_options, stream=True)
-                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1396, in _request
-    return retry(self._request_once, http_request, stream)  # type: ignore[no-any-return]
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 470, in __call__
-    do = self.iter(retry_state=retry_state)
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 371, in iter
-    result = action(retry_state)
-             ^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 413, in exc_check
-    raise retry_exc.reraise()
-          ^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 184, in reraise
-    raise self.last_attempt.result()
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python312\Lib\concurrent\futures\_base.py", line 449, in result
-    return self.__get_result()
-           ^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python312\Lib\concurrent\futures\_base.py", line 401, in __get_result
-    raise self._exception
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 473, in __call__
-    result = fn(*args, **kwargs)
-             ^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1375, in _request_once
-    errors.APIError.raise_for_response(response)
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\errors.py", line 155, in raise_for_response
-    cls.raise_error(response.status_code, response_json, response)
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\errors.py", line 184, in raise_error
-    raise ClientError(status_code, response_json, response)
-google.genai.errors.ClientError: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.0-flash\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.0-flash\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-2.0-flash\nPlease retry in 32.264570422s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.0-flash'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.0-flash'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerMinute-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.0-flash'}}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '32s'}]}}
-2026-06-23 21:01:48,333 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 route=
-2026-06-23 21:01:59,478 INFO     backend.ai.agents.supervisor — supervisor_node: dispatching write pipeline via Send
-2026-06-23 21:01:59,507 DEBUG    backend.ai.graph — supervisor_router: Send → style_retriever_node
-2026-06-23 21:01:59,520 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 21:02:08,178 DEBUG    backend.ai.style_memory — Style memory Redis miss, reading from DB: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 21:02:16,399 DEBUG    backend.ai.style_memory — Repopulated Redis style cache: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 21:02:16,399 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node: returning cached style_json, stale-check fired
-2026-06-23 21:02:16,513 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — style_json keys=['long_term', 'short_term']
-2026-06-23 21:02:16,548 DEBUG    backend.ai.agents.writer_node — writer_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 21:02:16,574 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=10 st_count=7 lt_count=7 run_st=True run_lt=False
-2026-06-23 21:02:21,714 INFO     backend.ai.agents.writer_node — writer_node: draft generated, char_count=1404
-2026-06-23 21:02:50,991 ERROR    backend.ai.style_memory — sync_check_and_refresh_style_memory failed for user f0644cff-04d6-4c1e-a7fb-19a4459d0811
-Traceback (most recent call last):
-  File "F:\My_first_product\backend\ai\style_memory.py", line 86, in sync_check_and_refresh_style_memory
-    new_st = analyze_style(posts[:_ST_WINDOW])
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\backend\ai\style_analyzer.py", line 62, in analyze_style
-    response = _llm.invoke([
-               ^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_google_genai\chat_models.py", line 2559, in invoke
-    return super().invoke(input, config, stop=stop, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 476, in invoke
-    self.generate_prompt(
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1849, in generate_prompt
-    return self.generate(prompt_messages, stop=stop, callbacks=callbacks, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1656, in generate
-    self._generate_with_cache(
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1953, in _generate_with_cache
-    for chunk in self._stream(messages, stop=stop, **kwargs):
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_google_genai\chat_models.py", line 3164, in _stream
-    for chunk in response:
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\models.py", line 6509, in generate_content_stream
-    for chunk in response:
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\models.py", line 4875, in _generate_content_stream
-    for response in self._api_client.request_streamed(
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1622, in request_streamed
-    session_response = self._request(http_request, http_options, stream=True)
-                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1396, in _request
-    return retry(self._request_once, http_request, stream)  # type: ignore[no-any-return]
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 470, in __call__
-    do = self.iter(retry_state=retry_state)
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 371, in iter
-    result = action(retry_state)
-             ^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 413, in exc_check
-    raise retry_exc.reraise()
-          ^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 184, in reraise
-    raise self.last_attempt.result()
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python312\Lib\concurrent\futures\_base.py", line 449, in result
-    return self.__get_result()
-           ^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python312\Lib\concurrent\futures\_base.py", line 401, in __get_result
-    raise self._exception
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 473, in __call__
-    result = fn(*args, **kwargs)
-             ^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1375, in _request_once
-    errors.APIError.raise_for_response(response)
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\errors.py", line 155, in raise_for_response
-    cls.raise_error(response.status_code, response_json, response)
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\errors.py", line 184, in raise_error
-    raise ClientError(status_code, response_json, response)
-google.genai.errors.ClientError: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-2.0-flash\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.0-flash\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.0-flash\nPlease retry in 21.412814879s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerMinute-FreeTier', 'quotaDimensions': {'model': 'gemini-2.0-flash', 'location': 'global'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.0-flash'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'model': 'gemini-2.0-flash', 'location': 'global'}}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '21s'}]}}
-2026-06-23 22:07:59,764 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 route=
-2026-06-23 22:08:02,741 INFO     backend.ai.agents.supervisor — supervisor_node: dispatching write pipeline via Send
-2026-06-23 22:08:02,741 DEBUG    backend.ai.graph — supervisor_router: Send → style_retriever_node
-2026-06-23 22:08:02,741 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 22:08:10,871 DEBUG    backend.ai.style_memory — Style memory Redis miss, reading from DB: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 22:08:19,088 DEBUG    backend.ai.style_memory — Repopulated Redis style cache: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 22:08:19,088 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node: returning cached style_json, stale-check fired
-2026-06-23 22:08:19,095 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — style_json keys=['long_term', 'short_term']
-2026-06-23 22:08:19,096 DEBUG    backend.ai.agents.writer_node — writer_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 22:08:19,123 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=10 st_count=7 lt_count=7 run_st=True run_lt=False
-2026-06-23 22:08:53,453 ERROR    backend.ai.style_memory — sync_check_and_refresh_style_memory failed for user f0644cff-04d6-4c1e-a7fb-19a4459d0811
-Traceback (most recent call last):
-  File "F:\My_first_product\backend\ai\style_memory.py", line 86, in sync_check_and_refresh_style_memory
-    new_st = analyze_style(posts[:_ST_WINDOW])
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\backend\ai\style_analyzer.py", line 62, in analyze_style
-    response = _llm.invoke([
-               ^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_google_genai\chat_models.py", line 2559, in invoke
-    return super().invoke(input, config, stop=stop, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 476, in invoke
-    self.generate_prompt(
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1849, in generate_prompt
-    return self.generate(prompt_messages, stop=stop, callbacks=callbacks, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1656, in generate
-    self._generate_with_cache(
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1953, in _generate_with_cache
-    for chunk in self._stream(messages, stop=stop, **kwargs):
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_google_genai\chat_models.py", line 3164, in _stream
-    for chunk in response:
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\models.py", line 6509, in generate_content_stream
-    for chunk in response:
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\models.py", line 4875, in _generate_content_stream
-    for response in self._api_client.request_streamed(
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1622, in request_streamed
-    session_response = self._request(http_request, http_options, stream=True)
-                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1396, in _request
-    return retry(self._request_once, http_request, stream)  # type: ignore[no-any-return]
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 470, in __call__
-    do = self.iter(retry_state=retry_state)
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 371, in iter
-    result = action(retry_state)
-             ^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 413, in exc_check
-    raise retry_exc.reraise()
-          ^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 184, in reraise
-    raise self.last_attempt.result()
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python312\Lib\concurrent\futures\_base.py", line 449, in result
-    return self.__get_result()
-           ^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python312\Lib\concurrent\futures\_base.py", line 401, in __get_result
-    raise self._exception
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 473, in __call__
-    result = fn(*args, **kwargs)
-             ^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1375, in _request_once
-    errors.APIError.raise_for_response(response)
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\errors.py", line 155, in raise_for_response
-    cls.raise_error(response.status_code, response_json, response)
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\errors.py", line 184, in raise_error
-    raise ClientError(status_code, response_json, response)
-google.genai.errors.ClientError: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.0-flash\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.0-flash\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-2.0-flash\nPlease retry in 18.875971508s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'model': 'gemini-2.0-flash', 'location': 'global'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.0-flash'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerMinute-FreeTier', 'quotaDimensions': {'model': 'gemini-2.0-flash', 'location': 'global'}}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '18s'}]}}
-2026-06-23 22:09:10,643 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 route=
-2026-06-23 22:09:12,338 INFO     backend.ai.agents.supervisor — supervisor_node: dispatching write pipeline via Send
-2026-06-23 22:09:12,338 DEBUG    backend.ai.graph — supervisor_router: Send → style_retriever_node
-2026-06-23 22:09:12,338 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 22:09:20,453 DEBUG    backend.ai.style_memory — Style memory Redis miss, reading from DB: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 22:09:28,551 DEBUG    backend.ai.style_memory — Repopulated Redis style cache: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 22:09:28,551 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node: returning cached style_json, stale-check fired
-2026-06-23 22:09:28,552 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — style_json keys=['long_term', 'short_term']
-2026-06-23 22:09:28,552 DEBUG    backend.ai.agents.writer_node — writer_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 22:09:28,567 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=10 st_count=7 lt_count=7 run_st=True run_lt=False
-2026-06-23 22:10:03,409 ERROR    backend.ai.style_memory — sync_check_and_refresh_style_memory failed for user f0644cff-04d6-4c1e-a7fb-19a4459d0811
-Traceback (most recent call last):
-  File "F:\My_first_product\backend\ai\style_memory.py", line 86, in sync_check_and_refresh_style_memory
-    new_st = analyze_style(posts[:_ST_WINDOW])
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\backend\ai\style_analyzer.py", line 62, in analyze_style
-    response = _llm.invoke([
-               ^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_google_genai\chat_models.py", line 2559, in invoke
-    return super().invoke(input, config, stop=stop, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 476, in invoke
-    self.generate_prompt(
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1849, in generate_prompt
-    return self.generate(prompt_messages, stop=stop, callbacks=callbacks, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1656, in generate
-    self._generate_with_cache(
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_core\language_models\chat_models.py", line 1953, in _generate_with_cache
-    for chunk in self._stream(messages, stop=stop, **kwargs):
-  File "F:\My_first_product\venv\Lib\site-packages\langchain_google_genai\chat_models.py", line 3164, in _stream
-    for chunk in response:
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\models.py", line 6509, in generate_content_stream
-    for chunk in response:
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\models.py", line 4875, in _generate_content_stream
-    for response in self._api_client.request_streamed(
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1622, in request_streamed
-    session_response = self._request(http_request, http_options, stream=True)
-                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1396, in _request
-    return retry(self._request_once, http_request, stream)  # type: ignore[no-any-return]
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 470, in __call__
-    do = self.iter(retry_state=retry_state)
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 371, in iter
-    result = action(retry_state)
-             ^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 413, in exc_check
-    raise retry_exc.reraise()
-          ^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 184, in reraise
-    raise self.last_attempt.result()
-          ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python312\Lib\concurrent\futures\_base.py", line 449, in result
-    return self.__get_result()
-           ^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python312\Lib\concurrent\futures\_base.py", line 401, in __get_result
-    raise self._exception
-  File "F:\My_first_product\venv\Lib\site-packages\tenacity\__init__.py", line 473, in __call__
-    result = fn(*args, **kwargs)
-             ^^^^^^^^^^^^^^^^^^^
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\_api_client.py", line 1375, in _request_once
-    errors.APIError.raise_for_response(response)
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\errors.py", line 155, in raise_for_response
-    cls.raise_error(response.status_code, response_json, response)
-  File "F:\My_first_product\venv\Lib\site-packages\google\genai\errors.py", line 184, in raise_error
-    raise ClientError(status_code, response_json, response)
-google.genai.errors.ClientError: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-2.0-flash\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.0-flash\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.0-flash\nPlease retry in 8.933972179s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_input_token_count', 'quotaId': 'GenerateContentInputTokensPerModelPerMinute-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.0-flash'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.0-flash'}}, {'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-2.0-flash'}}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '8s'}]}}
-2026-06-23 22:15:32,717 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 route=
-2026-06-23 22:15:37,743 INFO     backend.ai.agents.supervisor — supervisor_node: dispatching write pipeline via Send
-2026-06-23 22:15:37,743 DEBUG    backend.ai.graph — supervisor_router: Send → style_retriever_node
-2026-06-23 22:15:37,745 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 22:15:45,884 DEBUG    backend.ai.style_memory — Style memory Redis miss, reading from DB: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 22:15:54,061 DEBUG    backend.ai.style_memory — Repopulated Redis style cache: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 22:15:54,061 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node: returning cached style_json, stale-check fired
-2026-06-23 22:15:54,070 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — style_json keys=['long_term', 'short_term']
-2026-06-23 22:15:54,075 DEBUG    backend.ai.agents.writer_node — writer_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 22:15:54,099 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=10 st_count=7 lt_count=7 run_st=True run_lt=False
-2026-06-23 22:15:59,079 DEBUG    backend.ai.style_analyzer — style_analyzer output — style_json keys=['hook_style', 'tone', 'sentence_rhythm', 'paragraph_structure', 'emoji_usage', 'cta_style', 'vocabulary_level', 'structural_patterns', 'recurring_themes']
-2026-06-23 22:15:59,079 INFO     backend.ai.style_memory — Short-term style updated for user f0644cff-04d6-4c1e-a7fb-19a4459d0811 (10 posts)
-2026-06-23 22:15:59,079 INFO     backend.ai.style_memory — Updating user_style_memory: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 lt=False st=True
-2026-06-23 22:15:59,678 INFO     backend.ai.agents.writer_node — writer_node: draft generated, char_count=1603
-2026-06-23 22:20:28,092 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 route=
-2026-06-23 22:20:35,920 INFO     backend.ai.agents.supervisor — supervisor_node: direct answer, char_count=130
-2026-06-23 22:21:06,032 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 route=
-2026-06-23 22:21:11,851 INFO     backend.ai.agents.supervisor — supervisor_node: dispatching write pipeline via Send
-2026-06-23 22:21:11,852 DEBUG    backend.ai.graph — supervisor_router: Send → style_retriever_node
-2026-06-23 22:21:11,855 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 22:21:20,031 DEBUG    backend.ai.style_memory — Style memory Redis miss, reading from DB: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 22:21:28,260 DEBUG    backend.ai.style_memory — Repopulated Redis style cache: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 22:21:28,260 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node: returning cached style_json, stale-check fired
-2026-06-23 22:21:28,267 DEBUG    backend.ai.agents.style_retriever_node — style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — style_json keys=['long_term', 'short_term']
-2026-06-23 22:21:28,272 DEBUG    backend.ai.agents.writer_node — writer_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-23 22:21:28,282 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=10 st_count=10 lt_count=7 run_st=False run_lt=False
-2026-06-23 22:21:28,284 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
-2026-06-23 22:21:34,776 INFO     backend.ai.agents.writer_node — writer_node: draft generated, char_count=1892
-2026-06-27 16:29:30,810 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 route=
-2026-06-27 16:33:57,484 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 route=
-2026-06-27 16:34:30,353 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 route=
-2026-06-27 16:50:17,183 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 route=
-2026-06-27 16:50:24,923 INFO     backend.ai.agents.supervisor — supervisor_node: dispatching write pipeline via Send
-2026-06-27 16:50:24,924 DEBUG    backend.ai.graph — supervisor_router: Send → style_retriever_node
-2026-06-27 16:50:24,929 DEBUG    backend.ai.agents.style_agent — style_retriever_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-27 16:50:33,132 DEBUG    backend.ai.style_memory — Style memory Redis miss, reading from DB: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-27 16:50:41,472 DEBUG    backend.ai.style_memory — Repopulated Redis style cache: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-27 16:50:41,472 DEBUG    backend.ai.agents.style_agent — style_retriever_node: returning cached style_json, stale-check fired
-2026-06-27 16:50:41,473 DEBUG    backend.ai.agents.style_agent — style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — style_json keys=['long_term', 'short_term']
-2026-06-27 16:50:41,475 DEBUG    backend.ai.agents.writer_node — writer_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-06-27 16:50:41,537 DEBUG    backend.ai.style_memory — Style memory check: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 published=10 st_count=10 lt_count=7 run_st=False run_lt=False
-2026-06-27 16:50:41,537 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 — skipping
-2026-06-27 16:50:48,440 INFO     backend.ai.agents.writer_node — writer_node: draft generated, char_count=1344
-2026-06-28 15:21:25,879 DEBUG    backend.ai.embeddings — embed_and_store_version: post_id=721e3455-3c56-41a9-b457-c49c144a58b1 version_id=91fcde11-9472-41d2-9ef0-3da3eaf4a0b5 content_len=55
-2026-06-28 15:21:25,927 DEBUG    backend.ai.embeddings — Chunked into 1 chunk(s): post_id=721e3455-3c56-41a9-b457-c49c144a58b1
-2026-06-28 15:21:26,407 DEBUG    backend.ai.embeddings — Generated 1 embedding vector(s): post_id=721e3455-3c56-41a9-b457-c49c144a58b1
-2026-06-28 15:21:26,414 DEBUG    backend.ai.embeddings — Deleted existing embeddings: post_id=721e3455-3c56-41a9-b457-c49c144a58b1
-2026-06-28 15:21:26,459 INFO     backend.ai.embeddings — Embedded 1 chunk(s) for post 721e3455-3c56-41a9-b457-c49c144a58b1 version 91fcde11-9472-41d2-9ef0-3da3eaf4a0b5
+langchain_google_genai.chat_models.ChatGoogleGenerativeAIError: Error calling model 'gemini-2.5-flash-lite' (Too Many Requests): 429 Too Many Requests. {'message': '{\n  "error": {\n    "code": 429,\n    "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash-lite\\nPlease retry in 42.487501196s.",\n    "status": "RESOURCE_EXHAUSTED",\n    "details": [\n      {\n        "@type": "type.googleapis.com/google.rpc.Help",\n        "links": [\n          {\n            "description": "Learn more about Gemini API quotas",\n            "url": "https://ai.google.dev/gemini-api/docs/rate-limits"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.QuotaFailure",\n        "violations": [\n          {\n            "quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests",\n            "quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier",\n            "quotaDimensions": {\n              "location": "global",\n              "model": "gemini-2.5-flash-lite"\n            },\n            "quotaValue": "20"\n          }\n        ]\n      },\n      {\n        "@type": "type.googleapis.com/google.rpc.RetryInfo",\n        "retryDelay": "42s"\n      }\n    ]\n  }\n}\n', 'status': 'Too Many Requests'}
+During task with name 'supervisor_node' and id 'f8b57c40-8a4a-efd3-84a4-a3c30b23ffb3'
+2026-07-02 16:49:21,047 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=00000000-0000-0000-0000-000000000001 route=

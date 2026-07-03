@@ -1,6 +1,6 @@
 # ContentCoach AI — UI State & Design System
 > Single source of truth for all UI decisions. Never deviate from constraints without updating this file.
-> Last updated: 2026-06-24 (feat/analyser branch: /chat route added → ChatPage.jsx — full Claude-style agent chat with SSE streaming, HITL approve/modify/decline, chat history rail; DashboardPage "Quick Actions" and "Draft with AI" buttons now navigate to /chat instead of opening inline AIPanel)
+> Last updated: 2026-07-01 (LinkedIn OAuth publishing live: DocEditor SchedulePublishSheet now shows LinkedIn connection status + "Connect LinkedIn" button; MyWorkPage handles ?linkedin_connected / ?linkedin_error query params on OAuth return with toast; api/linkedin.js added)
 
 ---
 
@@ -394,68 +394,94 @@ FONT="'Hanken Grotesk'..."  SERIF="'Newsreader'..."  MONO="'JetBrains Mono'..."
 
 ### Layout
 ```
-┌────────────┬────────────────┬──────────────────────────────────────┐
-│ AppSidebar │ ChatHistoryRail│ Chat window                          │
-│ (shared)   │ 286px          │  ChatHeader (sticky, blur)           │
-│ collapsed  │ warm white     │  Message stream (scrollable)         │
-│ by default │ search + list  │  Composer (quick chips + textarea)   │
-└────────────┴────────────────┴──────────────────────────────────────┘
+┌────────────────┬──────────────────────────────────────────────────┐
+│ ChatHistoryRail│ Chat window                                       │
+│ 286px          │  ChatHeader (sticky, blurred)                     │
+│ warm white     │  WelcomeState (empty) OR Message stream           │
+│ brand + search │  Composer (docked, tool row, Supervisor badge)    │
+│ + chat list    │                                                   │
+└────────────────┴──────────────────────────────────────────────────┘
 ```
+
+Note: ChatPage has its own branded sidebar (`ChatHistoryRail`) — does NOT use the shared `AppSidebar`.
 
 ### Sub-components (all inline, not exported)
 | Component | Responsibility |
 |---|---|
-| `ChatHistoryRail` | 286px aside; brand logo, New Chat button, search, grouped chat list, account footer |
+| `ChatHistoryRail` | 286px aside; brand logo, New Chat button, search, grouped chat list (Today/Yesterday/Previous 7 days/Pinned), account footer |
+| `ChatMenu` | 3-dot kebab per chat row; dropdown with Pin/Rename/Delete; click-outside-to-close via `useEffect` |
 | `ChatHeader` | Sticky blurred header; chat title, agent avatar stack, "3 agents" label, Share button |
-| `EmptyState` | Centered empty-chat prompt with 4 quick-action chips |
-| `Composer` | 4 quick chips + auto-sizing textarea + send button; Supervisor badge inline in input row |
-| `UserMessage` | Right-aligned blue bubble; optional "Modification" amber pill for refine messages |
-| `AIMessage` | Left-aligned card with agent icon tile, routing label (Supervisor → Agent Name), streaming cursor, action row (Approve/Modify/Decline/Copy), modify box with preset chips |
+| `WelcomeState` | Floating orb mascot + greeting + big `Composer` (big=true) + 5 suggestion pills |
+| `Composer` | Tool row chips (Attach/Research/Draft/Repurpose) + auto-sizing textarea + mic + send. `big` prop controls welcome vs docked variant. `hasLatestDraft` prop changes meta text and placeholder. |
+| `UserMessage` | Right-aligned blue bubble; optional "Modification" amber pill for refine messages (`isRefine: true`) |
+| `AIMessage` | Left-aligned card with agent icon tile, routing label, streaming cursor, action row (Approve / Make Changes / Decline / Copy), modify box with preset chips. `isRefinement` prop shows "refined" badge. |
 | `AgentIcon` | SVG icon coloured per agent |
 | `ThinkingDots` | 3-dot animated pulse during `routing` phase |
+
+### Chat history (real, client-side)
+- Flat array: `{ id, title, snippet, dot, createdAt, pinned }`. Max 10, newest first.
+- Auto-populated when the user's **first message** is sent — title = first 42 chars of the prompt.
+- Snippet updates to `"Writer Agent · done"` when the AI finishes.
+- Grouped by `groupChats(flat, search)` into: **Pinned** (top), **Today**, **Yesterday**, **Previous 7 days**.
+- **Not persisted** — lives in React state, cleared on page reload. Backend persistence is a future feature.
+
+### 3-dot menu per chat row (`ChatMenu`)
+Each chat row has a 3-dot button (opacity 0, revealed by `.cc-chat-row:hover .cc-chat-menu`). Click opens dropdown:
+- **Pin / Unpin** — moves to/from Pinned group at top
+- **Rename** — switches to inline `<input>` in the row; blur or Enter commits, Escape cancels. State lives in `ChatHistoryRail` (`renamingId`, `renameValue`).
+- **Delete** — removes from list; if the deleted chat was active, resets to welcome state
 
 ### Agent routing (client-side, cosmetic)
 ```js
 const AGENTS = { Writer, Research, SEO, Editor }
-// Routes by regex on the user's text — purely for UI labelling
-// Actual routing is done server-side by supervisor_node
+// Regex routes on user text — UI labels only; actual routing done server-side by supervisor_node
 ```
 
 ### Message lifecycle
 Each exchange creates two messages: a `user` message and an `ai` message. The AI message goes through phases:
 - `routing` — ThinkingDots shown, routing label displayed
 - `streaming` — text accumulates token by token, blinking cursor shown
-- `done` — action row visible (Approve / Modify / Decline / Copy)
+- `done` — action row visible on hover (Approve / Make Changes / Decline / Copy)
 
-### Real API calls (SSE streaming)
-```js
-streamQuery(userText, onToken, onDone, onError)  // SSE — primary path
-resumeAI(thread_id, action, content)             // HITL resume
+### Two-path sending architecture
+The `send()` function checks `latestDraft` state to route the message:
+
 ```
-On SSE error → falls back to `simulateStream()` (character-by-character mock from `MOCK_RESPONSES`).
+latestDraft is empty           → pushExchange()  → full pipeline (/api/ai/stream)
+                                   First message auto-saves to chat history
+latestDraft has content        → doRefine()      → lightweight (/api/ai/refine)
+                                   Single LLM call, bypasses supervisor+style
+```
 
-`onDone` receives `{answer?, draft?, thread_id?, status?}`. If `status === 'awaiting_approval'`, HITL action row is shown.
+`latestDraft` is set when the writer's SSE stream finishes (`status: 'awaiting_approval'`). Cleared on New Chat or Select Chat.
 
-### HITL actions
+### API calls
+```js
+streamQuery(userText, onToken, onDone, onError)  // SSE full pipeline — first message
+refineAI(draft, note)                            // POST /api/ai/refine — follow-ups when draft exists
+resumeAI(thread_id, action, content)             // HITL resume — Approve/Decline
+```
+On SSE error → falls back to `simulateStream()` (character-by-character mock). On `refineAI` error → falls back to `simulateStream()` with mock refinement text.
+
+### HITL / writer decision actions
 | Action | What happens |
 |---|---|
-| **Approve** | `resumeAI(thread_id, 'approved')` → green "Approved · added to draft" pill |
-| **Modify** | Opens modify box; user types note + sends → `resumeAI(thread_id, 'edited', note)` + new exchange |
+| **Approve** | `resumeAI(thread_id, 'approved')` (if thread exists) → green "Approved · added to draft" pill |
+| **Make Changes** | Opens modify box; user types feedback + "Send to agent" → `doRefine(msg.text, note)` — single LLM call, **no supervisor** |
 | **Decline** | `resumeAI(thread_id, 'rejected')` → red "Declined" pill + Regenerate button |
-| **Regenerate** | Re-runs mock stream (no new API call) |
-
-### Chat history (current state)
-`MOCK_CHATS = []` — history rail starts empty, conversations are not persisted to DB. New Chat / Select / Delete work only in local React state. **Pending:** backend chat persistence table + API.
+| **Regenerate** | Re-runs mock stream, sets `latestDraft` |
+| **Type in composer** | If `latestDraft` set → `doRefine(latestDraft, text)` automatically — user can just type freely |
 
 ### What's real vs mock
 | Feature | Status |
 |---|---|
 | SSE streaming to backend | ✅ Real — `streamQuery()` hits `/api/ai/stream` |
-| HITL approve/modify/decline | ✅ Real — `resumeAI()` hits `/api/ai/resume` |
+| HITL approve/decline | ✅ Real — `resumeAI()` hits `/api/ai/resume` |
+| Draft refinement | ✅ Real — `refineAI()` hits `POST /api/ai/refine` (single LLM call, no graph) |
 | Agent routing labels (Writer/Research/SEO/Editor) | ⚠️ Mock — client-side regex, cosmetic only |
-| Chat history rail | ⚠️ Mock — local state only, not persisted |
+| Chat history | ⚠️ Local state only — not persisted across reloads |
 | Share button | ⚠️ No-op |
-| Streaming fallback | ⚠️ Mock character simulation on SSE error |
+| Streaming fallback | ⚠️ Mock character simulation on SSE/refine error |
 
 ---
 
@@ -487,7 +513,15 @@ Redesigned to match `ContentCoachAI-TextEditor-ClaudeCode-Prompt.md` + the `imag
 
 **Right-click on the writing surface** → `ContextMenu` with Send to review (→ `useReviewQueue().addToQueue` + `api/publishing.js`'s `sendToReview` stub) / Rename (focuses title) / Pin / Delete.
 
-**Status workflow:** `draft` → (Send to review) → `in_review` (local state + real review-queue push, no backend persistence) → (Publish sheet) → `scheduled`/`published` (**now persisted to DB** via `PATCH /posts/{id}/status` + fires `sync_check_and_refresh_style_memory` as BackgroundTask; then calls `publishPost()` stub for eventual LinkedIn/X/Reddit delivery — **actual platform API integration is intentionally left as a TODO in `api/publishing.js`**).
+**Status workflow:** `draft` → (Send to review) → `in_review` (local state + real review-queue push, no backend persistence) → (Publish sheet) → `scheduled`/`published`. LinkedIn "Publish now" path is **real**: `publishPost()` → `publishToLinkedIn(postId)` → `POST /api/linkedin/publish/{id}` → backend inserts `PostPublishLog`, updates post status, fires style memory check. Scheduled posts and X/Reddit still use stubs.
+
+**SchedulePublishSheet LinkedIn flow** (props: `linkedInStatus`, `onConnectLinkedIn`):
+- Platform toggle row shows LinkedIn/X/Reddit chips
+- When LinkedIn is selected: connection indicator row appears — green "LinkedIn connected" or orange "LinkedIn not connected" + "Connect LinkedIn" button
+- "Connect LinkedIn" → `handleConnectLinkedIn()` → `getLinkedInAuthUrl()` → `window.location.href = auth_url` (full-page OAuth redirect)
+- Publish button is disabled with label "Connect LinkedIn first" when LinkedIn selected but not connected
+- On return from OAuth: `?linkedin_connected=true` → green toast "✓ LinkedIn connected successfully!"; `?linkedin_error=true` → red toast "LinkedIn connection failed — please try again" (both auto-dismiss at 4s; URL param stripped via `history.replaceState`)
+- LinkedIn status is fetched on DocEditor mount and refreshed each time the sheet opens
 
 **Reused, not rebuilt:** `components/shared/ContextMenu.jsx` (generalized with a `variant="dashboard"` skin + right-click-to-close), `hooks/useResizableRail.js`, `components/AIAssistant/useAIChat.js`, `api/publishing.js`, `updatePostAnalytics` in `api/vault.js` — all were built in an earlier pass and survived because only `MyWorkPage.jsx` + the legacy `/app` stack were deleted.
 
@@ -650,14 +684,32 @@ Separate Axios instance from `vault.js`. Same `X-User-Id` interceptor pattern.
 ```js
 queryAI(prompt)                              → Promise<{status, answer?, draft?, thread_id?}>
 resumeAI(thread_id, action, content='')     → Promise<{answer}>
+refineAI(draft, note)                        → Promise<{refined_draft}>  // single LLM call, no graph
 streamQuery(prompt, onToken, onDone, onErr)  → abortFn   // SSE — primary path used by ChatPage
 ```
 
-`streamQuery` opens an SSE connection to `GET /api/ai/stream?prompt=...`, calls `onToken(chunk)` for each streamed token, `onDone(data)` when the `done` event fires, and `onError(err)` on failure. Returns an abort function.
+`streamQuery` opens an SSE connection to `POST /api/ai/stream`, calls `onToken(chunk)` for each streamed token, `onDone(data)` when the `done` event fires, and `onError(err)` on failure. Returns an abort function.
 
-**Do NOT add `.data` at call site for `queryAI`/`resumeAI`** — both already unwrap with `.then(r => r.data)`.
+`refineAI(draft, note)` calls `POST /api/ai/refine` — a lightweight endpoint that makes one direct LLM call to the writer model with the existing draft + feedback instruction. Used by ChatPage for all follow-up messages when a draft exists in the current session.
 
-**ChatPage uses `streamQuery` as primary path; falls back to simulated mock stream on error.**
+**Do NOT add `.data` at call site for `queryAI`/`resumeAI`/`refineAI`** — all already unwrap with `.then(r => r.data)`.
+
+**ChatPage routing:** first message → `streamQuery`; follow-ups when draft exists → `refineAI`. Falls back to simulated mock stream on error.
+
+---
+
+## linkedin.js API module (`api/linkedin.js`)
+
+Separate Axios instance (`baseURL: /api/linkedin`), same `X-User-Id` interceptor pattern as `vault.js`.
+
+```js
+getLinkedInStatus()         → {connected, display_name?, profile_image_url?, expires_at?}
+getLinkedInAuthUrl()        → {auth_url}   // caller does window.location.href = auth_url
+publishToLinkedIn(postId)   → {published, needs_auth, auth_url?, reason?, linkedin_post_id?, duplicate?}
+disconnectLinkedIn()        → (204, no body)
+```
+
+Used by: `MyWorkPage.jsx` DocEditor — status fetch on mount + on sheet open; `handleConnectLinkedIn()` calls `getLinkedInAuthUrl()`; `publishing.js`'s `publishPost()` delegates LinkedIn to `publishToLinkedIn()`.
 
 ---
 

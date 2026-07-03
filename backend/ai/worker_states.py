@@ -48,15 +48,16 @@ class WriterState(TypedDict):
 
 class ResearcherState(TypedDict):
     """
-    State sent to researcher_node via Send API (future — not yet wired).
+    State sent to researcher_node via Send API.
 
-    When the orchestrator decides research is needed before writing, it sends
-    both user context and the already-fetched style_json so researcher can
-    tailor its angle suggestions to the user's existing coverage.
+    Unlike style_retriever_node (a single DB lookup), researcher_node runs its own
+    agentic tool loop (web_search, fetch_page, and — only when the user asks about
+    their own past posts — get_topic_inventory/search_vault_posts), so it needs the
+    conversation's messages to loop against, same shape as AnalyticsState.
     """
-    user_id:    str
-    query:      str
-    style_json: dict   # passed in so researcher can avoid redundant topic angles
+    user_id:  str
+    query:    str
+    messages: Annotated[list[HumanMessage | AIMessage], add_messages]
 
 
 class AnalyticsState(TypedDict):

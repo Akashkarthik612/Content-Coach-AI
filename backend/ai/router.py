@@ -39,6 +39,11 @@ class ResumeRequest(BaseModel):
     content:   str = ""
 
 
+class RefineDraftRequest(BaseModel):
+    draft: str
+    note:  str
+
+
 def _build_initial_state(prompt: str, user_id: str) -> dict:
     return {
         "query":           prompt,
@@ -103,7 +108,7 @@ async def stream_query(body: QueryRequest, user: User = Depends(get_current_user
                     has_writer_output = True
                     yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
 
-                elif node == "analytics_node":
+                elif node in ("analytics_node", "research_digest_node"):
                     yield f"data: {json.dumps({'type': 'token', 'content': content})}\n\n"
 
                 elif node == "supervisor_node":
@@ -170,3 +175,33 @@ async def resume(body: ResumeRequest, user: User = Depends(get_current_user)):
     decision = {"action": body.action, "content": body.content}
     state    = await assistant.ainvoke(Command(resume=decision), config=config)
     return QueryResponse(answer=state["answer"])
+
+
+# ── /refine — single-call writer refinement (no graph traversal) ──────────────
+
+@router.post("/refine")
+async def refine_draft(payload: RefineDraftRequest, user: User = Depends(get_current_user)):
+    """
+    Lightweight draft refinement endpoint.
+    Takes an existing draft + user instruction and returns a revised post in ~1 LLM call.
+    Bypasses the full supervisor → style_retriever → writer pipeline — used for iterative
+    editing within an active writing session on the frontend.
+    """
+    if not payload.draft.strip() or not payload.note.strip():
+        raise HTTPException(status_code=422, detail="draft and note are required.")
+
+    from backend.ai.agents.writer_node import _llm  # local import avoids circular at module load
+    prompt = (
+        "You are a professional LinkedIn content writer.\n"
+        "The user has a draft post and wants to revise it based on their feedback.\n\n"
+        f"CURRENT DRAFT:\n{payload.draft}\n\n"
+        f"USER INSTRUCTION:\n{payload.note}\n\n"
+        "Rewrite the draft to apply the instruction.\n\n"
+        "ABSOLUTE FORMATTING RULES — never break these:\n"
+        "- No markdown syntax ever: no **, no *, no __, no #, no >, no backticks\n"
+        "- If the user asks for bullet points, use a plain dash (- ) or number (1. ), nothing else\n"
+        "- No bold, no italic, no headers — plain text only\n"
+        "Output ONLY the revised post, no preamble, no explanation."
+    )
+    response = await _llm.ainvoke(prompt)
+    return {"refined_draft": response.content}

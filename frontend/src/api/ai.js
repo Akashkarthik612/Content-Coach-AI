@@ -14,6 +14,9 @@ export const queryAI = (prompt) =>
 export const resumeAI = (thread_id, action, content = '') =>
   api.post('/resume', { thread_id, action, content }).then(r => r.data);
 
+export const refineAI = (draft, note) =>
+  api.post('/refine', { draft, note }).then(r => r.data);
+
 /**
  * SSE streaming query. Calls /stream and fires callbacks as events arrive.
  *

@@ -1,6 +1,7 @@
 alembic
 bcrypt
 fastapi
+httpx
 langchain
 langchain-community
 langchain-google-genai
@@ -15,3 +16,5 @@ redis
 sqlalchemy
 uvicorn
 boto3
+ddgs
+trafilatura

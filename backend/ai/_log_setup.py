@@ -6,9 +6,10 @@ All modules under backend.ai inherit the handlers automatically via Python's
 logger hierarchy — no per-module changes needed beyond importing log_style_json.
 
 Log files written to backend/ai/logs/:
-  ai_debug.log   — DEBUG+ from every AI module
-  errors.log     — ERROR+ only
-  style_debug.log — full style JSON dumps (written by log_style_json)
+  ai_debug.log      — DEBUG+ from every AI module
+  errors.log        — ERROR+ only
+  style_debug.log    — full style JSON dumps (written by log_style_json)
+  research_debug.log — full research_brief JSON dumps (written by log_research_json)
 """
 import json
 import logging
@@ -52,3 +53,15 @@ def log_style_json(logger: logging.Logger, label: str, style: dict) -> None:
         f.write(json.dumps(style, indent=2, default=str))
         f.write("\n")
     logger.debug("%s — style_json keys=%s", label, list(style.keys()) if style else "EMPTY")
+
+
+def log_research_json(logger: logging.Logger, label: str, brief: dict) -> None:
+    """Append a pretty-printed research_brief JSON block to research_debug.log."""
+    path = LOG_DIR / "research_debug.log"
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(f"\n{'='*60}\n")
+        f.write(f"{label}\n")
+        f.write(f"{'='*60}\n")
+        f.write(json.dumps(brief, indent=2, default=str))
+        f.write("\n")
+    logger.debug("%s — research_brief keys=%s", label, list(brief.keys()) if brief else "EMPTY")
