@@ -9,7 +9,9 @@ from backend.core.dependencies import get_current_user, get_db
 from backend.ai.embeddings import embed_and_store_version
 from backend.ai.style_memory import sync_check_and_refresh_style_memory
 from backend.vault import service
+from backend.vault.models import PostStatus
 from backend.vault.schemas import (
+    AnalyticsSummaryResponse,
     FolderCreate,
     FolderRename,
     FolderResponse,
@@ -20,6 +22,7 @@ from backend.vault.schemas import (
     PostPin,
     PostRename,
     PostResponse,
+    PostStatusUpdate,
     SearchResult,
     VersionListResponse,
     VersionRename,
@@ -62,10 +65,13 @@ def rename_folder(
 @router.delete("/folders/{folder_id}", status_code=204)
 def delete_folder(
     folder_id: UUID,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     service.delete_folder(db, user_id=user.id, folder_id=folder_id)
+    # All posts + embeddings cascade-deleted by FK; invalidate AI tool cache
+    background_tasks.add_task(sync_invalidate_user_tool_cache, str(user.id))
 
 
 # ── Post ──────────────────────────────────────────────────────────────────────
@@ -93,6 +99,17 @@ def list_posts(
     return service.list_posts(db, user_id=user.id, folder_id=folder_id)
 
 
+# ── Recent posts (cross-folder) — must come BEFORE /posts/{post_id} ──────────
+
+@router.get("/posts/recent", response_model=list[PostListResponse])
+def get_recent_posts(
+    limit: int = 2,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return service.get_recent_posts(db, user_id=user.id, limit=limit)
+
+
 @router.get("/posts/{post_id}", response_model=PostResponse)
 def get_post(
     post_id: UUID,
@@ -115,10 +132,13 @@ def rename_post(
 @router.delete("/posts/{post_id}", status_code=204)
 def delete_post(
     post_id: UUID,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     service.delete_post(db, user_id=user.id, post_id=post_id)
+    # Invalidate tool cache so AI no longer sees the deleted post in search/style results
+    background_tasks.add_task(sync_invalidate_user_tool_cache, str(user.id))
 
 
 @router.patch("/posts/{post_id}/pin", response_model=PostResponse)
@@ -129,6 +149,31 @@ def pin_post(
     user: User = Depends(get_current_user),
 ):
     return service.pin_post(db, user_id=user.id, post_id=post_id, pinned=data.is_pinned)
+
+
+@router.patch("/posts/{post_id}/status", response_model=PostResponse)
+def set_post_status(
+    post_id: UUID,
+    data: PostStatusUpdate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    post = service.update_post_status(db, user_id=user.id, post_id=post_id, data=data)
+    # Style extraction counts both published + scheduled as "committed" content
+    if data.status in (PostStatus.published, PostStatus.scheduled):
+        background_tasks.add_task(sync_check_and_refresh_style_memory, str(user.id))
+    return post
+
+
+# ── Analytics Summary ─────────────────────────────────────────────────────────
+
+@router.get("/analytics/summary", response_model=AnalyticsSummaryResponse)
+def get_analytics_summary(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return service.get_analytics_summary(db, user_id=user.id)
 
 
 # ── Post Analytics ────────────────────────────────────────────────────────────
@@ -161,23 +206,21 @@ def save_version(
 ):
     version = service.save_version(db, user_id=user.id, post_id=post_id, data=data)
 
-    # Fire-and-forget: chunk → embed → store in post_embeddings
-    # Runs after HTTP 201 is sent; errors are logged, never re-raised
-    background_tasks.add_task(
-        embed_and_store_version,
-        version_id=str(version.id),
-        post_id=str(post_id),
-        user_id=str(user.id),
-        content=version.content,
-    )
+    # Vectorise only when the user explicitly marks a version as final.
+    # Regular saves skip embedding — no wasted Gemini embedding tokens on
+    # in-progress drafts. Only a final version is searchable by the AI.
+    if data.is_final:
+        background_tasks.add_task(
+            embed_and_store_version,
+            version_id=str(version.id),
+            post_id=str(post_id),
+            user_id=str(user.id),
+            content=version.content,
+        )
+        background_tasks.add_task(sync_invalidate_user_tool_cache, str(user.id))
 
-    # Invalidate all tool result caches for this user so the next AI query
-    # sees fresh content immediately
-    background_tasks.add_task(sync_invalidate_user_tool_cache, str(user.id))
-
-    # Check style memory windows; runs LLM analyzer only when threshold is crossed
-    # (every 3 new published posts for short-term, every 10 for long-term)
-    background_tasks.add_task(sync_check_and_refresh_style_memory, str(user.id))
+    # Style extraction is triggered only on publish/schedule (PATCH /posts/{id}/status),
+    # not on every draft save — saving a draft doesn't change the published-post count.
 
     return version
 

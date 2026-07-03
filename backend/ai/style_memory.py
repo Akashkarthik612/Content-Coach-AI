@@ -29,7 +29,7 @@ from backend.core.cache import (
     _TOOL_TTL,
 )
 from backend.core.database import SessionLocal
-from backend.ai.style_analyzer import analyze_style
+from backend.ai.agents.style_agent import analyze_style
 
 logger = logging.getLogger(__name__)
 
@@ -157,9 +157,13 @@ def format_style_memory_for_writer(memory: dict) -> str:
 def _count_published_posts(db, user_id: str) -> int:
     from backend.vault.models import Post, PostStatus
     from uuid import UUID
+    # Count both published and scheduled — scheduled = committed content queued for delivery
     return (
         db.query(func.count(Post.id))
-        .filter(Post.user_id == UUID(user_id), Post.status == PostStatus.published)
+        .filter(
+            Post.user_id == UUID(user_id),
+            Post.status.in_([PostStatus.published, PostStatus.scheduled]),
+        )
         .scalar()
         or 0
     )
@@ -174,7 +178,7 @@ def _fetch_published_post_contents(db, user_id: str, limit: int) -> list[str]:
         .join(Post, Post.id == PostVersion.post_id)
         .filter(
             Post.user_id == UUID(user_id),
-            Post.status == PostStatus.published,
+            Post.status.in_([PostStatus.published, PostStatus.scheduled]),
             PostVersion.version_number == Post.current_version,
         )
         .order_by(Post.updated_at.desc())
@@ -198,7 +202,7 @@ def _read_db_memory(db, user_id: str) -> dict | None:
             SELECT long_term, long_term_post_count,
                    short_term, short_term_post_count
             FROM user_style_memory
-            WHERE user_id = :uid::uuid
+            WHERE user_id = CAST(:uid AS uuid)
         """),
         {"uid": user_id},
     ).fetchone()
@@ -236,9 +240,9 @@ def _write_db_and_cache(
                          long_term,  long_term_post_count,  long_term_updated_at,
                          short_term, short_term_post_count, short_term_updated_at)
                     VALUES (
-                        :uid::uuid,
-                        :lt::jsonb,  :lt_count,  :lt_at,
-                        :st::jsonb,  :st_count,  :st_at
+                        CAST(:uid AS uuid),
+                        CAST(:lt AS jsonb),  :lt_count,  :lt_at,
+                        CAST(:st AS jsonb),  :st_count,  :st_at
                     )
                 """),
                 {
@@ -256,12 +260,12 @@ def _write_db_and_cache(
             updates = {}
             params  = {"uid": user_id}
             if new_lt:
-                updates["long_term"]             = ":lt::jsonb"
+                updates["long_term"]             = "CAST(:lt AS jsonb)"
                 updates["long_term_post_count"]  = ":lt_count"
                 updates["long_term_updated_at"]  = ":lt_at"
                 params.update({"lt": json.dumps(new_lt), "lt_count": published_count, "lt_at": now})
             if new_st:
-                updates["short_term"]             = ":st::jsonb"
+                updates["short_term"]             = "CAST(:st AS jsonb)"
                 updates["short_term_post_count"]  = ":st_count"
                 updates["short_term_updated_at"]  = ":st_at"
                 params.update({"st": json.dumps(new_st), "st_count": published_count, "st_at": now})
@@ -271,7 +275,7 @@ def _write_db_and_cache(
                             user_id, bool(new_lt), bool(new_st))
                 set_clause = ", ".join(f"{col} = {expr}" for col, expr in updates.items())
                 db.execute(
-                    text(f"UPDATE user_style_memory SET {set_clause} WHERE user_id = :uid::uuid"),
+                    text(f"UPDATE user_style_memory SET {set_clause} WHERE user_id = CAST(:uid AS uuid)"),
                     params,
                 )
         db.commit()

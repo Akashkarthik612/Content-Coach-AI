@@ -44,11 +44,12 @@ export const pinPost = (id, is_pinned) =>
   api.patch(`/posts/${id}/pin`, { is_pinned }).then(r => r.data);
 
 // ── Versions ──────────────────────────────────────────────────
-export const saveVersion = (postId, content, versionLabel) =>
+export const saveVersion = (postId, content, versionLabel, isFinal = false) =>
   api.post(`/posts/${postId}/versions`, {
     content,
     version_label: versionLabel || null,
     source: 'manual',
+    is_final: isFinal,
   }).then(r => r.data);
 
 export const getVersions = (postId) =>
@@ -63,6 +64,23 @@ export const renameVersion = (versionId, versionLabel) =>
 export const deleteVersion = (versionId) =>
   api.delete(`/versions/${versionId}`).then(r => r.data);
 
+// ── Analytics (per-post) ─────────────────────────────────────
+export const updatePostAnalytics = (postId, impressions, reactions) =>
+  api.patch(`/posts/${postId}/analytics`, { impressions, reactions }).then(r => r.data);
+
+export const updatePostStatus = (id, status, scheduledAt = null) =>
+  api.patch(`/posts/${id}/status`, {
+    status,
+    ...(scheduledAt ? { scheduled_at: scheduledAt } : {}),
+  }).then(r => r.data);
+
 // ── Search ────────────────────────────────────────────────────
 export const search = (query) =>
   api.get('/search', { params: { q: query } }).then(r => r.data);
+
+// ── Dashboard helpers ─────────────────────────────────────────
+export const getAnalyticsSummary = () =>
+  api.get('/analytics/summary').then(r => r.data);
+
+export const getRecentPosts = (limit = 2) =>
+  api.get('/posts/recent', { params: { limit } }).then(r => r.data);

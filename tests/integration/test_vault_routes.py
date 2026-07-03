@@ -167,7 +167,7 @@ class TestVersionRoutes:
     async def test_rename_version(self, authed_client, test_version):
         r = await authed_client.patch(
             f"/api/vault/versions/{test_version.id}",
-            json={"label": "Draft v1"},
+            json={"version_label": "Draft v1"},
         )
         assert r.status_code == 200
 
@@ -214,11 +214,13 @@ class TestSearchRoute:
 # ---------------------------------------------------------------------------
 
 class TestAuthGuard:
-    async def test_no_x_user_id_returns_401(self, test_client):
+    async def test_no_x_user_id_returns_422(self, test_client):
+        # FastAPI returns 422 when a required Header field is missing entirely
         r = await test_client.get("/api/vault/folders")
-        assert r.status_code == 401
+        assert r.status_code == 422
 
     async def test_invalid_x_user_id_returns_401(self, test_client):
+        # Invalid UUID → dependency raises 401
         r = await test_client.get(
             "/api/vault/folders",
             headers={"X-User-Id": "not-a-valid-uuid"},

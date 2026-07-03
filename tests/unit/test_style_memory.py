@@ -63,17 +63,18 @@ class TestGetStyleMemory:
 
     async def test_db_fallback_when_redis_miss(self, db_session, mock_redis, test_user, monkeypatch):
         from backend.ai import style_memory as sm
-        from backend.vault.models import UserStyleMemory
+        import json
+        from sqlalchemy import text
 
-        row = UserStyleMemory(
-            id=uuid.uuid4(),
-            user_id=test_user.id,
-            long_term={"hook_style": "question"},
-            long_term_post_count=5,
-            short_term=None,
-            short_term_post_count=0,
+        db_session.execute(
+            text("""
+                INSERT INTO user_style_memory
+                    (user_id, long_term, long_term_post_count, short_term, short_term_post_count)
+                VALUES
+                    (CAST(:uid AS uuid), CAST(:lt AS jsonb), :lt_count, NULL, 0)
+            """),
+            {"uid": str(test_user.id), "lt": json.dumps({"hook_style": "question"}), "lt_count": 5},
         )
-        db_session.add(row)
         db_session.flush()
 
         # Patch SessionLocal inside style_memory to use test db_session
@@ -150,10 +151,11 @@ class TestSyncCheckAndRefresh:
 
         mock_analyze.assert_called_once()
 
-        from backend.vault.models import UserStyleMemory
-        row = db_session.query(UserStyleMemory).filter(
-            UserStyleMemory.user_id == test_user.id
-        ).first()
+        from sqlalchemy import text
+        row = db_session.execute(
+            text("SELECT short_term FROM user_style_memory WHERE user_id = CAST(:uid AS uuid)"),
+            {"uid": str(test_user.id)},
+        ).fetchone()
         assert row is not None
         assert row.short_term is not None
 
@@ -175,10 +177,11 @@ class TestSyncCheckAndRefresh:
         _seed_published_posts(db_session, test_user.id, 10)  # LT threshold
         sm_mod.sync_check_and_refresh_style_memory(str(test_user.id))
 
-        from backend.vault.models import UserStyleMemory
-        row = db_session.query(UserStyleMemory).filter(
-            UserStyleMemory.user_id == test_user.id
-        ).first()
+        from sqlalchemy import text
+        row = db_session.execute(
+            text("SELECT long_term FROM user_style_memory WHERE user_id = CAST(:uid AS uuid)"),
+            {"uid": str(test_user.id)},
+        ).fetchone()
         assert row is not None
         assert row.long_term is not None
 

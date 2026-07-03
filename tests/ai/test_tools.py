@@ -67,10 +67,11 @@ def seeded_published_post(db_session, test_user, test_folder):
 class TestSearchVaultPosts:
     async def test_cache_hit_returns_cached_value(self, mock_redis, patch_embed_query, test_user):
         import backend.ai.agents.tools as tools_mod
-        from backend.core.cache import tool_key
+        from backend.core.cache import tool_key, query_hash
 
         fake_async, _ = mock_redis
-        key           = tool_key("search_vault_posts", str(test_user.id), "python")
+        # Tool uses query_hash(query) in the cache key, not the raw query string
+        key = tool_key("search_vault_posts", str(test_user.id), query_hash("python"))
         await fake_async.set(key, "Cached result")
 
         result = await tools_mod.search_vault_posts.ainvoke({
@@ -95,14 +96,15 @@ class TestSearchVaultPosts:
         self, mock_redis, patch_tools_session, patch_embed_query, test_user
     ):
         import backend.ai.agents.tools as tools_mod
-        from backend.core.cache import tool_key
+        from backend.core.cache import tool_key, query_hash
 
+        query = "cache_test_query"
         await tools_mod.search_vault_posts.ainvoke({
             "user_id": str(test_user.id),
-            "query":   "cache_test_query",
+            "query":   query,
         })
         fake_async, _ = mock_redis
-        key = tool_key("search_vault_posts", str(test_user.id), "cache_test_query")
+        key = tool_key("search_vault_posts", str(test_user.id), query_hash(query))
         cached = await fake_async.get(key)
         assert cached is not None
 

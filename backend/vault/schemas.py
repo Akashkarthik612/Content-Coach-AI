@@ -63,6 +63,7 @@ class VersionSave(BaseModel):
     content: str
     version_label: Optional[str] = None
     source: str = "manual"
+    is_final: bool = False  # True → triggers vectorisation; regular saves skip embedding
 
 
 class VersionResponse(BaseModel):
@@ -102,6 +103,10 @@ class PostRename(BaseModel):
 class PostPin(BaseModel):
     is_pinned: bool
 
+class PostStatusUpdate(BaseModel):
+    status: PostStatus
+    scheduled_at: Optional[datetime] = None
+
 class VersionRename(BaseModel):
     version_label: str
 
@@ -120,6 +125,22 @@ class PostAnalyticsResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ── Analytics Summary ─────────────────────────────────────────────────────────
+
+class MonthlyTrendPoint(BaseModel):
+    month: str
+    impressions: int
+    reactions: int
+
+
+class AnalyticsSummaryResponse(BaseModel):
+    total_impressions: int
+    avg_reactions: float
+    post_count: int
+    top_platform: str | None
+    monthly_trend: list[MonthlyTrendPoint]
 
 
 # ── Search ────────────────────────────────────────────────────────────────────

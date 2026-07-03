@@ -1,0 +1,431 @@
+
+============================================================
+style_retriever_node cold-start user=f0644cff-04d6-4c1e-a7fb-19a4459d0811
+============================================================
+{}
+
+============================================================
+style_analyzer output
+============================================================
+{
+  "hook_style": "The posts typically open with a bold claim or a provocative statement designed to grab attention.",
+  "tone": "The tone is primarily educational and informative, sharing technical insights and practical advice.",
+  "sentence_rhythm": "Sentences vary in length, with shorter, punchy statements often following longer, more descriptive ones to create a dynamic flow.",
+  "paragraph_structure": "Paragraphs are generally short and well-spaced, utilizing white space effectively to improve readability and highlight key points.",
+  "emoji_usage": "Emojis are used sparingly, primarily to add emphasis or visual cues to specific points, rather than for casual decoration.",
+  "cta_style": "Posts often conclude with a direct ask for engagement, such as requesting thoughts, feedback, or inviting further discussion.",
+  "vocabulary_level": "The vocabulary is technical, employing specific jargon related to AI, MLOps, and software engineering, assuming a knowledgeable audience.",
+  "structural_patterns": "Bullet points and numbered lists are frequently used to break down complex information into digestible steps or components.",
+  "recurring_themes": "Recurring themes include building reliable AI systems, understanding system design principles, and practical MLOps strategies for production environments."
+}
+
+============================================================
+style_analyzer output
+============================================================
+{
+  "hook_style": "Posts typically open with a question or a bold claim to immediately engage the reader.",
+  "tone": "The tone is primarily educational and technical, sharing in-depth knowledge and personal insights from an engineering perspective.",
+  "sentence_rhythm": "Sentences vary in length, with shorter, punchy statements often used for emphasis, interspersed with longer, more explanatory sentences.",
+  "paragraph_structure": "Paragraphs are generally short and well-spaced, utilizing bullet points and line breaks to enhance readability and highlight key information.",
+  "emoji_usage": "Emojis are used sparingly, primarily at the end of posts to add a touch of personality or to punctuate a call to action.",
+  "cta_style": "Posts often conclude with an open-ended question or a direct request for thoughts and feedback, encouraging community engagement.",
+  "vocabulary_level": "The vocabulary is technical, incorporating AI and software engineering jargon like 'LLM', 'RAG', 'inference layer', and 'goodput'.",
+  "structural_patterns": "Bullet points are frequently used to list concepts, metrics, or project outcomes, and bold text is employed to emphasize key terms or takeaways.",
+  "recurring_themes": "Recurring themes include the practical engineering challenges of deploying AI systems, benchmarking performance, system design from first principles, and the distinction between theoretical model performance and real-world user experience."
+}
+
+============================================================
+style_analyzer output
+============================================================
+{
+  "hook_style": "The posts typically open with a question or a bold claim to immediately engage the reader.",
+  "tone": "The tone is primarily educational and reflective, sharing personal experiences and technical insights with a professional yet approachable voice.",
+  "sentence_rhythm": "Sentence rhythm varies, with a mix of short, punchy sentences for emphasis and longer, more descriptive sentences to explain complex concepts.",
+  "paragraph_structure": "Paragraphs are generally short and well-spaced, utilizing white space effectively to improve readability and highlight key points.",
+  "emoji_usage": "Emoji usage is minimal to absent, maintaining a professional and focused tone.",
+  "cta_style": "The posts typically end with a question or a call for engagement, inviting readers to share their own experiences or insights.",
+  "vocabulary_level": "The vocabulary level is a blend of plain English and technical jargon, making complex AI and software engineering concepts accessible while still being precise.",
+  "structural_patterns": "Structural patterns include the use of bullet points for lists and key takeaways, and occasional bolding for emphasis, aiding in scannability.",
+  "recurring_themes": "Recurring themes include practical challenges and solutions in AI engineering, system design, LLM behavior, inference optimization, and personal learning journeys in tech."
+}
+
+============================================================
+style_analyzer output
+============================================================
+{
+  "hook_style": "Posts typically open with a question or a bold claim to immediately engage the reader.",
+  "tone": "The tone is primarily educational and reflective, sharing personal experiences and technical insights in a professional yet approachable manner.",
+  "sentence_rhythm": "Sentence rhythm varies, with a mix of short, punchy sentences for emphasis and longer, more descriptive sentences to explain complex concepts.",
+  "paragraph_structure": "Paragraphs are generally short and well-spaced, utilizing white space effectively to improve readability and highlight key points.",
+  "emoji_usage": "Emoji usage is minimal to absent, maintaining a professional and focused tone.",
+  "cta_style": "Calls to action are typically framed as open-ended questions, inviting discussion and the sharing of experiences from the community.",
+  "vocabulary_level": "The vocabulary level is a blend of technical jargon specific to AI and machine learning, explained in a way that is accessible to a broader tech audience.",
+  "structural_patterns": "Posts frequently employ bullet points and bold text to break down information, define key terms, and emphasize important takeaways.",
+  "recurring_themes": "Recurring themes include the practical challenges of deploying AI systems in production, the importance of system design over raw model performance, and the nuances of LLM behavior and optimization."
+}
+
+============================================================
+style_analyzer output
+============================================================
+{
+  "hook_style": "The posts typically open with a question to engage the reader or a bold statement about a personal experience.",
+  "tone": "The tone is primarily personal and educational, sharing lessons learned from technical challenges and interview experiences.",
+  "sentence_rhythm": "Sentence rhythm varies, with some posts featuring shorter, punchier sentences for emphasis and others using longer, more descriptive sentences to explain technical concepts.",
+  "paragraph_structure": "Paragraphs are generally short to medium in length, with ample white space used to break up text and improve readability.",
+  "emoji_usage": "Emoji usage is minimal, appearing only occasionally to add a touch of personality or highlight a specific point.",
+  "cta_style": "The posts typically end with a question to encourage discussion and engagement from the audience.",
+  "vocabulary_level": "The vocabulary level is a mix of plain English for broader accessibility and technical jargon specific to AI, machine learning, and software engineering.",
+  "structural_patterns": "Bullet points are frequently used to list metrics, steps, or key takeaways, enhancing the clarity and scannability of the content.",
+  "recurring_themes": "Recurring themes include practical challenges in building AI systems (LLMOps, inference layers, structured outputs), personal learning journeys (DSA preparation, technical deep dives), and the importance of system design and benchmarking."
+}
+
+============================================================
+style_retriever_node on-demand user=f0644cff-04d6-4c1e-a7fb-19a4459d0811
+============================================================
+{
+  "long_term": {
+    "hook_style": "Posts typically open with a question or a bold claim to immediately engage the reader.",
+    "tone": "The tone is primarily educational and reflective, sharing personal experiences and technical insights in a professional yet approachable manner.",
+    "sentence_rhythm": "Sentence rhythm varies, with a mix of short, punchy sentences for emphasis and longer, more descriptive sentences to explain complex concepts.",
+    "paragraph_structure": "Paragraphs are generally short and well-spaced, utilizing white space effectively to improve readability and highlight key points.",
+    "emoji_usage": "Emoji usage is minimal to absent, maintaining a professional and focused tone.",
+    "cta_style": "Calls to action are typically framed as open-ended questions, inviting discussion and the sharing of experiences from the community.",
+    "vocabulary_level": "The vocabulary level is a blend of technical jargon specific to AI and machine learning, explained in a way that is accessible to a broader tech audience.",
+    "structural_patterns": "Posts frequently employ bullet points and bold text to break down information, define key terms, and emphasize important takeaways.",
+    "recurring_themes": "Recurring themes include the practical challenges of deploying AI systems in production, the importance of system design over raw model performance, and the nuances of LLM behavior and optimization."
+  },
+  "short_term": {
+    "hook_style": "The posts typically open with a question to engage the reader or a bold statement about a personal experience.",
+    "tone": "The tone is primarily personal and educational, sharing lessons learned from technical challenges and interview experiences.",
+    "sentence_rhythm": "Sentence rhythm varies, with some posts featuring shorter, punchier sentences for emphasis and others using longer, more descriptive sentences to explain technical concepts.",
+    "paragraph_structure": "Paragraphs are generally short to medium in length, with ample white space used to break up text and improve readability.",
+    "emoji_usage": "Emoji usage is minimal, appearing only occasionally to add a touch of personality or highlight a specific point.",
+    "cta_style": "The posts typically end with a question to encourage discussion and engagement from the audience.",
+    "vocabulary_level": "The vocabulary level is a mix of plain English for broader accessibility and technical jargon specific to AI, machine learning, and software engineering.",
+    "structural_patterns": "Bullet points are frequently used to list metrics, steps, or key takeaways, enhancing the clarity and scannability of the content.",
+    "recurring_themes": "Recurring themes include practical challenges in building AI systems (LLMOps, inference layers, structured outputs), personal learning journeys (DSA preparation, technical deep dives), and the importance of system design and benchmarking."
+  }
+}
+
+============================================================
+style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811
+============================================================
+{
+  "long_term": {
+    "tone": "The tone is primarily educational and reflective, sharing personal experiences and technical insights in a professional yet approachable manner.",
+    "cta_style": "Calls to action are typically framed as open-ended questions, inviting discussion and the sharing of experiences from the community.",
+    "hook_style": "Posts typically open with a question or a bold claim to immediately engage the reader.",
+    "emoji_usage": "Emoji usage is minimal to absent, maintaining a professional and focused tone.",
+    "sentence_rhythm": "Sentence rhythm varies, with a mix of short, punchy sentences for emphasis and longer, more descriptive sentences to explain complex concepts.",
+    "recurring_themes": "Recurring themes include the practical challenges of deploying AI systems in production, the importance of system design over raw model performance, and the nuances of LLM behavior and optimization.",
+    "vocabulary_level": "The vocabulary level is a blend of technical jargon specific to AI and machine learning, explained in a way that is accessible to a broader tech audience.",
+    "paragraph_structure": "Paragraphs are generally short and well-spaced, utilizing white space effectively to improve readability and highlight key points.",
+    "structural_patterns": "Posts frequently employ bullet points and bold text to break down information, define key terms, and emphasize important takeaways."
+  },
+  "short_term": {
+    "tone": "The tone is primarily personal and educational, sharing lessons learned from technical challenges and interview experiences.",
+    "cta_style": "The posts typically end with a question to encourage discussion and engagement from the audience.",
+    "hook_style": "The posts typically open with a question to engage the reader or a bold statement about a personal experience.",
+    "emoji_usage": "Emoji usage is minimal, appearing only occasionally to add a touch of personality or highlight a specific point.",
+    "sentence_rhythm": "Sentence rhythm varies, with some posts featuring shorter, punchier sentences for emphasis and others using longer, more descriptive sentences to explain technical concepts.",
+    "recurring_themes": "Recurring themes include practical challenges in building AI systems (LLMOps, inference layers, structured outputs), personal learning journeys (DSA preparation, technical deep dives), and the importance of system design and benchmarking.",
+    "vocabulary_level": "The vocabulary level is a mix of plain English for broader accessibility and technical jargon specific to AI, machine learning, and software engineering.",
+    "paragraph_structure": "Paragraphs are generally short to medium in length, with ample white space used to break up text and improve readability.",
+    "structural_patterns": "Bullet points are frequently used to list metrics, steps, or key takeaways, enhancing the clarity and scannability of the content."
+  }
+}
+
+============================================================
+style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811
+============================================================
+{
+  "long_term": {
+    "tone": "The tone is primarily educational and reflective, sharing personal experiences and technical insights in a professional yet approachable manner.",
+    "cta_style": "Calls to action are typically framed as open-ended questions, inviting discussion and the sharing of experiences from the community.",
+    "hook_style": "Posts typically open with a question or a bold claim to immediately engage the reader.",
+    "emoji_usage": "Emoji usage is minimal to absent, maintaining a professional and focused tone.",
+    "sentence_rhythm": "Sentence rhythm varies, with a mix of short, punchy sentences for emphasis and longer, more descriptive sentences to explain complex concepts.",
+    "recurring_themes": "Recurring themes include the practical challenges of deploying AI systems in production, the importance of system design over raw model performance, and the nuances of LLM behavior and optimization.",
+    "vocabulary_level": "The vocabulary level is a blend of technical jargon specific to AI and machine learning, explained in a way that is accessible to a broader tech audience.",
+    "paragraph_structure": "Paragraphs are generally short and well-spaced, utilizing white space effectively to improve readability and highlight key points.",
+    "structural_patterns": "Posts frequently employ bullet points and bold text to break down information, define key terms, and emphasize important takeaways."
+  },
+  "short_term": {
+    "tone": "The tone is primarily personal and educational, sharing lessons learned from technical challenges and interview experiences.",
+    "cta_style": "The posts typically end with a question to encourage discussion and engagement from the audience.",
+    "hook_style": "The posts typically open with a question to engage the reader or a bold statement about a personal experience.",
+    "emoji_usage": "Emoji usage is minimal, appearing only occasionally to add a touch of personality or highlight a specific point.",
+    "sentence_rhythm": "Sentence rhythm varies, with some posts featuring shorter, punchier sentences for emphasis and others using longer, more descriptive sentences to explain technical concepts.",
+    "recurring_themes": "Recurring themes include practical challenges in building AI systems (LLMOps, inference layers, structured outputs), personal learning journeys (DSA preparation, technical deep dives), and the importance of system design and benchmarking.",
+    "vocabulary_level": "The vocabulary level is a mix of plain English for broader accessibility and technical jargon specific to AI, machine learning, and software engineering.",
+    "paragraph_structure": "Paragraphs are generally short to medium in length, with ample white space used to break up text and improve readability.",
+    "structural_patterns": "Bullet points are frequently used to list metrics, steps, or key takeaways, enhancing the clarity and scannability of the content."
+  }
+}
+
+============================================================
+style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811
+============================================================
+{
+  "long_term": {
+    "tone": "The tone is primarily educational and reflective, sharing personal experiences and technical insights in a professional yet approachable manner.",
+    "cta_style": "Calls to action are typically framed as open-ended questions, inviting discussion and the sharing of experiences from the community.",
+    "hook_style": "Posts typically open with a question or a bold claim to immediately engage the reader.",
+    "emoji_usage": "Emoji usage is minimal to absent, maintaining a professional and focused tone.",
+    "sentence_rhythm": "Sentence rhythm varies, with a mix of short, punchy sentences for emphasis and longer, more descriptive sentences to explain complex concepts.",
+    "recurring_themes": "Recurring themes include the practical challenges of deploying AI systems in production, the importance of system design over raw model performance, and the nuances of LLM behavior and optimization.",
+    "vocabulary_level": "The vocabulary level is a blend of technical jargon specific to AI and machine learning, explained in a way that is accessible to a broader tech audience.",
+    "paragraph_structure": "Paragraphs are generally short and well-spaced, utilizing white space effectively to improve readability and highlight key points.",
+    "structural_patterns": "Posts frequently employ bullet points and bold text to break down information, define key terms, and emphasize important takeaways."
+  },
+  "short_term": {
+    "tone": "The tone is primarily personal and educational, sharing lessons learned from technical challenges and interview experiences.",
+    "cta_style": "The posts typically end with a question to encourage discussion and engagement from the audience.",
+    "hook_style": "The posts typically open with a question to engage the reader or a bold statement about a personal experience.",
+    "emoji_usage": "Emoji usage is minimal, appearing only occasionally to add a touch of personality or highlight a specific point.",
+    "sentence_rhythm": "Sentence rhythm varies, with some posts featuring shorter, punchier sentences for emphasis and others using longer, more descriptive sentences to explain technical concepts.",
+    "recurring_themes": "Recurring themes include practical challenges in building AI systems (LLMOps, inference layers, structured outputs), personal learning journeys (DSA preparation, technical deep dives), and the importance of system design and benchmarking.",
+    "vocabulary_level": "The vocabulary level is a mix of plain English for broader accessibility and technical jargon specific to AI, machine learning, and software engineering.",
+    "paragraph_structure": "Paragraphs are generally short to medium in length, with ample white space used to break up text and improve readability.",
+    "structural_patterns": "Bullet points are frequently used to list metrics, steps, or key takeaways, enhancing the clarity and scannability of the content."
+  }
+}
+
+============================================================
+style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811
+============================================================
+{
+  "long_term": {
+    "tone": "The tone is primarily educational and reflective, sharing personal experiences and technical insights in a professional yet approachable manner.",
+    "cta_style": "Calls to action are typically framed as open-ended questions, inviting discussion and the sharing of experiences from the community.",
+    "hook_style": "Posts typically open with a question or a bold claim to immediately engage the reader.",
+    "emoji_usage": "Emoji usage is minimal to absent, maintaining a professional and focused tone.",
+    "sentence_rhythm": "Sentence rhythm varies, with a mix of short, punchy sentences for emphasis and longer, more descriptive sentences to explain complex concepts.",
+    "recurring_themes": "Recurring themes include the practical challenges of deploying AI systems in production, the importance of system design over raw model performance, and the nuances of LLM behavior and optimization.",
+    "vocabulary_level": "The vocabulary level is a blend of technical jargon specific to AI and machine learning, explained in a way that is accessible to a broader tech audience.",
+    "paragraph_structure": "Paragraphs are generally short and well-spaced, utilizing white space effectively to improve readability and highlight key points.",
+    "structural_patterns": "Posts frequently employ bullet points and bold text to break down information, define key terms, and emphasize important takeaways."
+  },
+  "short_term": {
+    "tone": "The tone is primarily personal and educational, sharing lessons learned from technical challenges and interview experiences.",
+    "cta_style": "The posts typically end with a question to encourage discussion and engagement from the audience.",
+    "hook_style": "The posts typically open with a question to engage the reader or a bold statement about a personal experience.",
+    "emoji_usage": "Emoji usage is minimal, appearing only occasionally to add a touch of personality or highlight a specific point.",
+    "sentence_rhythm": "Sentence rhythm varies, with some posts featuring shorter, punchier sentences for emphasis and others using longer, more descriptive sentences to explain technical concepts.",
+    "recurring_themes": "Recurring themes include practical challenges in building AI systems (LLMOps, inference layers, structured outputs), personal learning journeys (DSA preparation, technical deep dives), and the importance of system design and benchmarking.",
+    "vocabulary_level": "The vocabulary level is a mix of plain English for broader accessibility and technical jargon specific to AI, machine learning, and software engineering.",
+    "paragraph_structure": "Paragraphs are generally short to medium in length, with ample white space used to break up text and improve readability.",
+    "structural_patterns": "Bullet points are frequently used to list metrics, steps, or key takeaways, enhancing the clarity and scannability of the content."
+  }
+}
+
+============================================================
+style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811
+============================================================
+{
+  "long_term": {
+    "tone": "The tone is primarily educational and reflective, sharing personal experiences and technical insights in a professional yet approachable manner.",
+    "cta_style": "Calls to action are typically framed as open-ended questions, inviting discussion and the sharing of experiences from the community.",
+    "hook_style": "Posts typically open with a question or a bold claim to immediately engage the reader.",
+    "emoji_usage": "Emoji usage is minimal to absent, maintaining a professional and focused tone.",
+    "sentence_rhythm": "Sentence rhythm varies, with a mix of short, punchy sentences for emphasis and longer, more descriptive sentences to explain complex concepts.",
+    "recurring_themes": "Recurring themes include the practical challenges of deploying AI systems in production, the importance of system design over raw model performance, and the nuances of LLM behavior and optimization.",
+    "vocabulary_level": "The vocabulary level is a blend of technical jargon specific to AI and machine learning, explained in a way that is accessible to a broader tech audience.",
+    "paragraph_structure": "Paragraphs are generally short and well-spaced, utilizing white space effectively to improve readability and highlight key points.",
+    "structural_patterns": "Posts frequently employ bullet points and bold text to break down information, define key terms, and emphasize important takeaways."
+  },
+  "short_term": {
+    "tone": "The tone is primarily personal and educational, sharing lessons learned from technical challenges and interview experiences.",
+    "cta_style": "The posts typically end with a question to encourage discussion and engagement from the audience.",
+    "hook_style": "The posts typically open with a question to engage the reader or a bold statement about a personal experience.",
+    "emoji_usage": "Emoji usage is minimal, appearing only occasionally to add a touch of personality or highlight a specific point.",
+    "sentence_rhythm": "Sentence rhythm varies, with some posts featuring shorter, punchier sentences for emphasis and others using longer, more descriptive sentences to explain technical concepts.",
+    "recurring_themes": "Recurring themes include practical challenges in building AI systems (LLMOps, inference layers, structured outputs), personal learning journeys (DSA preparation, technical deep dives), and the importance of system design and benchmarking.",
+    "vocabulary_level": "The vocabulary level is a mix of plain English for broader accessibility and technical jargon specific to AI, machine learning, and software engineering.",
+    "paragraph_structure": "Paragraphs are generally short to medium in length, with ample white space used to break up text and improve readability.",
+    "structural_patterns": "Bullet points are frequently used to list metrics, steps, or key takeaways, enhancing the clarity and scannability of the content."
+  }
+}
+
+============================================================
+style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811
+============================================================
+{
+  "long_term": {
+    "tone": "The tone is primarily educational and reflective, sharing personal experiences and technical insights in a professional yet approachable manner.",
+    "cta_style": "Calls to action are typically framed as open-ended questions, inviting discussion and the sharing of experiences from the community.",
+    "hook_style": "Posts typically open with a question or a bold claim to immediately engage the reader.",
+    "emoji_usage": "Emoji usage is minimal to absent, maintaining a professional and focused tone.",
+    "sentence_rhythm": "Sentence rhythm varies, with a mix of short, punchy sentences for emphasis and longer, more descriptive sentences to explain complex concepts.",
+    "recurring_themes": "Recurring themes include the practical challenges of deploying AI systems in production, the importance of system design over raw model performance, and the nuances of LLM behavior and optimization.",
+    "vocabulary_level": "The vocabulary level is a blend of technical jargon specific to AI and machine learning, explained in a way that is accessible to a broader tech audience.",
+    "paragraph_structure": "Paragraphs are generally short and well-spaced, utilizing white space effectively to improve readability and highlight key points.",
+    "structural_patterns": "Posts frequently employ bullet points and bold text to break down information, define key terms, and emphasize important takeaways."
+  },
+  "short_term": {
+    "tone": "The tone is primarily personal and educational, sharing lessons learned from technical challenges and interview experiences.",
+    "cta_style": "The posts typically end with a question to encourage discussion and engagement from the audience.",
+    "hook_style": "The posts typically open with a question to engage the reader or a bold statement about a personal experience.",
+    "emoji_usage": "Emoji usage is minimal, appearing only occasionally to add a touch of personality or highlight a specific point.",
+    "sentence_rhythm": "Sentence rhythm varies, with some posts featuring shorter, punchier sentences for emphasis and others using longer, more descriptive sentences to explain technical concepts.",
+    "recurring_themes": "Recurring themes include practical challenges in building AI systems (LLMOps, inference layers, structured outputs), personal learning journeys (DSA preparation, technical deep dives), and the importance of system design and benchmarking.",
+    "vocabulary_level": "The vocabulary level is a mix of plain English for broader accessibility and technical jargon specific to AI, machine learning, and software engineering.",
+    "paragraph_structure": "Paragraphs are generally short to medium in length, with ample white space used to break up text and improve readability.",
+    "structural_patterns": "Bullet points are frequently used to list metrics, steps, or key takeaways, enhancing the clarity and scannability of the content."
+  }
+}
+
+============================================================
+style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811
+============================================================
+{
+  "long_term": {
+    "tone": "The tone is primarily educational and reflective, sharing personal experiences and technical insights in a professional yet approachable manner.",
+    "cta_style": "Calls to action are typically framed as open-ended questions, inviting discussion and the sharing of experiences from the community.",
+    "hook_style": "Posts typically open with a question or a bold claim to immediately engage the reader.",
+    "emoji_usage": "Emoji usage is minimal to absent, maintaining a professional and focused tone.",
+    "sentence_rhythm": "Sentence rhythm varies, with a mix of short, punchy sentences for emphasis and longer, more descriptive sentences to explain complex concepts.",
+    "recurring_themes": "Recurring themes include the practical challenges of deploying AI systems in production, the importance of system design over raw model performance, and the nuances of LLM behavior and optimization.",
+    "vocabulary_level": "The vocabulary level is a blend of technical jargon specific to AI and machine learning, explained in a way that is accessible to a broader tech audience.",
+    "paragraph_structure": "Paragraphs are generally short and well-spaced, utilizing white space effectively to improve readability and highlight key points.",
+    "structural_patterns": "Posts frequently employ bullet points and bold text to break down information, define key terms, and emphasize important takeaways."
+  },
+  "short_term": {
+    "tone": "The tone is primarily personal and educational, sharing lessons learned from technical challenges and interview experiences.",
+    "cta_style": "The posts typically end with a question to encourage discussion and engagement from the audience.",
+    "hook_style": "The posts typically open with a question to engage the reader or a bold statement about a personal experience.",
+    "emoji_usage": "Emoji usage is minimal, appearing only occasionally to add a touch of personality or highlight a specific point.",
+    "sentence_rhythm": "Sentence rhythm varies, with some posts featuring shorter, punchier sentences for emphasis and others using longer, more descriptive sentences to explain technical concepts.",
+    "recurring_themes": "Recurring themes include practical challenges in building AI systems (LLMOps, inference layers, structured outputs), personal learning journeys (DSA preparation, technical deep dives), and the importance of system design and benchmarking.",
+    "vocabulary_level": "The vocabulary level is a mix of plain English for broader accessibility and technical jargon specific to AI, machine learning, and software engineering.",
+    "paragraph_structure": "Paragraphs are generally short to medium in length, with ample white space used to break up text and improve readability.",
+    "structural_patterns": "Bullet points are frequently used to list metrics, steps, or key takeaways, enhancing the clarity and scannability of the content."
+  }
+}
+
+============================================================
+style_analyzer output
+============================================================
+{
+  "hook_style": "The posts typically open with a question to engage the reader.",
+  "tone": "The tone is primarily educational and personal, sharing insights and lessons learned from technical experiences.",
+  "sentence_rhythm": "Sentences vary in length, with shorter, punchy statements often used for emphasis, interspersed with more detailed explanations.",
+  "paragraph_structure": "Paragraphs are generally short and separated by ample white space, making the content easy to scan and digest.",
+  "emoji_usage": "Emojis are used sparingly, primarily at the end of posts to add a touch of personality or to highlight a key takeaway.",
+  "cta_style": "The posts typically end with a question to encourage discussion and engagement from the audience.",
+  "vocabulary_level": "The vocabulary is a mix of plain English for accessibility and technical jargon specific to AI and software engineering, explained clearly.",
+  "structural_patterns": "Bullet points and numbered lists are frequently used to break down complex information and highlight key steps or concepts.",
+  "recurring_themes": "Recurring themes include demystifying AI concepts (parameters, temperature), the practicalities of building and deploying AI systems (inference layers, structured outputs), and personal reflections on learning and interview preparation."
+}
+
+============================================================
+style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811
+============================================================
+{
+  "long_term": {
+    "tone": "The tone is primarily educational and reflective, sharing personal experiences and technical insights in a professional yet approachable manner.",
+    "cta_style": "Calls to action are typically framed as open-ended questions, inviting discussion and the sharing of experiences from the community.",
+    "hook_style": "Posts typically open with a question or a bold claim to immediately engage the reader.",
+    "emoji_usage": "Emoji usage is minimal to absent, maintaining a professional and focused tone.",
+    "sentence_rhythm": "Sentence rhythm varies, with a mix of short, punchy sentences for emphasis and longer, more descriptive sentences to explain complex concepts.",
+    "recurring_themes": "Recurring themes include the practical challenges of deploying AI systems in production, the importance of system design over raw model performance, and the nuances of LLM behavior and optimization.",
+    "vocabulary_level": "The vocabulary level is a blend of technical jargon specific to AI and machine learning, explained in a way that is accessible to a broader tech audience.",
+    "paragraph_structure": "Paragraphs are generally short and well-spaced, utilizing white space effectively to improve readability and highlight key points.",
+    "structural_patterns": "Posts frequently employ bullet points and bold text to break down information, define key terms, and emphasize important takeaways."
+  },
+  "short_term": {
+    "tone": "The tone is primarily educational and personal, sharing insights and lessons learned from technical experiences.",
+    "cta_style": "The posts typically end with a question to encourage discussion and engagement from the audience.",
+    "hook_style": "The posts typically open with a question to engage the reader.",
+    "emoji_usage": "Emojis are used sparingly, primarily at the end of posts to add a touch of personality or to highlight a key takeaway.",
+    "sentence_rhythm": "Sentences vary in length, with shorter, punchy statements often used for emphasis, interspersed with more detailed explanations.",
+    "recurring_themes": "Recurring themes include demystifying AI concepts (parameters, temperature), the practicalities of building and deploying AI systems (inference layers, structured outputs), and personal reflections on learning and interview preparation.",
+    "vocabulary_level": "The vocabulary is a mix of plain English for accessibility and technical jargon specific to AI and software engineering, explained clearly.",
+    "paragraph_structure": "Paragraphs are generally short and separated by ample white space, making the content easy to scan and digest.",
+    "structural_patterns": "Bullet points and numbered lists are frequently used to break down complex information and highlight key steps or concepts."
+  }
+}
+
+============================================================
+style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811
+============================================================
+{
+  "long_term": {
+    "tone": "The tone is primarily educational and reflective, sharing personal experiences and technical insights in a professional yet approachable manner.",
+    "cta_style": "Calls to action are typically framed as open-ended questions, inviting discussion and the sharing of experiences from the community.",
+    "hook_style": "Posts typically open with a question or a bold claim to immediately engage the reader.",
+    "emoji_usage": "Emoji usage is minimal to absent, maintaining a professional and focused tone.",
+    "sentence_rhythm": "Sentence rhythm varies, with a mix of short, punchy sentences for emphasis and longer, more descriptive sentences to explain complex concepts.",
+    "recurring_themes": "Recurring themes include the practical challenges of deploying AI systems in production, the importance of system design over raw model performance, and the nuances of LLM behavior and optimization.",
+    "vocabulary_level": "The vocabulary level is a blend of technical jargon specific to AI and machine learning, explained in a way that is accessible to a broader tech audience.",
+    "paragraph_structure": "Paragraphs are generally short and well-spaced, utilizing white space effectively to improve readability and highlight key points.",
+    "structural_patterns": "Posts frequently employ bullet points and bold text to break down information, define key terms, and emphasize important takeaways."
+  },
+  "short_term": {
+    "tone": "The tone is primarily educational and personal, sharing insights and lessons learned from technical experiences.",
+    "cta_style": "The posts typically end with a question to encourage discussion and engagement from the audience.",
+    "hook_style": "The posts typically open with a question to engage the reader.",
+    "emoji_usage": "Emojis are used sparingly, primarily at the end of posts to add a touch of personality or to highlight a key takeaway.",
+    "sentence_rhythm": "Sentences vary in length, with shorter, punchy statements often used for emphasis, interspersed with more detailed explanations.",
+    "recurring_themes": "Recurring themes include demystifying AI concepts (parameters, temperature), the practicalities of building and deploying AI systems (inference layers, structured outputs), and personal reflections on learning and interview preparation.",
+    "vocabulary_level": "The vocabulary is a mix of plain English for accessibility and technical jargon specific to AI and software engineering, explained clearly.",
+    "paragraph_structure": "Paragraphs are generally short and separated by ample white space, making the content easy to scan and digest.",
+    "structural_patterns": "Bullet points and numbered lists are frequently used to break down complex information and highlight key steps or concepts."
+  }
+}
+
+============================================================
+style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811
+============================================================
+{
+  "long_term": {
+    "tone": "The tone is primarily educational and reflective, sharing personal experiences and technical insights in a professional yet approachable manner.",
+    "cta_style": "Calls to action are typically framed as open-ended questions, inviting discussion and the sharing of experiences from the community.",
+    "hook_style": "Posts typically open with a question or a bold claim to immediately engage the reader.",
+    "emoji_usage": "Emoji usage is minimal to absent, maintaining a professional and focused tone.",
+    "sentence_rhythm": "Sentence rhythm varies, with a mix of short, punchy sentences for emphasis and longer, more descriptive sentences to explain complex concepts.",
+    "recurring_themes": "Recurring themes include the practical challenges of deploying AI systems in production, the importance of system design over raw model performance, and the nuances of LLM behavior and optimization.",
+    "vocabulary_level": "The vocabulary level is a blend of technical jargon specific to AI and machine learning, explained in a way that is accessible to a broader tech audience.",
+    "paragraph_structure": "Paragraphs are generally short and well-spaced, utilizing white space effectively to improve readability and highlight key points.",
+    "structural_patterns": "Posts frequently employ bullet points and bold text to break down information, define key terms, and emphasize important takeaways."
+  },
+  "short_term": {
+    "tone": "The tone is primarily educational and personal, sharing insights and lessons learned from technical experiences.",
+    "cta_style": "The posts typically end with a question to encourage discussion and engagement from the audience.",
+    "hook_style": "The posts typically open with a question to engage the reader.",
+    "emoji_usage": "Emojis are used sparingly, primarily at the end of posts to add a touch of personality or to highlight a key takeaway.",
+    "sentence_rhythm": "Sentences vary in length, with shorter, punchy statements often used for emphasis, interspersed with more detailed explanations.",
+    "recurring_themes": "Recurring themes include demystifying AI concepts (parameters, temperature), the practicalities of building and deploying AI systems (inference layers, structured outputs), and personal reflections on learning and interview preparation.",
+    "vocabulary_level": "The vocabulary is a mix of plain English for accessibility and technical jargon specific to AI and software engineering, explained clearly.",
+    "paragraph_structure": "Paragraphs are generally short and separated by ample white space, making the content easy to scan and digest.",
+    "structural_patterns": "Bullet points and numbered lists are frequently used to break down complex information and highlight key steps or concepts."
+  }
+}
+
+============================================================
+style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811
+============================================================
+{
+  "long_term": {
+    "tone": "The tone is primarily educational and reflective, sharing personal experiences and technical insights in a professional yet approachable manner.",
+    "cta_style": "Calls to action are typically framed as open-ended questions, inviting discussion and the sharing of experiences from the community.",
+    "hook_style": "Posts typically open with a question or a bold claim to immediately engage the reader.",
+    "emoji_usage": "Emoji usage is minimal to absent, maintaining a professional and focused tone.",
+    "sentence_rhythm": "Sentence rhythm varies, with a mix of short, punchy sentences for emphasis and longer, more descriptive sentences to explain complex concepts.",
+    "recurring_themes": "Recurring themes include the practical challenges of deploying AI systems in production, the importance of system design over raw model performance, and the nuances of LLM behavior and optimization.",
+    "vocabulary_level": "The vocabulary level is a blend of technical jargon specific to AI and machine learning, explained in a way that is accessible to a broader tech audience.",
+    "paragraph_structure": "Paragraphs are generally short and well-spaced, utilizing white space effectively to improve readability and highlight key points.",
+    "structural_patterns": "Posts frequently employ bullet points and bold text to break down information, define key terms, and emphasize important takeaways."
+  },
+  "short_term": {
+    "tone": "The tone is primarily educational and personal, sharing insights and lessons learned from technical experiences.",
+    "cta_style": "The posts typically end with a question to encourage discussion and engagement from the audience.",
+    "hook_style": "The posts typically open with a question to engage the reader.",
+    "emoji_usage": "Emojis are used sparingly, primarily at the end of posts to add a touch of personality or to highlight a key takeaway.",
+    "sentence_rhythm": "Sentences vary in length, with shorter, punchy statements often used for emphasis, interspersed with more detailed explanations.",
+    "recurring_themes": "Recurring themes include demystifying AI concepts (parameters, temperature), the practicalities of building and deploying AI systems (inference layers, structured outputs), and personal reflections on learning and interview preparation.",
+    "vocabulary_level": "The vocabulary is a mix of plain English for accessibility and technical jargon specific to AI and software engineering, explained clearly.",
+    "paragraph_structure": "Paragraphs are generally short and separated by ample white space, making the content easy to scan and digest.",
+    "structural_patterns": "Bullet points and numbered lists are frequently used to break down complex information and highlight key steps or concepts."
+  }
+}

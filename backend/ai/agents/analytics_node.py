@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 _llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash-lite",
     temperature=0.0,
-    max_output_tokens=1024,
+    max_output_tokens=4096,
     google_api_key=settings.LANGCHAIN_API_KEY_GEMINI,
 )
 
@@ -39,9 +39,19 @@ Do not give generic LinkedIn advice — always tie recommendations to the user's
 
 async def analytics_node(state: AgentState) -> dict:
     logger.debug("analytics_node invoked: user_id=%s", state.get("user_id"))
+    # astream() so LangGraph's astream_events captures token-by-token for SSE streaming
     response = await _llm.ainvoke([
         SystemMessage(content=_ANALYTICS_SYSTEM),
         *state["messages"],
     ])
-    logger.info("analytics_node: response generated, char_count=%d", len(response.content))
-    return {"answer": response.content, "route": "direct"}
+    raw = response.content
+    if isinstance(raw, list):
+        content = "".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in raw).strip()
+    elif isinstance(raw, str):
+        content = raw.strip()
+    else:
+        content = ""
+    logger.info("analytics_node: response generated, char_count=%d", len(content))
+    if not content:
+        logger.error("analytics_node: LLM returned empty content — raw type=%s raw=%r", type(raw).__name__, raw)
+    return {"answer": content, "route": "direct"}

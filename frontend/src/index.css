@@ -170,3 +170,97 @@ html, body {
 .pulse-dot {
   animation: pulse-dot 1.5s ease-in-out infinite;
 }
+
+/* ── ContentCoach AI landing — keyframes ─────────────────────────────────── */
+@keyframes ccFloatA { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-20px)} }
+@keyframes ccFloatB { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-30px)} }
+@keyframes ccFloatC { 0%,100%{transform:translateY(0) rotate(-1.5deg)} 50%{transform:translateY(-15px) rotate(-1.5deg)} }
+@keyframes ccFloatD { 0%,100%{transform:translateY(0) rotate(1.5deg)} 50%{transform:translateY(-24px) rotate(1.5deg)} }
+@keyframes ccPulse  { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.45;transform:scale(.85)} }
+@keyframes ccBlob   { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(50px,-40px) scale(1.15)} }
+@keyframes ccBlob2  { 0%,100%{transform:translate(0,0) scale(1.1)} 50%{transform:translate(-46px,40px) scale(1.2)} }
+@keyframes ccDash   { to { stroke-dashoffset:-16 } }
+@keyframes ccBlink  { 0%,49%{opacity:1} 50%,100%{opacity:0} }
+@keyframes ccGrow   { from { width:0 } }
+@keyframes ccReveal { from { opacity:0; transform:translateY(7px) } to { opacity:1; transform:translateY(0) } }
+@keyframes ccBounce { 0%,80%,100%{transform:translateY(0);opacity:.4} 40%{transform:translateY(-4px);opacity:1} }
+@keyframes ccRise   { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+/* Chat hover: reveal action row */
+.cc-aimsg .cc-msg-actions { opacity:0; transition:opacity .18s ease; }
+.cc-aimsg:hover .cc-msg-actions { opacity:1; }
+.cc-chat-row .cc-chat-del { opacity:0; transition:opacity .15s; }
+.cc-chat-row:hover .cc-chat-del { opacity:1; }
+
+/* ── Dashboard stagger ───────────────────────────────────────────────────── */
+.cc-stagger { animation: ccReveal .38s cubic-bezier(.16,1,.3,1) both; }
+.cc-stagger-1 { animation-delay:.04s }
+.cc-stagger-2 { animation-delay:.08s }
+.cc-stagger-3 { animation-delay:.12s }
+.cc-stagger-4 { animation-delay:.16s }
+.cc-stagger-5 { animation-delay:.20s }
+.cc-hover-lift { transition: transform .25s cubic-bezier(.2,.7,.3,1), box-shadow .25s cubic-bezier(.2,.7,.3,1); }
+.cc-hover-lift:hover { transform: translateY(-3px); box-shadow: 0 24px 50px -24px rgba(17,24,39,.28); }
+.cc-press:active { transform: scale(.97); }
+@media (prefers-reduced-motion: reduce) {
+  .cc-stagger, .cc-hover-lift, .cc-press:active { animation: none !important; transform: none !important; transition: none !important; }
+}
+
+/* ── ContentCoach AI landing — responsive utilities ──────────────────────── */
+@media (min-width: 768px) { .lp-show-phone { display: none !important; } }
+@media (max-width: 767px) { .lp-show-phone { display: flex !important; } }
+@media (max-width: 767px) { .lp-hide-phone { display: none !important; } }
+
+.lp-hero-stage { display: block; }
+@media (max-width: 767px) { .lp-hero-stage { display: none !important; } }
+
+.lp-hero-mobile { display: none !important; }
+@media (max-width: 767px) { .lp-hero-mobile { display: flex !important; flex-direction: column; gap: 16px; align-items: center; padding: 0 20px 40px; } }
+
+.lp-cta-row { display: flex; justify-content: center; gap: 14px; margin-top: 36px; flex-wrap: wrap; }
+@media (max-width: 767px) { .lp-cta-row { flex-direction: column; align-items: center; gap: 12px; } .lp-cta-row > * { width: 100%; max-width: 340px; box-sizing: border-box; } }
+
+.lp-agent-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 18px; }
+@media (max-width: 1023px) { .lp-agent-grid { grid-template-columns: repeat(3,1fr); } }
+@media (max-width: 767px)  { .lp-agent-grid { grid-template-columns: 1fr; gap: 14px; } }
+
+.lp-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
+@media (max-width: 767px) { .lp-2col { grid-template-columns: 1fr; gap: 32px; } }
+
+.lp-3col { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; }
+@media (max-width: 1023px) { .lp-3col { grid-template-columns: repeat(2,1fr); } }
+@media (max-width: 767px)  { .lp-3col { grid-template-columns: 1fr; } }
+
+.lp-pricing-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; align-items: start; }
+@media (max-width: 767px) { .lp-pricing-grid { grid-template-columns: 1fr; } }
+
+.lp-pipeline-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; }
+@media (max-width: 767px) { .lp-pipeline-row { flex-direction: column; align-items: center; } .lp-pipeline-arrow-svg { transform: rotate(90deg); } }
+
+.lp-workspace-grid { display: grid; grid-template-columns: 200px 1fr 268px; min-height: 460px; }
+@media (max-width: 1023px) { .lp-workspace-grid { grid-template-columns: 1fr 240px; } .lp-ws-sidebar { display: none !important; } }
+@media (max-width: 767px)  { .lp-workspace-grid { grid-template-columns: 1fr; } .lp-ws-sidebar { display: none !important; } .lp-ws-agents { display: none !important; } }
+
+.lp-footer-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; max-width: 1200px; margin: 0 auto; }
+@media (max-width: 767px) { .lp-footer-inner { flex-direction: column; align-items: center; gap: 20px; text-align: center; } }
+
+@media (max-width: 1023px) { .lp-hero-h1 { font-size: 56px !important; } }
+@media (max-width: 767px)  { .lp-hero-h1 { font-size: 40px !important; line-height: 1.05 !important; } }
+
+@media (max-width: 1023px) { .lp-h2 { font-size: 40px !important; } }
+@media (max-width: 767px)  { .lp-h2 { font-size: 30px !important; } }
+
+@media (max-width: 767px) { .lp-alwayson-h2 { font-size: 30px !important; } }
+@media (max-width: 767px) { .lp-finalcta-h2 { font-size: 34px !important; } }
+
+@media (max-width: 767px) { .lp-section { padding-left: 20px !important; padding-right: 20px !important; padding-top: 56px !important; padding-bottom: 56px !important; } }
+@media (max-width: 1023px) and (min-width: 768px) { .lp-section { padding-top: 80px !important; padding-bottom: 80px !important; } }
+
+@media (max-width: 767px) { .lp-hero-copy { padding: 40px 20px 32px !important; } }
+@media (max-width: 767px) { .lp-cta-chips { display: none !important; } }
+@media (max-width: 767px) { .lp-pro-lift { transform: translateY(0) !important; } }
+
+@media (prefers-reduced-motion: reduce) {
+  [style*="ccFloat"], [style*="ccBlob"], [style*="ccPulse"], [style*="ccBlink"], [style*="ccDash"] {
+    animation: none !important;
+  }
+}
