@@ -32,6 +32,10 @@ services:
     image: 090082365566.dkr.ecr.us-east-1.amazonaws.com/content-coach-backend-repo:latest
     container_name: contentcoach-backend
     restart: unless-stopped
+      ENV: production
+      AWS_SECRET_NAME: content-coach-ai-development-secrets
+      AWS_REGION: us-east-1
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/content_coach
 
     ports:
       - "8000:8000"
