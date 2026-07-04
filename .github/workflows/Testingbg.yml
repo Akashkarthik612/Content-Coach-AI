@@ -14,7 +14,7 @@ on:
       - 'requirements.txt'
       - 'requirements-test.txt'
       - 'pytest.ini'
-      - '.github/workflows/Testinbg.yml'
+      - '.github/workflows/Testingbg.yml'
 
 jobs:
   test:
