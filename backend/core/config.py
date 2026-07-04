@@ -31,7 +31,7 @@ def get_settings() -> Settings:
         region = os.getenv("AWS_REGION", "eu-west-3")
         secrets = get_secret(secret_name, region)
         for k, v in secrets.items():
-            os.environ.setdefault(k, str(v))
+            os.environ[k] = str(v)
 
     return Settings()
 
