@@ -103,6 +103,9 @@ class PostRename(BaseModel):
 class PostPin(BaseModel):
     is_pinned: bool
 
+class PostMove(BaseModel):
+    folder_id: UUID
+
 class PostStatusUpdate(BaseModel):
     status: PostStatus
     scheduled_at: Optional[datetime] = None

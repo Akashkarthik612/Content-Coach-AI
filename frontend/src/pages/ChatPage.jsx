@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { streamQuery, resumeAI, refineAI } from '../api/ai'
+import { streamQuery, resumeAI, refineAI, draftFromTopic } from '../api/ai'
+import TopicCard from '../components/AIAssistant/TopicCard'
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const CANVAS      = '#FAF6EF'
@@ -248,13 +249,13 @@ function UserMessage({ msg }) {
 }
 
 // ── AI message ────────────────────────────────────────────────────────────────
-function AIMessage({ msg, onApprove, onDecline, onOpenModify, onCancelModify, onModifyChange, onSendModify, onRegen }) {
+function AIMessage({ msg, onApprove, onDecline, onOpenModify, onCancelModify, onModifyChange, onSendModify, onRegen, onDraftFromTopic }) {
   const a    = AGENTS[msg.agent] || AGENTS.Writer
   const done = msg.phase === 'done'
   const hasBody    = msg.phase === 'streaming' || done
   const showActions = done && !msg.decision
   const cardBorder = msg.decision === 'approved'   ? 'rgba(22,163,74,.4)'
-    : msg.decision === 'declined'                  ? 'rgba(180,35,24,.3)' : WARM_BDR
+    : msg.decision === 'declined' || msg.decision === 'failed' ? 'rgba(180,35,24,.3)' : WARM_BDR
 
   return (
     <div className="cc-aimsg" style={{ display: 'flex', gap: 13, animation: 'ccRise .24s ease-out' }}>
@@ -289,6 +290,19 @@ function AIMessage({ msg, onApprove, onDecline, onOpenModify, onCancelModify, on
             <span style={{ fontSize: 12.5, color: FAINT, fontStyle: 'italic', fontFamily: SERIF }}>
               {msg.isRefinement ? 'Applying your changes…' : routingTextFor(msg.agent)}
             </span>
+          </div>
+        )}
+
+        {msg.phase === 'topics' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {msg.topics.map(topic => (
+              <TopicCard
+                key={topic.id}
+                topic={topic}
+                disabled={!!msg.draftingTopicId}
+                onDraftLinkedIn={t => onDraftFromTopic(msg.id, t)}
+              />
+            ))}
           </div>
         )}
 
@@ -345,6 +359,30 @@ function AIMessage({ msg, onApprove, onDecline, onOpenModify, onCancelModify, on
                     onMouseLeave={e => { e.currentTarget.style.borderColor = WARM_BDR_MD; e.currentTarget.style.color = MUTED }}>
                     <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2}><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/></svg>
                     Regenerate
+                  </button>
+                </div>
+              )}
+
+              {msg.decision === 'failed' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, paddingTop: 13, borderTop: '1px solid rgba(80,64,46,.08)' }}>
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 7,
+                    fontSize: 12.5, fontWeight: 600, color: RED, background: '#FEE4E2',
+                    padding: '6px 12px', borderRadius: 999,
+                  }}>
+                    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={RED} strokeWidth={2.6}><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L14.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                    Couldn't save — try again
+                  </span>
+                  <button onClick={() => onApprove(msg.id)}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      height: 30, padding: '0 12px', border: `1px solid ${WARM_BDR_MD}`,
+                      background: '#fff', borderRadius: 9, fontFamily: FONT,
+                      fontSize: 12.5, fontWeight: 600, color: MUTED, cursor: 'pointer',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(37,99,235,.5)'; e.currentTarget.style.color = BLUE }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = WARM_BDR_MD; e.currentTarget.style.color = MUTED }}>
+                    Retry
                   </button>
                 </div>
               )}
@@ -1066,6 +1104,16 @@ export default function ChatPage() {
         userText,
         token => { accumulated += token; patch(aid, { text: accumulated }); scrollDown() },
         doneData => {
+          const topics = doneData?.research_topics
+          if (Array.isArray(topics) && topics.length > 0) {
+            // Standalone research turn — render clickable topic cards instead of prose
+            patch(aid, { phase: 'topics', topics, draftingTopicId: null })
+            if (chatId) updateChatSnippet(chatId, AGENTS[agent].name)
+            busy.current = false
+            scrollDown()
+            return
+          }
+
           const finalText = doneData?.answer || doneData?.draft || accumulated || mockFor(agent, noteForFallback)
           const threadId  = doneData?.thread_id || null
           const isHITL    = doneData?.status === 'awaiting_approval'
@@ -1131,18 +1179,71 @@ export default function ChatPage() {
     }, 24)
   }
 
+  // Draft a full post from ONE picked research topic card — skips supervisor's
+  // classification entirely on the backend since the target pipeline is already known.
+  async function handleDraftFromTopic(sourceMsgId, topic) {
+    if (busy.current) return
+    busy.current = true
+    patch(sourceMsgId, { draftingTopicId: topic.id })
+
+    const aid = seq + 1
+    setSeq(s => s + 1)
+    setMessages(prev => [
+      ...prev,
+      { id: aid, role: 'ai', agent: 'Writer', phase: 'routing', text: '', decision: null, modifyOpen: false, modifyText: '', thread_id: null },
+    ])
+    setTimeout(scrollDown, 50)
+
+    const chatId = activeChatRef.current
+    try {
+      patch(aid, { phase: 'streaming', text: '' })
+      const data      = await draftFromTopic(topic)
+      const isHITL    = data.status === 'awaiting_approval'
+      const finalText = data.draft || data.answer || ''
+      patch(aid, { phase: 'done', text: finalText, thread_id: data.thread_id || null, decision: isHITL ? null : 'auto' })
+      if (isHITL) setLatestDraft(finalText)
+      if (chatId) updateChatSnippet(chatId, AGENTS.Writer.name)
+    } catch {
+      patch(aid, { phase: 'done', text: 'Could not draft this post — try again.', decision: 'auto' })
+    } finally {
+      busy.current = false
+      patch(sourceMsgId, { draftingTopicId: null })
+      scrollDown()
+    }
+  }
+
   // ── HITL decisions ──────────────────────────────────────────────────────────
 
   async function handleApprove(id) {
     const msg = messages.find(m => m.id === id)
-    if (msg?.thread_id) { try { await resumeAI(msg.thread_id, 'approved') } catch {} }
+    if (msg?.thread_id) {
+      try {
+        await resumeAI(msg.thread_id, 'approved')
+      } catch (err) {
+        console.error('[chat] approve failed:', err)
+        patch(id, { decision: 'failed' })
+        return
+      }
+    }
     patch(id, { decision: 'approved', modifyOpen: false })
+    // Draft's fate is decided — clear the sticky /refine flag so the NEXT message
+    // starts a fresh turn instead of silently editing a resolved draft.
+    setLatestDraft('')
   }
 
   async function handleDecline(id) {
     const msg = messages.find(m => m.id === id)
-    if (msg?.thread_id) { try { await resumeAI(msg.thread_id, 'rejected') } catch {} }
+    if (msg?.thread_id) {
+      try {
+        await resumeAI(msg.thread_id, 'rejected')
+      } catch (err) {
+        console.error('[chat] decline failed:', err)
+        patch(id, { decision: 'failed' })
+        return
+      }
+    }
     patch(id, { decision: 'declined', modifyOpen: false })
+    setLatestDraft('')
   }
 
   function handleOpenModify(id) {
@@ -1255,6 +1356,7 @@ export default function ChatPage() {
                         onModifyChange={handleModifyChange}
                         onSendModify={handleSendModify}
                         onRegen={handleRegen}
+                        onDraftFromTopic={handleDraftFromTopic}
                       />
                 ))}
               </div>

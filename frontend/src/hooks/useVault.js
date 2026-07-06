@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { getFolders, getPostsInFolder, createFolder, createPost } from '../api/vault'
+import { getFolders, getPostsInFolder, createFolder, createPost, movePost as movePostApi } from '../api/vault'
 
 // Rotating tint palette — matches the approved Vault design's 5 folder colors.
 // Real folders have no inherent "platform", so color is assigned by position.
@@ -85,5 +85,20 @@ export function useVault() {
     })
   }
 
-  return { folders, postsByFolder, loading, refetch, addFolder, addPost, removePost, updatePost, removeFolder, updateFolder }
+  async function movePost(postId, fromFolderId, toFolderId) {
+    const updated = await movePostApi(postId, toFolderId)
+    setPostsByFolder(prev => {
+      const source = prev[fromFolderId] || []
+      const moving = source.find(p => p.id === postId)
+      if (!moving) return prev
+      return {
+        ...prev,
+        [fromFolderId]: source.filter(p => p.id !== postId),
+        [toFolderId]: [{ ...moving, ...updated }, ...(prev[toFolderId] || [])],
+      }
+    })
+    return updated
+  }
+
+  return { folders, postsByFolder, loading, refetch, addFolder, addPost, removePost, updatePost, movePost, removeFolder, updateFolder }
 }

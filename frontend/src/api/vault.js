@@ -43,6 +43,9 @@ export const deletePost = (id) =>
 export const pinPost = (id, is_pinned) =>
   api.patch(`/posts/${id}/pin`, { is_pinned }).then(r => r.data);
 
+export const movePost = (id, folder_id) =>
+  api.patch(`/posts/${id}/folder`, { folder_id }).then(r => r.data);
+
 // ── Versions ──────────────────────────────────────────────────
 export const saveVersion = (postId, content, versionLabel, isFinal = false) =>
   api.post(`/posts/${postId}/versions`, {
