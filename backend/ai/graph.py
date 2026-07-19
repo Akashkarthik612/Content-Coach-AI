@@ -1,7 +1,7 @@
 import logging
 
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.prebuilt import ToolNode
 from langgraph.types import Send
 
@@ -9,25 +9,37 @@ from backend.ai.state import AgentState
 from backend.ai.agents.supervisor             import supervisor_node
 from backend.ai.agents.style_agent            import style_retriever_node
 from backend.ai.agents.writer_node            import writer_node
-from backend.ai.agents.analytics_node         import analytics_node
 from backend.ai.agents.human_approval_node    import human_approval_node
-from backend.ai.agents.researcher_node        import researcher_node, research_tools
-from backend.ai.agents.research_digest_node   import research_digest_node
+from backend.ai.agents.researcher             import researcher_node
+from backend.ai.agents.angle_review_node      import angle_review_node, map_chosen_angle_node
 from backend.ai.agents.tools import (
     search_vault_posts,
     get_topic_inventory,
-    analyze_publish_history,
-    get_post_analytics,
 )
 
 logger = logging.getLogger(__name__)
 
 # Tool node — only used for supervisor's direct/analytics tool calls
-_all_tools = [search_vault_posts, get_topic_inventory, analyze_publish_history, get_post_analytics]
+_all_tools = [search_vault_posts, get_topic_inventory]
 tool_node  = ToolNode(_all_tools)
 
-# Tool node for researcher_node's own loop — web_search/fetch_page + vault lookups
-research_tool_node = ToolNode(research_tools)
+
+def _entry_router(state: AgentState) -> str:
+    """
+    Conditional entry point (replaces a hardcoded set_entry_point("supervisor_node")).
+
+    supervisor_node always makes an LLM call to classify intent and always
+    overwrites state["route"] from that classification — it never respects a
+    pre-seeded route. So the only way to skip its LLM call (needed for the
+    /draft-from-topic flow, where the target pipeline is already known because
+    the user clicked a specific topic card) is to skip the node entirely.
+    Every other entry path (pre_routed unset/False) goes through supervisor_node
+    exactly as before.
+    """
+    if state.get("pre_routed"):
+        logger.debug("entry_router: pre_routed=True -> style_retriever_node directly")
+        return "style_retriever_node"
+    return "supervisor_node"
 
 
 def _supervisor_router(state: AgentState):
@@ -56,47 +68,31 @@ def _supervisor_router(state: AgentState):
             "query":   state["query"],
         })]
 
-    if route in ("research", "research_then_write"):
-        # Both dispatch to the same researcher_node worker — the difference is
-        # only in what _researcher_router does afterward (route is still in the
-        # merged global state when that conditional edge runs).
-        logger.debug("supervisor_router: Send → researcher_node (route=%s)", route)
+    if route == "research":
+        # Same minimal-dispatch shape as style_retrieval above. Output
+        # (research_result) merges into global AgentState; fixed edge carries
+        # it into angle_review_node next.
+        logger.debug("supervisor_router: Send → researcher_node")
         return [Send("researcher_node", {
-            "user_id":  state["user_id"],
-            "query":    state["query"],
-            "messages": state["messages"],
+            "user_id": state["user_id"],
+            "query":   state["query"],
         })]
-
-    if route == "analytics":
-        return "analytics"
 
     return "direct"
 
 
-def _researcher_router(state: AgentState):
+def _angle_review_router(state: AgentState) -> str:
     """
-    Route after researcher_node.
+    Route after angle_review_node's interrupt loop resolves.
 
-    Mid-tool-loop (researcher just called web_search/fetch_page/vault tools) →
-    research_tool_node, which loops back to researcher_node — same shape as
-    supervisor_node's own tool loop.
-
-    Once researcher_node has no more tool calls: "research_then_write" → continue
-    into the existing style→writer→approval pipeline (research_brief is already
-    merged into state, writer_node reads it). "research" (standalone) →
-    research_digest_node turns the brief into the user-facing digest.
+    "pick" -> picked_angle_id is set -> map_chosen_angle_node reshapes it into
+    research_brief and the existing write pipeline takes over.
+    "none_fit" -> picked_angle_id stays None -> back to supervisor_node, same
+    as any other re-classification loop (steps_taken caps a runaway loop).
     """
-    last = state["messages"][-1]
-    if hasattr(last, "tool_calls") and last.tool_calls:
-        logger.debug("researcher_router: mid-loop -> research_tool_node")
-        return "tools"
-
-    route = state.get("route", "")
-    if route == "research_then_write":
-        logger.debug("researcher_router: route=%s -> continue_to_style", route)
-        return "continue_to_style"
-    logger.debug("researcher_router: route=%s -> digest", route)
-    return "digest"
+    if state.get("picked_angle_id") is not None:
+        return "map_chosen_angle_node"
+    return "supervisor_node"
 
 
 _graph = StateGraph(AgentState)
@@ -106,40 +102,50 @@ _graph.add_node("supervisor_node",      supervisor_node)
 _graph.add_node("tool_node",            tool_node)
 _graph.add_node("style_retriever_node", style_retriever_node)   # worker: fetch/refresh style JSON
 _graph.add_node("writer_node",          writer_node)             # worker: generate LinkedIn post
-_graph.add_node("analytics_node",       analytics_node)
 _graph.add_node("human_approval_node",  human_approval_node)
-_graph.add_node("researcher_node",      researcher_node)         # worker: agentic web+vault research (silent)
-_graph.add_node("research_tool_node",   research_tool_node)       # executor: web_search/fetch_page/vault tools
-_graph.add_node("research_digest_node", research_digest_node)    # worker: research_brief -> user-facing digest
+_graph.add_node("researcher_node",      researcher_node)         # worker: Tavily + Gemini, 5 angles
+_graph.add_node("angle_review_node",    angle_review_node)       # interrupt: angle pick/expand/modify/none_fit
+_graph.add_node("map_chosen_angle_node", map_chosen_angle_node)  # pure python: picked angle -> research_brief
 
-_graph.set_entry_point("supervisor_node")
+# ── Entry point — conditional so /draft-from-topic can skip supervisor's LLM classification entirely ──
+_graph.set_conditional_entry_point(_entry_router, {
+    "supervisor_node":      "supervisor_node",
+    "style_retriever_node": "style_retriever_node",
+})
 
 # ── Supervisor conditional edges ───────────────────────────────────────────────
 _graph.add_conditional_edges("supervisor_node", _supervisor_router, {
-    "tools":     "tool_node",
-    "analytics": "analytics_node",
-    "direct":    END,
+    "tools":  "tool_node",
+    "direct": END,
     # "style_retrieval" handled by Send above — no mapping entry needed
 })
 
 # ── Tool loop (supervisor chatbot / analytics data fetching) ───────────────────
 _graph.add_edge("tool_node", "supervisor_node")
 
-# ── Write pipeline — fixed sequential edges after Send dispatch ────────────────
+# ── Write pipeline — fixed sequential edges after Send dispatch (or direct conditional entry) ──
 _graph.add_edge("style_retriever_node", "writer_node")
 _graph.add_edge("writer_node",          "human_approval_node")
 _graph.add_edge("human_approval_node",  END)
 
-# ── Analytics path ─────────────────────────────────────────────────────────────
-_graph.add_edge("analytics_node", END)
-
-# ── Research path — researcher_node loops on its own tools, then either digest or the write pipeline ──
-_graph.add_conditional_edges("researcher_node", _researcher_router, {
-    "tools":              "research_tool_node",    # web_search/fetch_page/vault tool loop
-    "continue_to_style":  "style_retriever_node",  # research_then_write chain
-    "digest":             "research_digest_node",  # standalone research
+# ── Research pipeline — researcher_node (Send dispatch) -> angle_review_node
+# (interrupt) -> map_chosen_angle_node (pure python) -> into the same write
+# pipeline as above, joining at style_retriever_node ──
+_graph.add_edge("researcher_node", "angle_review_node")
+_graph.add_conditional_edges("angle_review_node", _angle_review_router, {
+    "map_chosen_angle_node": "map_chosen_angle_node",
+    "supervisor_node":       "supervisor_node",
 })
-_graph.add_edge("research_tool_node",   "researcher_node")
-_graph.add_edge("research_digest_node", END)
+_graph.add_edge("map_chosen_angle_node", "style_retriever_node")
 
-assistant = _graph.compile(checkpointer=MemorySaver())
+
+def build_assistant(checkpointer: BaseCheckpointSaver):
+    """
+    Compile the graph against a caller-supplied checkpointer.
+
+    backend/main.py passes a plain in-memory MemorySaver at import time — no
+    persisted chat history or thread reuse across process restarts. This
+    factory stays generic over any BaseCheckpointSaver so a durable one can be
+    swapped in later without touching this module.
+    """
+    return _graph.compile(checkpointer=checkpointer)

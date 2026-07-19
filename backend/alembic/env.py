@@ -18,6 +18,8 @@ config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
 # Import Base and all models so their tables are registered in metadata
 from backend.core.database import Base  # noqa: E402
 import backend.vault.models  # noqa: E402, F401
+import backend.profile.models  # noqa: E402, F401
+import backend.ai.checkpointing.models  # noqa: E402, F401
 
 target_metadata = Base.metadata
 

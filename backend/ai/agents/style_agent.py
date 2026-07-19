@@ -14,6 +14,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from backend.ai._log_setup import log_style_json
+from backend.ai.llm_retry import invoke_with_retry_sync
 from backend.ai.worker_states import StyleRetrieverState
 from backend.core.config import settings
 from backend.core.database import SessionLocal
@@ -71,7 +72,7 @@ def analyze_style(post_contents: list[str]) -> dict:
 
     combined = "\n\n---\n\n".join(post_contents)
 
-    response = _llm.invoke([
+    response = invoke_with_retry_sync(_llm, [
         SystemMessage(content=_SYSTEM),
         HumanMessage(content=f"Posts to analyze:\n\n{combined}"),
     ])

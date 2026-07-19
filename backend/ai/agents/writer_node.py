@@ -4,14 +4,18 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from backend.core.config import settings
+from backend.ai.llm_retry import invoke_with_retry
 from backend.ai.worker_states import WriterState
 
 logger = logging.getLogger(__name__)
 
 _llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash-lite",
+    model="gemini-3.5-flash",  # gemini-2.5-flash is deprecated (404s as of mid-2026)
     temperature=0.7,
-    max_output_tokens=4096,
+    max_output_tokens=8192,  # was 4096 — Gemini 3.x's thinking pass shares this budget with
+                             # the final answer; a long style/research prompt could exhaust it
+                             # on reasoning alone, leaving zero tokens for the actual draft
+    thinking_level="low",  # drafting doesn't need deep reasoning — cuts latency
     google_api_key=settings.LANGCHAIN_API_KEY_GEMINI,
     streaming=True,
 )
@@ -129,7 +133,7 @@ async def writer_node(state: WriterState) -> dict:
     if writer_task.get("action") == "rewrite" and state.get("draft"):
         messages.append(HumanMessage(content=f"[EXISTING DRAFT TO MODIFY]\n{state['draft']}"))
 
-    response = await _llm.ainvoke(messages)
+    response = await invoke_with_retry(_llm, messages)
     raw = response.content
     if isinstance(raw, list):
         content = "".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in raw).strip()
@@ -139,5 +143,10 @@ async def writer_node(state: WriterState) -> dict:
         content = ""
     logger.info("writer_node: draft generated, char_count=%d", len(content))
     if not content:
-        logger.error("writer_node: LLM returned empty content — model may have refused or failed")
+        logger.error(
+            "writer_node: LLM returned empty content — finish_reason=%r usage=%r raw=%r",
+            response.response_metadata.get("finish_reason"),
+            response.response_metadata.get("usage_metadata"),
+            raw,
+        )
     return {"draft": content}

@@ -19,6 +19,7 @@ from backend.vault.schemas import (
     PostAnalyticsUpdate,
     PostCreate,
     PostListResponse,
+    PostMove,
     PostPin,
     PostRename,
     PostResponse,
@@ -149,6 +150,19 @@ def pin_post(
     user: User = Depends(get_current_user),
 ):
     return service.pin_post(db, user_id=user.id, post_id=post_id, pinned=data.is_pinned)
+
+
+@router.patch("/posts/{post_id}/folder", response_model=PostResponse)
+def move_post(
+    post_id: UUID,
+    data: PostMove,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    post = service.move_post(db, user_id=user.id, post_id=post_id, folder_id=data.folder_id)
+    background_tasks.add_task(sync_invalidate_user_tool_cache, str(user.id))
+    return post
 
 
 @router.patch("/posts/{post_id}/status", response_model=PostResponse)

@@ -1,6 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { streamQuery, resumeAI, refineAI } from '../api/ai'
 
+// Local cap on how many chats are kept in the sidebar. Chat history is
+// in-memory only for the lifetime of this page — there is no backend
+// persistence (no chat_sessions / checkpointer) to restore it from.
+const RECENT_CHATS_LIMIT = 10
+
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const CANVAS      = '#FAF6EF'
 const WARM_WHITE  = '#FFFEFB'
@@ -248,13 +253,13 @@ function UserMessage({ msg }) {
 }
 
 // ── AI message ────────────────────────────────────────────────────────────────
-function AIMessage({ msg, onApprove, onDecline, onOpenModify, onCancelModify, onModifyChange, onSendModify, onRegen }) {
+function AIMessage({ msg, onApprove, onDecline, onOpenModify, onCancelModify, onModifyChange, onSendModify, onRegen, onRetryFailed, onPickAngle }) {
   const a    = AGENTS[msg.agent] || AGENTS.Writer
   const done = msg.phase === 'done'
   const hasBody    = msg.phase === 'streaming' || done
-  const showActions = done && !msg.decision
+  const showActions = done && !msg.decision && !msg.awaitingAngle
   const cardBorder = msg.decision === 'approved'   ? 'rgba(22,163,74,.4)'
-    : msg.decision === 'declined'                  ? 'rgba(180,35,24,.3)' : WARM_BDR
+    : msg.decision === 'declined' || msg.decision === 'failed' || msg.decision === 'error' ? 'rgba(180,35,24,.3)' : WARM_BDR
 
   return (
     <div className="cc-aimsg" style={{ display: 'flex', gap: 13, animation: 'ccRise .24s ease-out' }}>
@@ -278,6 +283,20 @@ function AIMessage({ msg, onApprove, onDecline, onOpenModify, onCancelModify, on
             }}>refined</span>
           )}
         </div>
+
+        {/* TEMP debug strip — proves the backend's real supervisor decision
+            reached the client, instead of trusting the pre-request routeFor()
+            text-pattern guess. */}
+        {msg.route && msg.phase === 'done' && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+            marginBottom: 8, fontFamily: MONO, fontSize: 10.5, color: FAINT,
+          }}>
+            <span style={{
+              padding: '2px 7px', borderRadius: 999, background: '#F1EDE3', color: '#7C7264',
+            }}>route: {msg.route}</span>
+          </div>
+        )}
 
         {msg.phase === 'routing' && (
           <div style={{
@@ -348,7 +367,97 @@ function AIMessage({ msg, onApprove, onDecline, onOpenModify, onCancelModify, on
                   </button>
                 </div>
               )}
+
+              {msg.decision === 'failed' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, paddingTop: 13, borderTop: '1px solid rgba(80,64,46,.08)' }}>
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 7,
+                    fontSize: 12.5, fontWeight: 600, color: RED, background: '#FEE4E2',
+                    padding: '6px 12px', borderRadius: 999,
+                  }}>
+                    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={RED} strokeWidth={2.6}><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L14.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                    Couldn't save — try again
+                  </span>
+                  <button onClick={() => onApprove(msg.id)}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      height: 30, padding: '0 12px', border: `1px solid ${WARM_BDR_MD}`,
+                      background: '#fff', borderRadius: 9, fontFamily: FONT,
+                      fontSize: 12.5, fontWeight: 600, color: MUTED, cursor: 'pointer',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(37,99,235,.5)'; e.currentTarget.style.color = BLUE }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = WARM_BDR_MD; e.currentTarget.style.color = MUTED }}>
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {msg.decision === 'error' && (
+                <div style={{ marginTop: 14, paddingTop: 13, borderTop: '1px solid rgba(80,64,46,.08)' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                    <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={RED} strokeWidth={2.4} style={{ flexShrink: 0, marginTop: 1 }}><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L14.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                    <span style={{ fontSize: 12.5, color: RED, fontFamily: MONO, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                      {msg.errorMessage || 'Something went wrong.'}
+                    </span>
+                  </div>
+                  {msg.retryPayload && (
+                    <button onClick={() => onRetryFailed(msg.id)}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 10,
+                        height: 30, padding: '0 12px', border: `1px solid ${WARM_BDR_MD}`,
+                        background: '#fff', borderRadius: 9, fontFamily: FONT,
+                        fontSize: 12.5, fontWeight: 600, color: MUTED, cursor: 'pointer',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(37,99,235,.5)'; e.currentTarget.style.color = BLUE }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = WARM_BDR_MD; e.currentTarget.style.color = MUTED }}>
+                      <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2}><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/></svg>
+                      Try again
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
+
+            {msg.awaitingAngle && !msg.decision && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
+                {msg.pickError && (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    fontSize: 12.5, color: RED, fontFamily: MONO,
+                  }}>
+                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={RED} strokeWidth={2.4}><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L14.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                    {msg.pickError}
+                  </div>
+                )}
+                {(msg.angles || []).map((angle, idx) => (
+                  <div key={idx} style={{
+                    padding: '14px 16px', background: WARM_WHITE,
+                    border: `1px solid ${WARM_BDR_MD}`, borderRadius: 14,
+                  }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: INK, marginBottom: 4 }}>{angle.title}</div>
+                    <div style={{ fontSize: 13, color: BODY, lineHeight: 1.55, marginBottom: 8 }}>{angle.argument}</div>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                      fontFamily: MONO, fontSize: 11, color: FAINT, marginBottom: 10,
+                    }}>
+                      <span>Audience: {angle.audience}</span>
+                      <span>·</span>
+                      <span>Provokes {angle.provokes_type}</span>
+                    </div>
+                    <button onClick={() => onPickAngle(msg.id, idx)}
+                      style={{
+                        height: 32, padding: '0 14px', border: 'none', borderRadius: 9,
+                        fontFamily: FONT, fontSize: 12.5, fontWeight: 600, color: '#fff', cursor: 'pointer',
+                        background: BLUE, boxShadow: '0 8px 18px -10px rgba(37,99,235,.7)',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.filter = 'brightness(1.06)'}
+                      onMouseLeave={e => e.currentTarget.style.filter = 'none'}>
+                      Write this
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {showActions && (
               <div className="cc-msg-actions"
@@ -955,7 +1064,8 @@ export default function ChatPage() {
   const [search,      setSearch]      = useState('')
   const [activeChat,  setActiveChat]  = useState(null)
   const [chatTitle,   setChatTitle]   = useState('New chat')
-  // flat list, newest first, max 10 — populated by real user chats only
+  // flat list, newest first, max RECENT_CHATS_LIMIT — built up locally as chats
+  // are created this session; nothing is persisted server-side.
   const [chats,       setChats]       = useState([])
   const [messages,    setMessages]    = useState([])
   const [micActive,   setMicActive]   = useState(false)
@@ -969,8 +1079,15 @@ export default function ChatPage() {
   const taRef         = useRef(null)
   // ref mirrors activeChat so async stream callbacks can read current value
   const activeChatRef = useRef(null)
+  // in-memory-only message cache per chat id, so switching between chats
+  // created this session restores their messages without any backend call
+  const chatMessagesRef = useRef({})
 
   useEffect(() => { activeChatRef.current = activeChat }, [activeChat])
+
+  useEffect(() => {
+    if (activeChat) chatMessagesRef.current[activeChat] = messages
+  }, [messages, activeChat])
 
   const scrollDown = useCallback(() => {
     requestAnimationFrame(() => {
@@ -996,7 +1113,7 @@ export default function ChatPage() {
       createdAt: Date.now(),
       pinned:    false,
     }
-    setChats(prev => [entry, ...prev].slice(0, 10))
+    setChats(prev => [entry, ...prev].slice(0, RECENT_CHATS_LIMIT))
     setActiveChat(entry.id)
     activeChatRef.current = entry.id
     setChatTitle(title)
@@ -1039,7 +1156,32 @@ export default function ChatPage() {
     }
   }
 
-  function pushExchange(userText, isRefine, noteForFallback) {
+  function _extractErrorMessage(err) {
+    if (!err) return 'Something went wrong.'
+    if (typeof err === 'string') return err
+    return err?.response?.data?.detail || err?.message || 'Something went wrong.'
+  }
+
+  // Shows the REAL failure instead of masking it with mock/demo content — a
+  // request that fails (network error, 5xx, or a 200 with no usable text) must
+  // never look like a successful agent response. retryPayload lets the message
+  // offer a "Try again" button that re-runs the exact same request.
+  function handleGenerationError(id, err, retryPayload) {
+    patch(id, { phase: 'done', text: '', decision: 'error', errorMessage: _extractErrorMessage(err), retryPayload })
+    busy.current = false
+    scrollDown()
+  }
+
+  function handleRetryFailed(id) {
+    const msg = messages.find(m => m.id === id)
+    if (!msg?.retryPayload || busy.current) return
+    busy.current = true
+    const p = msg.retryPayload
+    if (p.type === 'exchange') pushExchange(p.userText, p.isRefine)
+    else if (p.type === 'refine') doRefine(p.baseDraft, p.note)
+  }
+
+  function pushExchange(userText, isRefine) {
     const agent = routeFor(userText)
     const uid   = seq + 1
     const aid   = seq + 2
@@ -1066,17 +1208,47 @@ export default function ChatPage() {
         userText,
         token => { accumulated += token; patch(aid, { text: accumulated }); scrollDown() },
         doneData => {
-          const finalText = doneData?.answer || doneData?.draft || accumulated || mockFor(agent, noteForFallback)
+          // Research route pauses for an angle pick instead of returning text —
+          // angles live in doneData.angles, not answer/draft, so this has to be
+          // handled before the empty-finalText check below would misfire on it.
+          if (doneData?.status === 'awaiting_angle_selection') {
+            patch(aid, {
+              phase: 'done', agent: 'Research', route: 'research',
+              thread_id: doneData.thread_id || null,
+              awaitingAngle: true, angles: doneData.angles || [],
+              text: 'Pick an angle to write from:', decision: null,
+            })
+            if (chatId) updateChatSnippet(chatId, AGENTS.Research.name)
+            busy.current = false
+            scrollDown()
+            return
+          }
+
+          // Truthful routing signal from the backend's actual supervisor decision —
+          // overrides the pre-request routeFor() text-pattern guess, which only
+          // exists to pick an icon before the response arrives.
+          const backendRoute = doneData?.route || null
+          const routedAgent  = backendRoute === 'research'        ? 'Research'
+                              : backendRoute === 'style_retrieval' ? 'Writer'
+                              : agent
+          const finalText = doneData?.answer || doneData?.draft || accumulated
+          if (!finalText) {
+            handleGenerationError(aid, 'The agent returned an empty response — please try again.', { type: 'exchange', userText, isRefine })
+            return
+          }
           const threadId  = doneData?.thread_id || null
           const isHITL    = doneData?.status === 'awaiting_approval'
-          patch(aid, { phase: 'done', text: finalText, thread_id: threadId, decision: isHITL ? null : 'auto' })
+          patch(aid, {
+            phase: 'done', text: finalText, thread_id: threadId, decision: isHITL ? null : 'auto',
+            agent: routedAgent, route: backendRoute,
+          })
           // Store the draft so follow-up messages can use /refine
           if (isHITL) setLatestDraft(finalText)
-          if (chatId) updateChatSnippet(chatId, AGENTS[agent].name)
+          if (chatId) updateChatSnippet(chatId, AGENTS[routedAgent].name)
           busy.current = false
           scrollDown()
         },
-        _err => simulateStream(aid, mockFor(agent, noteForFallback), chatId, agent, true)
+        err => handleGenerationError(aid, err, { type: 'exchange', userText, isRefine })
       )
       abortRef.current = abort
     }, 850)
@@ -1101,15 +1273,19 @@ export default function ChatPage() {
       patch(aid, { phase: 'streaming', text: '' })
       try {
         const data    = await refineAI(baseDraft, note)
-        const refined = data.refined_draft || mockFor(agent, note)
+        const refined = data.refined_draft
+        if (!refined) {
+          handleGenerationError(aid, 'The agent returned an empty response — please try again.', { type: 'refine', baseDraft, note })
+          return
+        }
         patch(aid, { phase: 'done', text: refined, decision: null })
         setLatestDraft(refined)
         if (chatId) updateChatSnippet(chatId, AGENTS[agent].name)
-      } catch {
-        simulateStream(aid, mockFor(agent, note), chatId, agent, true)
+        busy.current = false
+        scrollDown()
+      } catch (err) {
+        handleGenerationError(aid, err, { type: 'refine', baseDraft, note })
       }
-      busy.current = false
-      scrollDown()
     })()
   }
 
@@ -1135,14 +1311,70 @@ export default function ChatPage() {
 
   async function handleApprove(id) {
     const msg = messages.find(m => m.id === id)
-    if (msg?.thread_id) { try { await resumeAI(msg.thread_id, 'approved') } catch {} }
+    if (msg?.thread_id) {
+      try {
+        await resumeAI(msg.thread_id, 'approved')
+      } catch (err) {
+        console.error('[chat] approve failed:', err)
+        patch(id, { decision: 'failed' })
+        return
+      }
+    }
     patch(id, { decision: 'approved', modifyOpen: false })
+    // Draft's fate is decided — clear the sticky /refine flag so the NEXT message
+    // starts a fresh turn instead of silently editing a resolved draft.
+    setLatestDraft('')
   }
 
   async function handleDecline(id) {
     const msg = messages.find(m => m.id === id)
-    if (msg?.thread_id) { try { await resumeAI(msg.thread_id, 'rejected') } catch {} }
+    if (msg?.thread_id) {
+      try {
+        await resumeAI(msg.thread_id, 'rejected')
+      } catch (err) {
+        console.error('[chat] decline failed:', err)
+        patch(id, { decision: 'failed' })
+        return
+      }
+    }
     patch(id, { decision: 'declined', modifyOpen: false })
+    setLatestDraft('')
+  }
+
+  // Angle pick — resumes angle_review_node, which chains through
+  // map_chosen_angle_node -> style_retriever_node -> writer_node into
+  // human_approval_node's own interrupt. The same message flips from an
+  // angle-picker into a normal draft-approval card on success.
+  async function handlePickAngle(id, angleId) {
+    const msg = messages.find(m => m.id === id)
+    if (!msg?.thread_id) return
+    patch(id, { pickError: '' })
+    try {
+      const response = await resumeAI(msg.thread_id, 'pick', '', angleId)
+      if (response.status === 'awaiting_approval' && response.draft) {
+        patch(id, {
+          awaitingAngle: false, angles: [],
+          text: response.draft, thread_id: response.thread_id || msg.thread_id,
+          decision: null, agent: 'Writer',
+        })
+        setLatestDraft(response.draft)
+        const chatId = activeChatRef.current
+        if (chatId) updateChatSnippet(chatId, AGENTS.Writer.name)
+      } else if (response.status === 'awaiting_approval' && !response.draft) {
+        // Writer returned empty content (Gemini refused/failed silently) —
+        // keep the angle cards intact instead of wiping them with a blank bubble.
+        patch(id, { pickError: 'The writer returned an empty draft — please try again.' })
+      } else if (response.status === 'awaiting_angle_selection') {
+        // Invalid angle_id — angle_review_node re-surfaced the same angles.
+        patch(id, { angles: response.angles || [], text: response.error || 'Pick an angle to write from:' })
+      } else {
+        patch(id, { awaitingAngle: false, angles: [], text: response.answer || '', decision: 'auto' })
+      }
+      scrollDown()
+    } catch (err) {
+      console.error('[chat] pick angle failed:', err)
+      patch(id, { decision: 'error', errorMessage: 'Failed to pick that angle — please try again.' })
+    }
   }
 
   function handleOpenModify(id) {
@@ -1189,8 +1421,10 @@ export default function ChatPage() {
     activeChatRef.current = id
     const c = chats.find(x => x.id === id)
     setChatTitle(c ? c.title : 'Chat')
-    setMessages([])
     setLatestDraft('')
+    // No backend persistence — restore from this session's in-memory cache only.
+    setMessages(chatMessagesRef.current[id] || [])
+    setTimeout(scrollDown, 50)
   }
 
   function handleKeyDown(e) {
@@ -1255,6 +1489,8 @@ export default function ChatPage() {
                         onModifyChange={handleModifyChange}
                         onSendModify={handleSendModify}
                         onRegen={handleRegen}
+                        onRetryFailed={handleRetryFailed}
+                        onPickAngle={handlePickAngle}
                       />
                 ))}
               </div>

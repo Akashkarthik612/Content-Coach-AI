@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     OPENAI_API_KEY: str = ""
     LANGCHAIN_API_KEY_GEMINI: str = ""
+    LANGCHAIN_API_KEY_GEMINI_2: str = ""  # optional fallback — see backend/ai/api_key_rotation.py
+    TAVILY_API_KEY: str = ""
     APP_NAME: str = "LinkedIn Coach"
     ENV: str = "development"
 
@@ -20,6 +22,7 @@ class Settings(BaseSettings):
     LINKEDIN_CLIENT_SECRET: str = ""
     LINKEDIN_REDIRECT_URI: str = "http://localhost:8000/api/linkedin/auth/callback"
     FRONTEND_URL: str = "http://localhost:5173"
+
 
 
 @lru_cache

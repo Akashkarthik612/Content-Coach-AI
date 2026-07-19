@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from unittest.mock import MagicMock, AsyncMock
 
 from backend.vault.models import (
-    Post, PostStatus, PostVersion, PostTag, PostPublishLog, Folder,
+    Post, PostStatus, PostVersion, PostTag, Folder,
 )
 
 
@@ -29,6 +29,15 @@ def patch_tools_session(db_session, monkeypatch):
 
     monkeypatch.setattr(tools_mod, "SessionLocal", fake_session)
     return db_session
+
+
+@pytest.fixture
+def patch_tavily_client(monkeypatch):
+    """Patch tools.py's module-level _tavily_client with a MagicMock."""
+    import backend.ai.agents.tools as tools_mod
+    mock = MagicMock()
+    monkeypatch.setattr(tools_mod, "_tavily_client", mock)
+    return mock
 
 
 @pytest.fixture
@@ -165,65 +174,87 @@ class TestGetTopicInventory:
 
 
 # ---------------------------------------------------------------------------
-# get_post_analytics
+# web_search
 # ---------------------------------------------------------------------------
 
-class TestGetPostAnalytics:
-    async def test_with_analytics_data(
-        self, mock_redis, patch_tools_session, db_session, test_user, seeded_published_post
+class TestWebSearch:
+    async def test_cache_hit_returns_cached_value(self, mock_redis, patch_tavily_client):
+        import backend.ai.agents.tools as tools_mod
+        from backend.core.cache import search_key
+
+        fake_async, _ = mock_redis
+        await fake_async.set(search_key("python tips"), "Cached search result")
+
+        result = await tools_mod.web_search.ainvoke({"query": "python tips"})
+        assert result == "Cached search result"
+        patch_tavily_client.search.assert_not_called()
+
+    async def test_cache_miss_fetches_and_caches(self, mock_redis, patch_tavily_client):
+        import backend.ai.agents.tools as tools_mod
+        from backend.core.cache import search_key
+
+        patch_tavily_client.search.return_value = {
+            "results": [
+                {"title": "Post A", "url": "https://a.example.com", "content": "snippet a"},
+                {"title": "Post B", "url": "https://b.example.com", "content": "snippet b"},
+            ]
+        }
+
+        result = await tools_mod.web_search.ainvoke({"query": "linkedin growth tips"})
+        assert "Post A" in result
+        assert "https://a.example.com" in result
+        assert "snippet b" in result
+
+        fake_async, _ = mock_redis
+        cached = await fake_async.get(search_key("linkedin growth tips"))
+        assert cached == result
+
+    async def test_empty_query_returns_no_context_without_api_call(
+        self, mock_redis, patch_tavily_client
     ):
         import backend.ai.agents.tools as tools_mod
-        from backend.vault.models import PostAnalytics
-        import datetime
 
-        post, _ = seeded_published_post
-        analytics = PostAnalytics(
-            id=uuid.uuid4(), post_id=post.id, user_id=test_user.id,
-            impressions=200, reactions=15,
-            updated_at=datetime.datetime.now(datetime.timezone.utc),
+        result = await tools_mod.web_search.ainvoke({"query": "   "})
+        assert "NO_CONTEXT_FOUND" in result
+        patch_tavily_client.search.assert_not_called()
+
+    async def test_tavily_raises_returns_failure_and_is_not_cached(
+        self, mock_redis, patch_tavily_client
+    ):
+        import backend.ai.agents.tools as tools_mod
+        from backend.core.cache import search_key
+
+        patch_tavily_client.search.side_effect = Exception("Tavily quota exceeded")
+
+        result = await tools_mod.web_search.ainvoke({"query": "quota test query"})
+        assert "SEARCH_FAILED" in result
+
+        fake_async, _ = mock_redis
+        cached = await fake_async.get(search_key("quota test query"))
+        assert cached is None
+
+    async def test_no_results_returns_no_context_and_is_cached(
+        self, mock_redis, patch_tavily_client
+    ):
+        import backend.ai.agents.tools as tools_mod
+        from backend.core.cache import search_key
+
+        patch_tavily_client.search.return_value = {"results": []}
+
+        result = await tools_mod.web_search.ainvoke({"query": "totally obscure query"})
+        assert "NO_CONTEXT_FOUND" in result
+
+        fake_async, _ = mock_redis
+        cached = await fake_async.get(search_key("totally obscure query"))
+        assert cached == result
+
+    async def test_search_called_with_cheap_params(self, mock_redis, patch_tavily_client):
+        import backend.ai.agents.tools as tools_mod
+
+        patch_tavily_client.search.return_value = {"results": []}
+
+        await tools_mod.web_search.ainvoke({"query": "cheap params test"})
+
+        patch_tavily_client.search.assert_called_once_with(
+            query="cheap params test", search_depth="basic", max_results=4
         )
-        db_session.add(analytics)
-        db_session.flush()
-
-        result = await tools_mod.get_post_analytics.ainvoke({"user_id": str(test_user.id)})
-        assert "Seeded Post" in result or "200" in result or len(result) > 10
-
-    async def test_empty_returns_no_analytics_context(
-        self, mock_redis, patch_tools_session, test_user
-    ):
-        import backend.ai.agents.tools as tools_mod
-
-        result = await tools_mod.get_post_analytics.ainvoke({"user_id": str(test_user.id)})
-        assert "NO_ANALYTICS_CONTEXT" in result or "no" in result.lower() or len(result) > 0
-
-
-# ---------------------------------------------------------------------------
-# analyze_publish_history
-# ---------------------------------------------------------------------------
-
-class TestAnalyzePublishHistory:
-    async def test_with_publish_log(
-        self, mock_redis, patch_tools_session, db_session, test_user, seeded_published_post
-    ):
-        import backend.ai.agents.tools as tools_mod
-        import datetime
-
-        post, version = seeded_published_post
-        log = PostPublishLog(
-            id=uuid.uuid4(), post_id=post.id, version_id=version.id,
-            platform="linkedin",
-            published_at=datetime.datetime.now(datetime.timezone.utc),
-        )
-        db_session.add(log)
-        db_session.flush()
-
-        result = await tools_mod.analyze_publish_history.ainvoke({"user_id": str(test_user.id)})
-        assert "linkedin" in result.lower() or "Seeded Post" in result or len(result) > 10
-
-    async def test_empty_returns_no_analytics_context(
-        self, mock_redis, patch_tools_session, test_user
-    ):
-        import backend.ai.agents.tools as tools_mod
-
-        result = await tools_mod.analyze_publish_history.ainvoke({"user_id": str(test_user.id)})
-        assert "NO_ANALYTICS_CONTEXT" in result or "no" in result.lower() or len(result) > 0

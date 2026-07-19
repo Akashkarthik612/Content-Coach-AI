@@ -147,6 +147,16 @@ def pin_post(db: Session, user_id: UUID, post_id: UUID, pinned: bool) -> Post:
     return post
 
 
+def move_post(db: Session, user_id: UUID, post_id: UUID, folder_id: UUID) -> Post:
+    post = _own_post(db, user_id, post_id)
+    _own_folder(db, user_id, folder_id)
+    post.folder_id = folder_id
+    post.updated_at = _utcnow()
+    db.commit()
+    db.refresh(post)
+    return post
+
+
 # ── Version ───────────────────────────────────────────────────────────────────
 
 def save_version(db: Session, user_id: UUID, post_id: UUID, data: VersionSave) -> PostVersion:

@@ -4,7 +4,7 @@ import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import {
   Plus, ChevronRight, ChevronDown,
   Folder, PanelLeftClose, PanelLeftOpen, ArrowLeft, ArrowUpRight, Upload,
-  Clock, Hash, Search, PenLine, Sparkles, Send, Check, Share2,
+  Clock, Hash, Search, PenLine, Check, Share2,
   Heading1, Heading2, Heading3, Bold, Italic, Quote, Link2, X, Settings,
   BarChart2,
 } from 'lucide-react'
@@ -17,7 +17,6 @@ import {
 } from '../api/vault'
 import { sendToReview, publishPost } from '../api/publishing'
 import { getLinkedInStatus, getLinkedInAuthUrl } from '../api/linkedin'
-import { useAIChat } from '../components/AIAssistant/useAIChat'
 import { ContextMenu } from '../components/shared/ContextMenu'
 import { useResizableRail } from '../hooks/useResizableRail'
 import { useVault, FOLDER_TINTS } from '../hooks/useVault'
@@ -151,7 +150,18 @@ function relativeVersionLabel(createdAt, isLatest) {
 }
 
 // ── Left rail: History (§A.1 + image mockup — vertical version cards) ───────────
-function HistoryRail({ width, isDragging, onStartDrag, versions, activeIdx, onSelect, nextVersionNumber, onSave, onSaveFinal, saving, canSave, diffMode, onToggleDiff, menuFor, onOpenMenu, onCloseMenu, onRenameVersion, onDeleteVersion }) {
+function HistoryRail({ width, isDragging, onStartDrag, versions, activeIdx, onSelect, nextVersionNumber, onSave, onSaveFinal, saving, canSave, diffMode, onToggleDiff, menuFor, onOpenMenu, onCloseMenu, onRenameVersion, onDeleteVersion, collapsed, onToggleCollapse }) {
+  if (collapsed) {
+    return (
+      <div style={{ width, flexShrink: 0, borderRight: `1px solid ${BDR}`, background: TINT, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 16 }}>
+        <button onClick={onToggleCollapse} className="cc-press" title="Show history"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 8, borderRadius: 8, display: 'flex', color: MUTED }}>
+          <PanelLeftOpen size={16} />
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div style={{ width, flexShrink: 0, position: 'relative', borderRight: `1px solid ${BDR}`, background: TINT, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div
@@ -165,11 +175,17 @@ function HistoryRail({ width, isDragging, onStartDrag, versions, activeIdx, onSe
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: INK, fontFamily: FONT }}>
             <Clock size={14} color={MUTED} /> History
           </span>
-          <button onClick={onToggleDiff} className="cc-press"
-            style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 600, padding: '4px 9px', borderRadius: 7, cursor: 'pointer', fontFamily: FONT,
-              border: `1px solid ${diffMode ? BLUE : BDR}`, background: diffMode ? '#EAF0FF' : WHITE, color: diffMode ? BLUE : MUTED }}>
-            <Hash size={12} /> Diff
-          </button>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button onClick={onToggleDiff} className="cc-press"
+              style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, fontWeight: 600, padding: '4px 9px', borderRadius: 7, cursor: 'pointer', fontFamily: FONT,
+                border: `1px solid ${diffMode ? BLUE : BDR}`, background: diffMode ? '#EAF0FF' : WHITE, color: diffMode ? BLUE : MUTED }}>
+              <Hash size={12} /> Diff
+            </button>
+            <button onClick={onToggleCollapse} className="cc-press" title="Minimize history"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 7, display: 'flex', color: MUTED }}>
+              <PanelLeftClose size={14} />
+            </button>
+          </span>
         </div>
         <button onClick={onSave} disabled={!canSave || saving} className="cc-press"
           style={{
@@ -510,98 +526,6 @@ function MetricsCard({ postId, status, impressions, reactions, lastUpdated, onUp
           )}
         </>
       )}
-    </div>
-  )
-}
-
-// ── Bottom AI command bar (quick actions + whole-doc/selection scope + prompt) ───
-function AICommandBar({ onInsertDraft }) {
-  const {
-    prompt, setPrompt, messages, loading,
-    editMode, setEditMode, editContent, setEditContent,
-    handleSend, handleResume, handleKeyDown,
-  } = useAIChat()
-  const [scope, setScope] = useState('whole') // 'whole' | 'selection'
-
-  const quickActions = ['Rewrite', 'Shorten', 'Hook', 'CTA']
-  const last = messages[messages.length - 1]
-  const showResult = last && last.role !== 'user' && messages.length > 1
-
-  function sendQuickAction(label) {
-    setPrompt(`${label} this ${scope === 'whole' ? 'whole post' : 'selection'}`)
-    setTimeout(handleSend, 0)
-  }
-
-  return (
-    <div style={{ borderTop: `1px solid ${BDR}`, background: WHITE, flexShrink: 0, fontFamily: FONT }}>
-      {showResult && (
-        <div style={{ margin: '10px 24px 0', border: `1px solid ${BDR}`, borderRadius: 12, overflow: 'hidden', maxHeight: 180, display: 'flex', flexDirection: 'column' }}>
-          {last.role === 'draft' ? (
-            <>
-              <div style={{ padding: '7px 12px', background: '#EEF2FF', fontSize: 11.5, fontWeight: 600, color: INDIGO }}>Draft ready</div>
-              {editMode ? (
-                <textarea value={editContent} onChange={e => setEditContent(e.target.value)}
-                  style={{ width: '100%', minHeight: 80, padding: '9px 12px', fontSize: 12.5, lineHeight: 1.55, border: 'none', outline: 'none', resize: 'vertical', fontFamily: FONT, boxSizing: 'border-box' }} />
-              ) : (
-                <div style={{ padding: '9px 12px', fontSize: 12.5, lineHeight: 1.55, whiteSpace: 'pre-wrap', overflowY: 'auto', color: INK }}>{last.content}</div>
-              )}
-              <div style={{ display: 'flex', gap: 6, padding: '7px 12px', background: TINT }}>
-                {editMode ? (
-                  <>
-                    <button onClick={() => handleResume('edited')} className="cc-press" style={{ fontSize: 11.5, padding: '4px 9px', borderRadius: 6, border: 'none', background: BLUE, color: WHITE, cursor: 'pointer', fontWeight: 500 }}>Confirm</button>
-                    <button onClick={() => setEditMode(false)} className="cc-press" style={{ fontSize: 11.5, padding: '4px 9px', borderRadius: 6, border: `1px solid ${BDR}`, background: WHITE, color: MUTED, cursor: 'pointer' }}>Cancel</button>
-                  </>
-                ) : (
-                  <>
-                    <button onClick={() => handleResume('approved')} className="cc-press" style={{ fontSize: 11.5, padding: '4px 9px', borderRadius: 6, border: 'none', background: BLUE, color: WHITE, cursor: 'pointer', fontWeight: 500 }}>Approve</button>
-                    <button onClick={() => { setEditContent(last.content); setEditMode(true) }} className="cc-press" style={{ fontSize: 11.5, padding: '4px 9px', borderRadius: 6, border: `1px solid ${BDR}`, background: WHITE, color: INK, cursor: 'pointer' }}>Edit</button>
-                    <button onClick={() => handleResume('rejected')} className="cc-press" style={{ fontSize: 11.5, padding: '4px 9px', borderRadius: 6, border: `1px solid ${BDR}`, background: WHITE, color: MUTED, cursor: 'pointer' }}>Reject</button>
-                  </>
-                )}
-              </div>
-            </>
-          ) : (
-            <>
-              <div style={{ padding: '9px 12px', fontSize: 12.5, lineHeight: 1.55, whiteSpace: 'pre-wrap', overflowY: 'auto', color: INK }}>{last.content}</div>
-              <div style={{ padding: '7px 12px', background: TINT }}>
-                <button onClick={() => onInsertDraft(last.content)} className="cc-press" style={{ fontSize: 11.5, padding: '4px 9px', borderRadius: 6, border: 'none', background: BLUE, color: WHITE, cursor: 'pointer', fontWeight: 500 }}>Insert into draft</button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 24px' }}>
-        {quickActions.map(label => (
-          <button key={label} onClick={() => sendQuickAction(label)} disabled={loading} className="cc-press"
-            style={{ border: `1px solid ${BDR}`, background: WHITE, color: INK, borderRadius: 999, padding: '6px 13px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: FONT }}>
-            {label}
-          </button>
-        ))}
-        <div style={{ flex: 1 }} />
-        <div style={{ display: 'flex', border: `1px solid ${BDR}`, borderRadius: 999, padding: 2 }}>
-          {[['whole', 'Whole doc'], ['selection', 'Selection']].map(([key, label]) => (
-            <button key={key} onClick={() => setScope(key)} className="cc-press"
-              style={{ border: 'none', borderRadius: 999, padding: '5px 11px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: FONT,
-                background: scope === key ? '#EAF0FF' : 'transparent', color: scope === key ? BLUE : MUTED }}>
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 24px 14px' }}>
-        <span style={{ width: 30, height: 30, borderRadius: '50%', background: `linear-gradient(135deg,${BLUE},${VIOLET})`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <Sparkles size={14} color={WHITE} />
-        </span>
-        <input value={prompt} onChange={e => setPrompt(e.target.value)} onKeyDown={handleKeyDown} disabled={loading}
-          placeholder="Ask AI to rewrite, generate hooks, improve your CTA…"
-          style={{ flex: 1, border: `1px solid ${BDR}`, borderRadius: 999, padding: '10px 16px', fontSize: 13, fontFamily: FONT, outline: 'none' }} />
-        <button onClick={handleSend} disabled={loading || !prompt.trim()} className="cc-press"
-          style={{ display: 'flex', alignItems: 'center', gap: 6, background: BLUE, color: WHITE, border: 'none', borderRadius: 999, padding: '10px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: FONT }}>
-          Send <Send size={13} />
-        </button>
-      </div>
     </div>
   )
 }
@@ -1090,6 +1014,7 @@ function DocEditor({ post, panelsCollapsed, onTogglePanels, onClose, onTitleChan
   const [activeIdx, setActiveIdx] = useState(-1)
   const [loading,  setLoading]  = useState(true)
   const [diffMode, setDiffMode] = useState(false)
+  const [historyCollapsed, setHistoryCollapsed] = useState(false)
   const [menuFor,  setMenuFor]  = useState(null)
   const [surfaceMenu, setSurfaceMenu] = useState(null)
   const [shareCopied, setShareCopied] = useState(false)
@@ -1281,13 +1206,18 @@ function DocEditor({ post, panelsCollapsed, onTogglePanels, onClose, onTitleChan
   const isReadOnly = versions.length > 0 && !isLatest
   const wordCount  = content.trim() ? content.trim().split(/\s+/).length : 0
   const readMins   = Math.max(1, Math.round(wordCount / 200))
+  const isEmptyDraft = !loading && versions.length === 0
+
+  function handleClose() {
+    onClose(post.id, isEmptyDraft)
+  }
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%', background: WHITE }}>
       <TopBar
         panelsCollapsed={panelsCollapsed}
         onTogglePanels={onTogglePanels}
-        onClose={onClose}
+        onClose={handleClose}
         status={status}
         onSendToReview={handleSendToReview}
         targetPlatform={targetPlatform}
@@ -1300,7 +1230,9 @@ function DocEditor({ post, panelsCollapsed, onTogglePanels, onClose, onTitleChan
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
         <HistoryRail
-          width={leftRail.width}
+          width={historyCollapsed ? 48 : leftRail.width}
+          collapsed={historyCollapsed}
+          onToggleCollapse={() => setHistoryCollapsed(c => !c)}
           isDragging={leftRail.isDragging}
           onStartDrag={leftRail.startDrag}
           versions={versions}
@@ -1392,8 +1324,6 @@ function DocEditor({ post, panelsCollapsed, onTogglePanels, onClose, onTitleChan
               </>
             )}
           </div>
-
-          <AICommandBar onInsertDraft={text => { setContent(text); setDirty(true) }} />
         </div>
 
         <div style={{ width: rightRail.width, flexShrink: 0, position: 'relative', borderLeft: `1px solid ${BDR}`, background: TINT, padding: 16, display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto' }}>
@@ -1660,7 +1590,7 @@ function VaultEmptyState({ searching }) {
 }
 
 // ── Content Vault — post card ─────────────────────────────────────────────────
-function PostCard({ post, index, onOpen, onDelete, onRename, onPin, existingMetrics, onOpenMetrics }) {
+function PostCard({ post, index, folders, onOpen, onDelete, onRename, onPin, onMove, existingMetrics, onOpenMetrics }) {
   const [menuPos, setMenuPos]     = useState(null)
   const [renaming, setRenaming]   = useState(false)
   const [renameVal, setRenameVal] = useState(post.title)
@@ -1755,6 +1685,12 @@ function PostCard({ post, index, onOpen, onDelete, onRename, onPin, existingMetr
           items={[
             { label: 'Rename', onClick: () => { setRenameVal(post.title); setRenaming(true) } },
             { label: post.is_pinned ? 'Unpin' : 'Pin to top', onClick: () => onPin(post.id, post.is_pinned) },
+            ...(folders || [])
+              .filter(f => f.id !== post.folder_id)
+              .map(f => ({
+                label: `Move to "${f.name}"`,
+                onClick: () => onMove(post.id, post.folder_id, f.id),
+              })),
             { label: 'Delete', onClick: () => onDelete(post.id), danger: true },
           ]}
         />
@@ -1764,7 +1700,7 @@ function PostCard({ post, index, onOpen, onDelete, onRename, onPin, existingMetr
 }
 
 // ── Content Vault — main posts panel ──────────────────────────────────────────
-function VaultMain({ folders, postsByFolder, selectedId, searchQuery, onOpen, onCreatePost, creatingPost, onDelete, onRename, onPin, getMetrics, onSaveMetrics }) {
+function VaultMain({ folders, postsByFolder, selectedId, searchQuery, onOpen, onCreatePost, creatingPost, onDelete, onRename, onPin, onMove, getMetrics, onSaveMetrics }) {
   const [metricsPost, setMetricsPost] = useState(null)
 
   const searching = searchQuery.trim().length > 0
@@ -1809,8 +1745,8 @@ function VaultMain({ folders, postsByFolder, selectedId, searchQuery, onOpen, on
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(268px,1fr))', gap: 14 }}>
           {posts.map((post, i) => (
             <PostCard
-              key={post.id} post={post} index={i}
-              onOpen={onOpen} onDelete={onDelete} onRename={onRename} onPin={onPin}
+              key={post.id} post={post} index={i} folders={folders}
+              onOpen={onOpen} onDelete={onDelete} onRename={onRename} onPin={onPin} onMove={onMove}
               existingMetrics={getMetrics(post.id)}
               onOpenMetrics={setMetricsPost}
             />
@@ -1875,7 +1811,7 @@ export default function MyWorkPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(window.innerWidth < 768)
 
   // ── Vault data (real backend) ──────────────────────────────────────────────
-  const { folders, postsByFolder, loading: vaultLoading, addFolder, addPost, removePost, updatePost, removeFolder, updateFolder } = useVault()
+  const { folders, postsByFolder, loading: vaultLoading, addFolder, addPost, removePost, updatePost, movePost, removeFolder, updateFolder } = useVault()
 
   // ── §A3 — in-memory metrics store ─────────────────────────────────────────
   const { saveMetrics, getMetrics } = useMetrics()
@@ -1982,7 +1918,13 @@ export default function MyWorkPage() {
     setActivePost(post)
   }
 
-  function handleEditorClose() {
+  async function handleEditorClose(postId, isEmpty) {
+    if (isEmpty) {
+      try {
+        await deletePost(postId)
+        removePost(postId)
+      } catch (err) { console.error('Discard empty draft failed:', err) }
+    }
     setActivePost(null)
   }
 
@@ -2016,6 +1958,12 @@ export default function MyWorkPage() {
       const updated = await pinPost(postId, !currentlyPinned)
       updatePost(postId, { is_pinned: updated.is_pinned })
     } catch (err) { console.error('Pin post failed:', err) }
+  }
+
+  async function handleMovePost(postId, fromFolderId, toFolderId) {
+    try {
+      await movePost(postId, fromFolderId, toFolderId)
+    } catch (err) { console.error('Move post failed:', err) }
   }
 
   function handlePostStatusChange(postId, newStatus, scheduledAt, platform) {
@@ -2083,6 +2031,7 @@ export default function MyWorkPage() {
                 onDelete={handleDeletePost}
                 onRename={handleRenamePost}
                 onPin={handlePinPost}
+                onMove={handleMovePost}
                 getMetrics={getMetrics}
                 onSaveMetrics={saveMetrics}
               />

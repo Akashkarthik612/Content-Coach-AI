@@ -9,6 +9,11 @@ Flow:
   ──fixed edge──► WriterState (full state, style_json now merged in) ──output: draft──►
   ──fixed edge──► human_approval_node
 
+One additional entry path into this same style_retriever_node -> writer_node chain:
+  - /draft-from-topic: graph.py's conditional entry point (_entry_router) sends
+    pre_routed=True requests straight to style_retriever_node, skipping supervisor_node's
+    classification LLM call entirely, since the target pipeline is already known.
+
 The orchestrator (supervisor_node) holds AgentState.
 Workers hold their own minimal state for the duration of their execution.
 """
@@ -41,32 +46,19 @@ class WriterState(TypedDict):
     query:          str
     messages:       Annotated[list[HumanMessage | AIMessage], add_messages]
     style_json:     dict   # populated by style_retriever_node
-    research_brief: dict   # populated by researcher_node (empty dict if not run)
+    research_brief: dict   # flat shape ({recommended_angle, talking_points, ...}) — empty dict if
+                           # research never ran; always reshaped to this flat form before writer_node runs
     writer_task:    dict   # {action, topic, constraints} — set by router.py
     draft:          str    # previous draft, used only for rewrite action
 
 
 class ResearcherState(TypedDict):
     """
-    State sent to researcher_node via Send API.
+    Minimal input for a platform researcher worker (e.g. researcher_linkedin).
 
-    Unlike style_retriever_node (a single DB lookup), researcher_node runs its own
-    agentic tool loop (web_search, fetch_page, and — only when the user asks about
-    their own past posts — get_topic_inventory/search_vault_posts), so it needs the
-    conversation's messages to loop against, same shape as AnalyticsState.
+    Same minimal-dispatch shape as StyleRetrieverState — the worker only needs
+    WHO the user is and WHAT topic they want researched; it self-serves
+    everything else (web search, source gathering) internally.
     """
-    user_id:  str
-    query:    str
-    messages: Annotated[list[HumanMessage | AIMessage], add_messages]
-
-
-class AnalyticsState(TypedDict):
-    """
-    State available to analytics_node (reached via fixed edge after supervisor
-    calls analytics tools through the tool_node loop).
-
-    The tool results are in messages as ToolMessages — analytics_node reads them.
-    """
-    user_id:  str
-    query:    str
-    messages: Annotated[list[HumanMessage | AIMessage], add_messages]
+    user_id: str
+    query:   str

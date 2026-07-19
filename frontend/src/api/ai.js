@@ -11,11 +11,23 @@ api.interceptors.request.use(config => {
 export const queryAI = (prompt) =>
   api.post('/query', { prompt }).then(r => r.data);
 
-export const resumeAI = (thread_id, action, content = '') =>
-  api.post('/resume', { thread_id, action, content }).then(r => r.data);
+export const resumeAI = (thread_id, action, content = '', angle_id = null) =>
+  api.post('/resume', { thread_id, action, content, angle_id }).then(r => r.data);
 
 export const refineAI = (draft, note) =>
   api.post('/refine', { draft, note }).then(r => r.data);
+
+/**
+ * Draft a full post from ONE picked research topic card (not the whole brief).
+ * Skips supervisor's classification entirely on the backend — the target
+ * pipeline is already known since the user clicked a specific topic.
+ *
+ * @param {object} topic     - one item from a message's `topics` array
+ * @param {string} platform  - defaults to 'linkedin' (only platform wired up today)
+ * @returns {Promise<{answer, draft, thread_id, status}>}
+ */
+export const draftFromTopic = (topic, platform = 'linkedin') =>
+  api.post('/draft-from-topic', { topic, platform }).then(r => r.data);
 
 /**
  * SSE streaming query. Calls /stream and fires callbacks as events arrive.

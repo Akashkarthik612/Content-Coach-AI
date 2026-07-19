@@ -19,7 +19,7 @@ os.environ.setdefault("LANGCHAIN_API_KEY_GEMINI", "test-key-not-real")
 os.environ.setdefault("OPENAI_API_KEY", "test-key-not-real")
 
 # --- Patch module-level LLM constructors before any backend.ai.* import fires ---
-# supervisor.py, writer_node.py, analytics_node.py, embeddings.py all instantiate
+# supervisor.py, writer_node.py, embeddings.py all instantiate
 # ChatGoogleGenerativeAI / GoogleGenerativeAIEmbeddings at module scope.
 _llm_patcher   = patch("langchain_google_genai.ChatGoogleGenerativeAI", MagicMock())
 _embed_patcher = patch("langchain_google_genai.GoogleGenerativeAIEmbeddings", MagicMock())
