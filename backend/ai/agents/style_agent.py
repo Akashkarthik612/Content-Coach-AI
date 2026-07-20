@@ -27,7 +27,8 @@ logger = logging.getLogger(__name__)
 _llm = ChatGoogleGenerativeAI(
     model="gemini-2.0-flash-lite",
     temperature=0.1,
-    max_output_tokens=512,
+    max_output_tokens=1024,  # was 512 — no thinking-budget risk on this non-thinking model,
+                             # just cheap headroom against the 9-sentence JSON output running long
     google_api_key=settings.LANGCHAIN_API_KEY_GEMINI,
 )
 

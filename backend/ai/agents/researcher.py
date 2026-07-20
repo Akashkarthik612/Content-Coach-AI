@@ -55,7 +55,9 @@ class ResearchAngle(BaseModel):
 _llm = ChatGoogleGenerativeAI(
     model="gemini-3.5-flash",
     temperature=0.7,  # 5 genuinely distinct angles need creative divergence, not determinism
-    max_output_tokens=4096,
+    max_output_tokens=8192,  # was 4096 — same shared thinking/output budget issue that emptied
+                             # writer_node's drafts (see writer_node.py); this prompt's domain-fit
+                             # + 5-distinct-lens reasoning is at least as demanding, same fix applies
     thinking_level="low",  # Gemini 3.5 Flash thinks by default (medium) — low keeps a
                            # multi-round tool-calling loop from paying that tax every round
     google_api_key=settings.LANGCHAIN_API_KEY_GEMINI,
@@ -145,7 +147,9 @@ def _build_research_system(profile_context: dict | None) -> str:
 _expand_llm = ChatGoogleGenerativeAI(
     model="gemini-3.5-flash",
     temperature=0.3,
-    max_output_tokens=512,
+    max_output_tokens=8192,  # was 512 — thinking token usage isn't proportional to a short output;
+                             # a 512 cap was the least-safe budget in the app against the same
+                             # shared-budget truncation bug that emptied writer_node's drafts
     thinking_level="low",  # short grounded summary — no need for deep reasoning here either
     google_api_key=settings.LANGCHAIN_API_KEY_GEMINI,
 )
@@ -311,8 +315,16 @@ async def expand_research_angle(angle: dict, search_context: str) -> str:
         SystemMessage(content=_EXPAND_SYSTEM),
         HumanMessage(content=human),
     ])
+    content = _extract_text(response.content)
     logger.info("expand_research_angle: took %.2fs", time.monotonic() - t0)
-    return _extract_text(response.content)
+    if not content:
+        logger.error(
+            "expand_research_angle: LLM returned empty content — finish_reason=%r usage=%r raw=%r",
+            response.response_metadata.get("finish_reason"),
+            response.response_metadata.get("usage_metadata"),
+            response.content,
+        )
+    return content
 
 
 def _fetch_profile_context(user_id: str) -> dict:
