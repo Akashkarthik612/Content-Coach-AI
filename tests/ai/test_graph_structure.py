@@ -37,13 +37,16 @@ class TestGraphNodes:
         from backend.ai.graph import _graph
         assert "map_chosen_angle_node" in _graph.nodes
 
-    def test_eight_nodes_total(self):
+    def test_seven_nodes_total(self):
         from backend.ai.graph import _graph
-        # supervisor, tool, style_retriever, writer, human_approval,
-        # researcher, angle_review, map_chosen_angle.
+        # supervisor, tool, writer, human_approval, researcher, angle_review,
+        # map_chosen_angle.
+        # style_retriever_node was folded into writer_node as a plain
+        # pre-step (context_loaders.py's StyleContextLoader) — no longer a
+        # distinct graph node.
         # No separate research_tool_node — researcher_linkedin keeps its own
         # internal manual tool-calling loop rather than a graph-level ToolNode.
-        assert len(_graph.nodes) == 8
+        assert len(_graph.nodes) == 7
 
 
 class TestGraphCompilation:
@@ -77,17 +80,28 @@ class TestSupervisorRouter:
         state = {"messages": [msg], "route": "", "task_type": "research"}
         assert _supervisor_router(state) == "tools"
 
-    def test_router_returns_send_to_style_retriever_when_route_is_style_retrieval(self):
+    def test_router_returns_writer_node_when_route_is_style_retrieval(self):
         from backend.ai.graph import _supervisor_router
-        from langgraph.types import Send
         from unittest.mock import MagicMock
 
+        # writer_node now resolves style/profile context itself as a plain
+        # pre-step (StyleContextLoader) — this route is a plain edge, not a
+        # Send, since writer_node needs the full merged state.
         msg = MagicMock()
         msg.tool_calls = []
         state = {"messages": [msg], "route": "style_retrieval", "user_id": "u1", "query": "q"}
-        result = _supervisor_router(state)
-        assert isinstance(result, list) and len(result) == 1
-        assert isinstance(result[0], Send) and result[0].node == "style_retriever_node"
+        assert _supervisor_router(state) == "writer_node"
+
+    def test_router_returns_writer_node_when_route_is_write(self):
+        from backend.ai.graph import _supervisor_router
+        from unittest.mock import MagicMock
+
+        # Rewrite route — also a plain edge to writer_node, not Send, so
+        # messages/writer_task/draft survive on state.
+        msg = MagicMock()
+        msg.tool_calls = []
+        state = {"messages": [msg], "route": "write", "user_id": "u1", "query": "q"}
+        assert _supervisor_router(state) == "writer_node"
 
     def test_router_returns_send_to_researcher_when_route_is_research(self):
         from backend.ai.graph import _supervisor_router

@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import LandingPage from './pages/landing/LandingPage';
+import OnboardingPage from './pages/OnboardingPage';
 import DashboardPage from './pages/DashboardPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import MyWorkPage from './pages/MyWorkPage';
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="/"         element={<LandingPage />} />
         <Route path="/login"    element={<HomePage initialMode="login" />} />
         <Route path="/register" element={<HomePage initialMode="register" />} />
+        <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
         <Route path="/dashboard"  element={<RequireAuth><DashboardPage /></RequireAuth>} />
         <Route path="/analytics"  element={<RequireAuth><AnalyticsPage /></RequireAuth>} />
         <Route path="/my-work"    element={<RequireAuth><MyWorkPage /></RequireAuth>} />

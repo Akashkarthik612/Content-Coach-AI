@@ -7,7 +7,6 @@ from langgraph.types import Send
 
 from backend.ai.state import AgentState
 from backend.ai.agents.supervisor             import supervisor_node
-from backend.ai.agents.style_agent            import style_retriever_node
 from backend.ai.agents.writer_node            import writer_node
 from backend.ai.agents.human_approval_node    import human_approval_node
 from backend.ai.agents.researcher             import researcher_node
@@ -37,8 +36,8 @@ def _entry_router(state: AgentState) -> str:
     exactly as before.
     """
     if state.get("pre_routed"):
-        logger.debug("entry_router: pre_routed=True -> style_retriever_node directly")
-        return "style_retriever_node"
+        logger.debug("entry_router: pre_routed=True -> writer_node directly")
+        return "writer_node"
     return "supervisor_node"
 
 
@@ -58,15 +57,12 @@ def _supervisor_router(state: AgentState):
     route = state.get("route", "")
 
     if route == "style_retrieval":
-        # Send API: dispatch style_retriever as an autonomous worker with its own
-        # minimal state — only what it needs (user_id + query).
-        # Output (style_json) merges into global AgentState; fixed edges carry
-        # the merged state through writer_node → human_approval_node → END.
-        logger.debug("supervisor_router: Send → style_retriever_node")
-        return [Send("style_retriever_node", {
-            "user_id": state["user_id"],
-            "query":   state["query"],
-        })]
+        # writer_node now resolves style/profile context itself as a plain
+        # pre-step (StyleContextLoader) — no separate worker needed here, and
+        # writer_node needs the FULL state (messages/writer_task), not a
+        # Send's minimal slice.
+        logger.debug("supervisor_router: -> writer_node")
+        return "writer_node"
 
     if route == "research":
         # Same minimal-dispatch shape as style_retrieval above. Output
@@ -77,6 +73,15 @@ def _supervisor_router(state: AgentState):
             "user_id": state["user_id"],
             "query":   state["query"],
         })]
+
+    if route == "write":
+        # Rewrite/redraft of existing content — supervisor already set
+        # writer_task.action="rewrite" on state. Plain edge (not Send) so
+        # writer_node keeps the full merged state — messages, writer_task,
+        # and any vault content fetched via tools during classification are
+        # all present in state["messages"] and must survive to writer_node.
+        logger.debug("supervisor_router: -> writer_node (rewrite)")
+        return "writer_node"
 
     return "direct"
 
@@ -100,8 +105,7 @@ _graph = StateGraph(AgentState)
 # ── Nodes ──────────────────────────────────────────────────────────────────────
 _graph.add_node("supervisor_node",      supervisor_node)
 _graph.add_node("tool_node",            tool_node)
-_graph.add_node("style_retriever_node", style_retriever_node)   # worker: fetch/refresh style JSON
-_graph.add_node("writer_node",          writer_node)             # worker: generate LinkedIn post
+_graph.add_node("writer_node",          writer_node)             # resolves style/profile context itself, then generates the post
 _graph.add_node("human_approval_node",  human_approval_node)
 _graph.add_node("researcher_node",      researcher_node)         # worker: Tavily + Gemini, 5 angles
 _graph.add_node("angle_review_node",    angle_review_node)       # interrupt: angle pick/expand/modify/none_fit
@@ -109,34 +113,32 @@ _graph.add_node("map_chosen_angle_node", map_chosen_angle_node)  # pure python: 
 
 # ── Entry point — conditional so /draft-from-topic can skip supervisor's LLM classification entirely ──
 _graph.set_conditional_entry_point(_entry_router, {
-    "supervisor_node":      "supervisor_node",
-    "style_retriever_node": "style_retriever_node",
+    "supervisor_node": "supervisor_node",
+    "writer_node":      "writer_node",
 })
 
 # ── Supervisor conditional edges ───────────────────────────────────────────────
 _graph.add_conditional_edges("supervisor_node", _supervisor_router, {
-    "tools":  "tool_node",
-    "direct": END,
-    # "style_retrieval" handled by Send above — no mapping entry needed
+    "tools":       "tool_node",
+    "direct":      END,
+    "writer_node": "writer_node",
 })
 
 # ── Tool loop (supervisor chatbot / analytics data fetching) ───────────────────
 _graph.add_edge("tool_node", "supervisor_node")
 
-# ── Write pipeline — fixed sequential edges after Send dispatch (or direct conditional entry) ──
-_graph.add_edge("style_retriever_node", "writer_node")
-_graph.add_edge("writer_node",          "human_approval_node")
-_graph.add_edge("human_approval_node",  END)
+# ── Write pipeline ──────────────────────────────────────────────────────────────
+_graph.add_edge("writer_node", "human_approval_node")
+_graph.add_edge("human_approval_node", END)
 
 # ── Research pipeline — researcher_node (Send dispatch) -> angle_review_node
-# (interrupt) -> map_chosen_angle_node (pure python) -> into the same write
-# pipeline as above, joining at style_retriever_node ──
+# (interrupt) -> map_chosen_angle_node (pure python) -> writer_node ──
 _graph.add_edge("researcher_node", "angle_review_node")
 _graph.add_conditional_edges("angle_review_node", _angle_review_router, {
     "map_chosen_angle_node": "map_chosen_angle_node",
     "supervisor_node":       "supervisor_node",
 })
-_graph.add_edge("map_chosen_angle_node", "style_retriever_node")
+_graph.add_edge("map_chosen_angle_node", "writer_node")
 
 
 def build_assistant(checkpointer: BaseCheckpointSaver):

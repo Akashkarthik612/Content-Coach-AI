@@ -1,54 +1,52 @@
+// Copy for HomePage.jsx (Honne Auth design). Edit copy here — never hardcode auth
+// copy in HomePage.jsx.
 export const AUTH_COPY = {
-  logo: 'ContentCoach AI',
+  brand: 'Honne',
+  brandTagline: 'The art of true voice.',
+  brandQuote: 'Stop competing with generic AI spam. Build an authority engine that scales your thinking, not just your post count.',
+  brandFootLabel: 'Voice-native workspace',
+  brandNote: '© 2026 Honne',
 
-  leftPanel: {
-    testimonial: "It finally sounds like me writing on a good day — not a robot pretending to be me.",
-    author: {
-      name:     'Maya Okafor',
-      role:     'Founder, building in public',
-      initials: 'MO',
-    },
-    stats: [
-      { value: '12k+', label: 'writers' },
-      { value: '94%',  label: 'voice match' },
-      { value: '10×',  label: 'faster' },
-    ],
+  tabs: {
+    signup: 'Sign up',
+    login: 'Log in',
   },
 
-  toggle: {
-    signIn:        'Sign in',
-    createAccount: 'Create account',
-  },
-
-  signIn: {
-    heading:             'Welcome back, Ready to cook some content?',
-    sub:                 'Good to see you again.',
-    usernamePlaceholder: 'Your username',
-    passwordPlaceholder: 'Your password',
-    submit:              'Open my desk',
-    submitting:          'Signing in…',
-    forgotLink:          'Forgot password?',
-  },
-
-  register: {
-    heading:             'Create your desk.',
-    sub:                 'Where your voice lives.',
-    namePlaceholder:     'Your full name',
-    emailPlaceholder:    'you@example.com',
-    usernamePlaceholder: 'e.g. akash_writes',
-    passwordPlaceholder: 'Min. 8 characters',
-    submit:              'Create my desk',
-    submitting:          'Creating account…',
-  },
-
-  forgot: {
-    heading:          'Reset password.',
-    sub:              "We'll send you a reset link.",
+  signup: {
+    heading: 'Create your account',
+    sub: 'Start turning raw thoughts into content that sounds unmistakably like you.',
+    namePlaceholder: 'Jane Doe',
+    usernamePlaceholder: 'e.g. jane_writes',
     emailPlaceholder: 'you@example.com',
-    submit:           'Send reset link',
+    passwordPlaceholder: 'At least 6 characters',
+    submit: 'Create account',
+    submitting: 'Creating account…',
+  },
+
+  login: {
+    heading: 'Welcome back',
+    sub: 'Log in to pick up where your voice left off.',
+    usernamePlaceholder: 'your username',
+    passwordPlaceholder: '••••••••',
+    submit: 'Log in',
+    submitting: 'Logging in…',
+    forgotLink: 'Forgot?',
+  },
+
+  switchMode: {
+    signupPrompt: 'Already have an account?',
+    signupAction: 'Log in',
+    loginPrompt: "Don't have an account?",
+    loginAction: 'Sign up',
   },
 
   google: {
-    label: 'Continue with Google',
+    label: 'Google',
+  },
+
+  legal: {
+    prefix: 'By continuing you agree to',
+    terms: 'Terms',
+    privacy: 'Privacy Policy',
   },
 };

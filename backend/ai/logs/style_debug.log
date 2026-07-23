@@ -793,3 +793,8 @@ style_retriever_node cache-hit user=f0644cff-04d6-4c1e-a7fb-19a4459d0811
     "structural_patterns": "Bullet points and numbered lists are frequently used to break down complex information and highlight key steps or concepts."
   }
 }
+
+============================================================
+style_retriever_node cold-start user=db48a826-655e-470e-b7fd-a0bb81ebe367
+============================================================
+{}

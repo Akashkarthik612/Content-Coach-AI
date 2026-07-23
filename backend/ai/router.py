@@ -45,6 +45,7 @@ class QueryResponse(BaseModel):
     expanded_angle_id: int | None = None # set after an "expand" resume
     expanded_summary:  str = ""          # set after an "expand" resume
     error:             str = ""          # set on an invalid pick/expand angle_id
+    post_id:           str = ""          # set once human_approval_node saves a draft (approved/edited)
 
 
 class ResumeRequest(BaseModel):
@@ -94,6 +95,7 @@ def _build_initial_state(prompt: str, user_id: str) -> dict:
         "writer_task":     {"action": "write", "topic": prompt, "constraints": []},
         "draft":           "",
         "approval_status": "",
+        "post_id":         "",
         "answer":          "",
     }
 
@@ -109,14 +111,24 @@ async def stream_query(
 ):
     """
     SSE endpoint. Emits newline-delimited JSON events:
-      {"type": "token",  "content": "..."}          — one per LLM token
-      {"type": "done",   "status": "awaiting_approval", "thread_id": "..."}
-      {"type": "done",   "status": "awaiting_angle_selection", "thread_id": "...", "angles": [...], "actions": [...]}
-      {"type": "done",   "status": "complete"}
-      {"type": "error",  "message": "..."}
+      {"type": "token",    "content": "..."}          — one per LLM token
+      {"type": "activity", "id", "parentId", "title", "description", "status"} — semantic
+                                                          progress, never a node/tool/agent name
+                                                          (see backend/ai/activity.py)
+      {"type": "done",     "status": "awaiting_approval", "thread_id": "...", "post_id"?}
+      {"type": "done",     "status": "awaiting_angle_selection", "thread_id": "...", "angles": [...], "actions": [...]}
+      {"type": "done",     "status": "complete"}
+      {"type": "error",    "message": "..."}
 
-    Uses stream_mode="messages" — LangGraph yields (AIMessageChunk, metadata) tuples
-    as tokens arrive from each node's LLM call.
+    Subscribes to two stream modes at once — LangGraph yields (mode, data) tuples:
+      "messages" -> data is (AIMessageChunk, metadata), as tokens arrive from each
+                    node's LLM call.
+      "custom"   -> data is whatever a node passed to get_stream_writer() — here,
+                    exclusively the {"type": "activity", ...} dicts emitted by
+                    backend/ai/activity.py's emit_activity()/emit_node_activity().
+                    Forwarded to the client as-is; activity.py already did all the
+                    node/tool-name -> user-facing-label translation, so this layer
+                    never needs to know what a "researcher_node" or "web_search" is.
 
     Mints a fresh thread_id per call, registered in thread_registry via
     ThreadSessionService — durable across a process restart, and scoped to the
@@ -139,9 +151,16 @@ async def stream_query(
         has_writer_output = False
 
         try:
-            async for chunk, metadata in assistant.astream(
-                initial_state, config=config, stream_mode="messages"
+            async for mode, data in assistant.astream(
+                initial_state, config=config, stream_mode=["messages", "custom"]
             ):
+                if mode == "custom":
+                    # Already shaped by activity.py — forward verbatim.
+                    yield f"data: {json.dumps(data)}\n\n"
+                    continue
+
+                # mode == "messages"
+                chunk, metadata = data
                 node = metadata.get("langgraph_node", "")
 
                 # Normalise content — Gemini sometimes returns list[dict] instead of str
@@ -166,7 +185,9 @@ async def stream_query(
                 # _classify_and_route() sets explicitly for route="direct".
 
             if has_writer_output:
-                yield f"data: {json.dumps({'type': 'done', 'status': 'awaiting_approval', 'thread_id': thread_id, 'route': 'style_retrieval'})}\n\n"
+                final_state = await assistant.aget_state(config)
+                post_id = final_state.values.get("post_id", "")
+                yield f"data: {json.dumps({'type': 'done', 'status': 'awaiting_approval', 'thread_id': thread_id, 'route': 'style_retrieval', 'post_id': post_id})}\n\n"
 
             else:
                 # Nothing streamed live this turn. Either supervisor_node's
@@ -263,7 +284,7 @@ async def query(
             )
 
     session.complete(thread_id)
-    return QueryResponse(answer=state["answer"])
+    return QueryResponse(answer=state["answer"], post_id=state.get("post_id", ""))
 
 
 # ── /draft-from-topic — write a post from ONE picked research topic card ──────
@@ -305,6 +326,7 @@ async def draft_from_topic(
         "writer_task":     {"action": "write", "topic": body.topic.title, "constraints": []},
         "draft":           "",
         "approval_status": "",
+        "post_id":         "",
         "answer":          "",
     }
 
@@ -316,7 +338,7 @@ async def draft_from_topic(
         return QueryResponse(answer="", draft=state["draft"], thread_id=thread_id, status="awaiting_approval")
 
     session.complete(thread_id)
-    return QueryResponse(answer=state.get("answer", ""))
+    return QueryResponse(answer=state.get("answer", ""), post_id=state.get("post_id", ""))
 
 
 # ── /resume — HITL approval ────────────────────────────────────────────────────
@@ -339,9 +361,9 @@ async def resume(
 
     # Don't trust the ainvoke() return value alone — a resume can land on a
     # SECOND pause (e.g. a "pick" resume runs angle_review_node ->
-    # map_chosen_angle_node -> style_retriever_node -> writer_node ->
-    # human_approval_node, which has its own interrupt). Check for that via
-    # aget_state(), same as /stream does, before deciding the thread is done.
+    # map_chosen_angle_node -> writer_node -> human_approval_node, which has
+    # its own interrupt). Check for that via aget_state(), same as /stream
+    # does, before deciding the thread is done.
     final_state = await assistant.aget_state(config)
     values      = final_state.values
 
@@ -369,7 +391,7 @@ async def resume(
 
     # No pending interrupt — the graph actually reached END.
     session.complete(body.thread_id)
-    return QueryResponse(answer=values.get("answer", ""))
+    return QueryResponse(answer=values.get("answer", ""), post_id=values.get("post_id", ""))
 
 
 # ── /refine — single-call writer refinement (no graph traversal) ──────────────

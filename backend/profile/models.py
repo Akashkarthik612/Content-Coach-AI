@@ -26,10 +26,13 @@ class UserProfile(Base):
         nullable=False,
         unique=True,
     )
-    industry = Column(Text, nullable=False)
-    role = Column(Text, nullable=False)
-    target_audience = Column(Text, nullable=False)
-    writing_style = Column(Text, nullable=False)
+    profession = Column(Text, nullable=True)
+    industry = Column(Text, nullable=True)
+    role = Column(Text, nullable=True)
+    target_audience = Column(Text, nullable=True)
+    writing_style = Column(Text, nullable=True)
+    goals = Column(JSONB, nullable=False, default=list, server_default="'[]'::jsonb")
+    topics = Column(JSONB, nullable=False, default=list, server_default="'[]'::jsonb")
     formatting_prefs = Column(JSONB, nullable=False, default=dict, server_default="'{}'::jsonb")
     linkedin_headline = Column(Text, nullable=True)
     linkedin_about = Column(Text, nullable=True)

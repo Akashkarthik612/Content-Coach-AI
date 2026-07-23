@@ -1,6 +1,7 @@
 # ContentCoach AI — UI State & Design System
 > Single source of truth for all UI decisions. Never deviate from constraints without updating this file.
-> Last updated: 2026-07-01 (LinkedIn OAuth publishing live: DocEditor SchedulePublishSheet now shows LinkedIn connection status + "Connect LinkedIn" button; MyWorkPage handles ?linkedin_connected / ?linkedin_error query params on OAuth return with toast; api/linkedin.js added)
+> Last updated: 2026-07-23 (`ChatPage.jsx`'s `WorkspaceView` document panel rebuilt as the real "Honne Chat v3" LinkedIn-preview card, with the user's actual name/profession pulled from `GET /api/profile` — see § ChatPage.jsx → Workspace view below. That section also flags that the rest of the ChatPage.jsx write-up predates the current component and needs a full re-port, not just this patch.)
+> Previously (2026-07-21): HomePage.jsx rebuilt from the Claude Design mock `Honne Auth.dc.html` — replaces the old blue-themed 3-mode Login/Register/Forgot page with a two-tab Sign up/Log in page on the Honne rust/paper/ink palette; `authContent.js` rewritten to match; see § HomePage.jsx below. Note: this file had drifted behind `HomePage.jsx`/`OnboardingPage.jsx` for a while — the previous "Last updated" line was 2026-07-01 despite an already-documented 2026-07-21 OnboardingPage section; always spot-check against the actual component before relying on a stale entry.
 
 ---
 
@@ -153,17 +154,20 @@ All respect `@media (prefers-reduced-motion: reduce)` — `animation:none; trans
 | `/` | `pages/landing/LandingPage.jsx` | Public | ✅ Built |
 | `/login` | `pages/HomePage.jsx` (mode=login) | Public | ✅ Built |
 | `/register` | `pages/HomePage.jsx` (mode=register) | Public | ✅ Built |
+| `/onboarding` | `pages/OnboardingPage.jsx` | RequireAuth | ✅ Built 2026-07-21 — first-run-only questionnaire |
 | `/dashboard` | `pages/DashboardPage.jsx` | RequireAuth | ✅ Redesigned |
 | `/analytics` | `pages/AnalyticsPage.jsx` | RequireAuth | ✅ Stub built |
 | `/vault`, `/my-work` | `pages/MyWorkPage.jsx` | RequireAuth | ✅ Rebuilt 2026-06-16 |
 | `/chat` | `pages/ChatPage.jsx` | RequireAuth | ✅ Built — primary AI interaction surface |
 | `/app` | — | — | ❌ Removed — legacy MainApp stack deleted, not rebuilt |
 
-**Post-login redirect:** login + register → `/dashboard`
+**Post-login redirect:**
+- **Register** (`HomePage.jsx`'s `handleRegister`) → `/onboarding` — every fresh signup lands on the onboarding questionnaire first, exactly once.
+- **Login** (`handleLogin`) → `/dashboard` directly, unconditionally — an already-onboarded user (i.e. every returning login) never sees `/onboarding` again. There is no server-side "has this user onboarded" check yet (see `OnboardingPage.jsx` § below) — the redirect split lives entirely in `HomePage.jsx`'s two submit handlers, not in a route guard.
 
 **App.jsx wiring:**
 - `<ReviewQueueProvider>` wraps the entire `<Routes>` tree — so any page can push into the shared review queue `/dashboard` reads.
-- `/analytics`, `/my-work`, `/vault`, `/chat` all wrapped in `<RequireAuth>`
+- `/onboarding`, `/analytics`, `/my-work`, `/vault`, `/chat` all wrapped in `<RequireAuth>`
 - `/vault` is an alias for `/my-work` (both render `MyWorkPage`)
 
 **Deleted 2026-06-16 (dead code, confirmed unreferenced anywhere else before removal):**
@@ -219,52 +223,83 @@ const GRAD = { sig:'linear-gradient(135deg,#3B82F6,#8B5CF6)', bi:'(135deg,#3B82F
 
 ---
 
-## HomePage.jsx (Login / Register / Forgot)
+## HomePage.jsx (Sign up / Log in) — redesigned 2026-07-21
 
-Split-screen auth page. 3 modes via `useState(initialMode)`. Content strings live in `pages/authContent.js`.
+Split-screen auth page implementing the approved Claude Design mock `Honne Auth.dc.html`
+(replaces the earlier 3-mode "Login / Register / Forgot" blue-themed design — that
+version, its `LeftPanel`/`PrimaryBtn`/`ErrorBox`/`Divider`/`EyeIcon` primitives, and the
+`#0B1220`/`#EBEEF6` token set are gone). Content strings live in `pages/authContent.js`.
 
 ### Layout
 ```
-<div style="display:flex; min-height:100vh">
-  <LeftPanel className="lp-hide-phone" />   ← width:42%, min-width:360px, hidden ≤767px
-  <RightPanel style="flex:1" />             ← always visible
+<div style="display:flex; min-height:100vh" className="honne-auth">
+  <BrandPanel className="lp-hide-phone" style="flex:1, min-width:380px" />  ← hidden ≤767px
+  <FormPanel  style="flex:1" />                                            ← always visible
 </div>
 ```
+Equal-width split (both sides `flex:1`), matching the mock's `1fr 1fr` grid — not the old
+page's 42/58 split. Reuses the existing `.lp-hide-phone` CSS utility (same one the old
+`LeftPanel` used) for mobile collapse — no new responsive CSS needed.
 
-### Left panel (`#0B1220` dark)
-- Logo: `LogoMark` SVG + "ContentCoach AI" wordmark (Hanken Grotesk 700)
-- Testimonial: Newsreader italic 22px — `AUTH_COPY.leftPanel.testimonial`
-- Author: initials avatar (`#1B3558` bg / `#7EAEE0` text) + name + role
-- Stats row: 3 flex pills with `AUTH_COPY.leftPanel.stats` (12k+ writers · 94% voice match · 10×)
+### Brand panel (`C.ink` `#1A1A1A` dark, `C.cream` `#F4F0E6` text)
+- Top: "Honne" wordmark (EB Garamond 32px) + mono tagline "THE ART OF TRUE VOICE."
+- Quote block: large accent quote mark (`❞`, EB Garamond, `C.accent` `#B4402A`) + italic
+  serif pull-quote (`AUTH_COPY.brandQuote`) + small mono foot label "VOICE-NATIVE WORKSPACE"
+- Bottom: mono copyright note "© 2026 Honne"
 
-### Right panel (`#EBEEF6`)
-- "← Back to home" link absolute top-left
-- Segmented toggle pill (`#D5DAE5` bg): **Sign in** / **Create account** — active tab gets white bg + shadow
-- Heading + subheading from `AUTH_COPY.signIn` / `.register` / `.forgot` per mode
-- **Sign in fields:** Username · Password (eye-toggle) · "Forgot password?" link (right-aligned) · `PrimaryBtn` "Open my desk"
-- **Create account fields:** Full name (UI-only, stored to `localStorage.display_name`) · Email · Username · Password (eye-toggle) · `PrimaryBtn` "Create my desk"
-- **Forgot:** Email · "Send reset link" · "← Back to sign in"
-- `Divider` + Google button (calls `googleSignIn()` → no-op; shows "coming soon" inline)
+### Form panel (`C.paper` `#F9F8F3` bg)
+- "← Back to home" link, absolute top-left (kept from the old page — not in the mock, added
+  back so users aren't stranded; everything else follows the mock)
+- Two-tab segment ("Sign up" / "Log in", `C.ink` bg on the active tab) — drives `mode` state
+  (`'signup' | 'login'`), remounted via `key={mode}` on the form-inner wrapper to replay the
+  `authFade` entrance animation on every switch
+- Heading + subheading from `AUTH_COPY.signup` / `.login` per mode
+- **Sign up fields:** Full name (optional, UI-only → `localStorage.display_name`) ·
+  **Username** (added — the mock's signup form only has name/email/password, but the
+  backend's `register()` requires a username, so a Username field was inserted between
+  Full name and Email; this is the one deliberate deviation from the mock) · Email ·
+  Password
+- **Log in fields:** Username · Password, with a "Forgot?" mono link inline in the label
+  row — placeholder only (matches `Known Gaps`: forgot-password has no backend endpoint);
+  clicking it shows an inline "Password reset isn't available yet" message instead of the
+  old page's full third `forgot` mode/view, which no longer exists
+- Submit button: full-width, `C.accent` bg, mono uppercase label, lifts 1px + fades 6% on
+  hover (`useState` hover flag, not the old page's imperative ref-based hover)
+- Divider "or continue with" + Google button (calls `googleSignIn()` → no-op; shows
+  "coming soon" inline, same behavior as before) — no eye-toggle on password fields, the
+  mock doesn't have one and it was dropped
+- Switch-mode line ("Already have an account? Log in" / "Don't have an account? Sign up")
+- Legal line: "By continuing you agree to Honne's Terms & Privacy Policy." (new — not in
+  the old page; links are `href="#"` placeholders, matching the mock)
 
-### Design tokens (inline, no CSS vars)
+### Design tokens (inline, no CSS vars — fourth independent palette, see OnboardingPage's
+note below; do not merge with HomePage's old blue tokens, Dashboard's cool blue, or
+ChatPage's warm palette)
 ```js
 const C = {
-  dark:'#0B1220', darkSub:'#8FA3BF', white:'#FFFFFF',
-  right:'#EBEEF6', togBg:'#D5DAE5', ink:'#0F172A',
-  border:'#D1D9E6', blue:'#2563EB', blueHov:'#1D4ED8',
-  errText:'#B91C1C', errBg:'#FEF2F2', ...
+  paper:'#F9F8F3', ink:'#1A1A1A', accent:'#B4402A', card:'#FFFFFF',
+  cream:'#F4F0E6', hair:'rgba(26,26,26,0.12)',
+  errText:'#B91C1C', errBg:'#FEF2F2',
 }
-const FONT  = "'Hanken Grotesk', 'DM Sans', system-ui, sans-serif"
-const SERIF = "'Newsreader', Georgia, serif"
+const SERIF = "'EB Garamond', serif"
+const SANS  = "'Hanken Grotesk', system-ui, sans-serif"
+const MONO  = "'JetBrains Mono', monospace"
 ```
+All three fonts are already loaded globally in `index.html`; no new font `<link>`s added.
+A scoped `<style>` block (className `honne-auth`) declares only the `authFade` keyframe and
+`input::placeholder` color — deliberately not the mock's global `a{}`/`::selection{}`
+overrides, which would have leaked the rust accent onto every link/selection in the app;
+anchors are styled inline per-element instead.
 
 ### Shared primitives (module-level, not inside render)
-- `PrimaryBtn` — blue button, hover state via `useState(false)`, `type` prop (default `"submit"`)
-- `ErrorBox` — red strip below button
-- `Divider` — `— or —` row
-- `LeftPanel`, `LogoMark`, `EyeIcon`, `GoogleSVG` — SVG icons inline
+- `GoogleSVG` — inline Google "G" icon (24px viewBox, from the mock)
+- `st` — style table object mirroring the mock's own `st`, `tabOn`/`tabOff`,
+  `submitBase`/`submitHover`, `googleBase`/`googleHover` constants
+- `focusable` — shared `onFocus`/`onBlur` pair that sets `border-color`/`box-shadow` to the
+  accent color; the mock declared the `transition` on `.input` but never wired an actual
+  focus state, so this was added for usability parity with the old page
 
-### Auth API (`api/auth.js`)
+### Auth API (`api/auth.js`) — unchanged
 Single `_classify(err)` function maps HTTP errors to typed `Error` objects with `.code`:
 
 | HTTP outcome | `err.code` | User message | Console |
@@ -281,10 +316,65 @@ All logs prefixed `[auth]` for easy DevTools filtering.
 **Supabase migration:** replace only the three exported function bodies in `auth.js`; `HomePage.jsx` unchanged.
 
 ### authContent.js (`pages/authContent.js`)
-All marketing copy for the auth page — testimonial, stats, button labels, placeholders, headings.
-Edit copy here; page component reads `AUTH_COPY.*`. Never hardcode auth copy in `HomePage.jsx`.
+Rewritten for the new design — `AUTH_COPY.brand`/`.brandTagline`/`.brandQuote`/
+`.brandFootLabel`/`.brandNote` (brand panel), `.tabs`, `.signup`/`.login` (heading, sub,
+placeholders, submit/submitting labels), `.switchMode`, `.google`, `.legal`. The old
+`.leftPanel`/`.toggle`/`.signIn`/`.register`/`.forgot` shape is gone. Edit copy here; page
+component reads `AUTH_COPY.*`. Never hardcode auth copy in `HomePage.jsx`.
 
 **Do NOT touch in `HomePage.jsx`:** `handleLogin`, `handleRegister`, localStorage writes, `switchMode`, `_classify` in `auth.js`.
+
+`handleRegister` navigates to `/onboarding` (not `/dashboard`) on success — see `OnboardingPage.jsx` below. `handleLogin` is unchanged, still navigates straight to `/dashboard`. `App.jsx`'s routing is unchanged: `/login` → `<HomePage initialMode="login" />`, `/register` → `<HomePage initialMode="register" />` (mapped internally to `mode: 'signup'`).
+
+---
+
+## OnboardingPage.jsx (`/onboarding`) — built 2026-07-21
+
+First-run-only questionnaire shown exactly once, immediately after a brand-new signup (`HomePage.jsx`'s `handleRegister` → `navigate('/onboarding')`). Ported from the approved Claude Design mock `ContentCoach AI - Onboarding.dc.html`. UI + client-side flow only — **no backend persistence yet**; answers are held in local component state and (on finish) mirrored into `localStorage` only. The `user_profile` table/`/api/profile` endpoints described elsewhere in this doc are a separate, still-unwired backend feature — wiring this page's answers into that table is a deliberately deferred follow-up, not done here.
+
+### Design tokens (Honne palette — distinct from every other page's tokens)
+```js
+C = {
+  bg: '#F4F2EA', ink: '#1B1C14', green: '#14663B', greenHov: '#0F4C2C', rust: '#B0663A',
+  sub: '#9A9C8C', faint: '#A6A895', muted: '#6C7064', chipText: '#3A3C30',
+  chipBrd: 'rgba(27,28,20,.12)', track: 'rgba(27,28,20,.08)', divider: 'rgba(27,28,20,.05)',
+  rowLbl: '#A6A895', rowVal: '#26281C',
+}
+SERIF = "'EB Garamond', serif"   SANS = "'Hanken Grotesk', system-ui, sans-serif"   MONO = "'JetBrains Mono', monospace"
+```
+This is a fourth, independent palette alongside HomePage's blue (`C.blue`), Dashboard's cool blue, and ChatPage's warm palette — do not reuse or merge them. Both `EB Garamond` and `Hanken Grotesk`/`JetBrains Mono` are already loaded globally in `index.html`; no new font `<link>`s were added.
+
+### Flow
+```
+Top bar: "ContentCoach" wordmark (green, EB Garamond) + "Skip for now →" (hidden once done)
+  │
+  ▼
+7-question wizard (one per screen, `obRise` keyframe on step change)
+  Step 1  profession  chips   single
+  Step 2  industry    chips   single
+  Step 3  role         text    optional (free text, "Skip this" if empty)
+  Step 4  audience     text    optional
+  Step 5  goals        chips   multi
+  Step 6  topics       chips   multi
+  Step 7  style        chips   single
+  │  each step: progress bar + "Step N of 7", eyebrow, EB Garamond title, italic sub
+  │  Back / Continue nav; Continue disabled until a required chip step has a selection
+  ▼
+Done screen — checkmark tile, "You're all set", summary card (only non-empty answers shown),
+"Start writing →" button → finish()
+```
+`finish()` sets `localStorage['cc_onboarded_' + user_id] = '1'` (falls back to a bare `cc_onboarded` key if `user_id` is somehow absent) and `localStorage['onboarding_answers']`, then `navigate('/dashboard')`. "Skip for now" jumps straight to the done screen with whatever was answered so far (summary card simply shows fewer/no rows) — it does not bypass the flow entirely, matching the original mock's behavior.
+
+### What's real vs deferred
+| Piece | Status |
+|---|---|
+| 7-step chip/text wizard, progress bar, back/continue, skip | ✅ Real — full client-side state machine |
+| Register → onboarding → dashboard routing | ✅ Real — wired in `HomePage.jsx` + `App.jsx` |
+| Answers persisted anywhere durable | ❌ Not done — `localStorage` only, no `POST /api/profile` call yet (that endpoint exists per this doc's backend section but isn't called from here) |
+| "Already onboarded" enforcement | ⚠️ Soft — only enforced by the register-vs-login redirect split, not a route guard; a user could still navigate to `/onboarding` manually after their first run |
+
+### Follow-up (not yet done)
+Wiring `finish()` to `POST /api/profile` (mapping `profession`→`role`, `industry`→`industry`, `audience`→`target_audience`, `style`→`writing_style`, `goals`/`topics` folded into `formatting_prefs` or a new column) so the questionnaire actually populates `user_profile` is explicitly out of scope for this pass — the user asked for UI + routing only, DB wiring is a separate task.
 
 ---
 
@@ -384,6 +474,11 @@ Ideas from `useIdeas()` hook. Each idea has "Draft this →" button.
 
 Full-screen agent chat built in the warm palette (`#FAF6EF` canvas). The main entry point for all AI work — replaces the old inline `AIPanel` on Dashboard.
 
+> **Note (2026-07-23):** the sub-component table, layout diagram, and "what's real vs mock" table below describe an earlier iteration of this file (`ChatHistoryRail`/`WelcomeState`/`AIMessage`/mock-stream-fallback) that has since drifted from the actual component — the live `ChatPage.jsx` today is `Sidebar` + `MessageBubble` + `ActivityTimeline` (real `activity` SSE events from `backend/ai/activity.py`, no mock fallback) + `WorkspaceView`. Only `WorkspaceView`'s document panel is documented accurately as of this date (see below); the rest of this section needs a full re-port pass against the current file rather than a patch. Always spot-check against the code before relying on the rest of this section.
+
+### Workspace view — document panel (rebuilt 2026-07-23)
+`WorkspaceView`'s right pane (opened after a draft is approved/being refined) now renders the actual `#fff` LinkedIn-preview card from the "Honne Chat v3" `.dc.html`, not a plain text block: a 44px circular avatar (accent bg, user's initial), the real logged-in user's name (`localStorage.username`), and their profession — `professionLine = profile?.profession || profile?.role || 'Creator on Honne'`, where `profile` comes from `getProfile()` (`frontend/src/api/profile.js`, `GET /api/profile`) fetched once on mount and resolved to `null` instead of throwing on the backend's 404-when-no-profile-row case. Every request carries `X-User-Id` (same interceptor as the rest of the app) and the backend scopes the row to that header — this can only ever show the requesting user's own data. **Edit mode** is a genuinely editable `<textarea>` (previously this tab's content wasn't actually editable despite the name) with an "Editable" pill badge in the card header. **Preview mode** is read-only with a Like/Comment/Repost/Send action row. The design's fake "2d" post-age was replaced with "Draft preview" since the post hasn't been published yet.
+
 ### Design tokens (warm palette — distinct from Dashboard's cool blue)
 ```js
 CANVAS='#FAF6EF'  WARM_WHITE='#FFFEFB'  WARM_INPUT='#F6F1E8'  INK='#2A241D'
@@ -417,6 +512,10 @@ Note: ChatPage has its own branded sidebar (`ChatHistoryRail`) — does NOT use 
 | `AIMessage` | Left-aligned card with agent icon tile, routing label, streaming cursor, action row (Approve / Make Changes / Decline / Copy), modify box with preset chips. `isRefinement` prop shows "refined" badge. |
 | `AgentIcon` | SVG icon coloured per agent |
 | `ThinkingDots` | 3-dot animated pulse during `routing` phase |
+| `AngleCard` | One research angle: mono tag, serif title, argument text, "For: {audience}" line, optional expanded-summary inset, Expand / Draft this actions |
+
+### Research angle cards (`msg.kind === 'angles'`)
+Rendered inside the AI message body once `researcher_node` → `angle_review_node` produces the 5 `ResearchAngle`s and the graph pauses awaiting a pick (`status: 'awaiting_angle_selection'`). Container is a **single horizontally-scrolling row** (`display:flex;flex-direction:row;overflowX:'auto'` + scroll-snap), each `AngleCard` wrapped in a fixed `300px`-wide flex item — changed 2026-07-23 from a `display:grid;gridTemplateColumns:'1fr 1fr'` 2-column layout that wrapped to multiple rows. Below the row, a "None of these fit — let me describe it" link triggers `none_fit` (re-classification via `resumeAI`). Per-card actions: **Expand** (`expand` action → grounded summary shown inline) and **Draft this** (`pick` action → chains into the writer, opening a fresh `awaiting_approval` draft in the same message). Ported from the "Honne Chat v3" Claude Design project — note the source `.dc.html` itself shows angle cards in a vertical stack; the horizontal-scroll row is a deliberate deviation from that file, not an oversight.
 
 ### Chat history (real, client-side)
 - Flat array: `{ id, title, snippet, dot, createdAt, pinned }`. Max 10, newest first.

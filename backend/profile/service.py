@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from backend.profile.models import UserProfile
-from backend.profile.schemas import ProfileCreate, ProfileUpdate
+from backend.profile.schemas import OnboardingSubmit, ProfileCreate, ProfileUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -68,4 +68,20 @@ class ProfileService:
         self.db.commit()
         self.db.refresh(profile)
         logger.info("Profile updated: user_id=%s", user_id)
+        return profile
+
+    def upsert_from_onboarding(self, user_id: UUID, data: OnboardingSubmit) -> UserProfile:
+        """Get-or-create + partial merge — unlike create_profile, never 409s on
+        an existing row, since a user who re-runs or resumes onboarding (or
+        already has a profile from PATCH /api/profile) should just merge in."""
+        profile = self.db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        if profile is None:
+            profile = UserProfile(user_id=user_id)
+            self.db.add(profile)
+        for field, value in data.model_dump(exclude_unset=True).items():
+            setattr(profile, field, value)
+        profile.updated_at = _utcnow()
+        self.db.commit()
+        self.db.refresh(profile)
+        logger.info("Profile upserted from onboarding: user_id=%s", user_id)
         return profile

@@ -36,8 +36,8 @@ class AgentState(TypedDict):
     entry_point: str
 
     # True bypasses supervisor_node via the graph's conditional entry point — set only
-    # by /draft-from-topic, where the target pipeline (style_retriever_node -> writer_node
-    # -> human_approval_node) is already known and there's nothing left to classify.
+    # by /draft-from-topic, where the target pipeline (writer_node -> human_approval_node)
+    # is already known and there's nothing left to classify.
     pre_routed: bool
 
     # Inter-worker JSON contracts — structured dicts, never prose paragraphs
@@ -52,6 +52,12 @@ class AgentState(TypedDict):
     # Writer path
     draft:           str  # produced by writer_node
     approval_status: str  # "" | "approved" | "edited" | "rejected"
+
+    # Set by human_approval_node on "approved"/"edited" — the vault post_id the
+    # draft was saved to. Empty string until then (also on "rejected", where
+    # nothing is saved). Lets the frontend call post_id-keyed endpoints
+    # (LinkedIn publish, version history) without a separate lookup.
+    post_id: str
 
     # Final surface output
     answer: str

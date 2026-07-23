@@ -33,12 +33,15 @@ export const draftFromTopic = (topic, platform = 'linkedin') =>
  * SSE streaming query. Calls /stream and fires callbacks as events arrive.
  *
  * @param {string}   prompt
- * @param {function} onToken  - called with each text chunk: (chunk: string) => void
- * @param {function} onDone   - called once at end: ({ status, thread_id? }) => void
- * @param {function} onError  - called on network/parse error: (message: string) => void
+ * @param {function} onToken    - called with each text chunk: (chunk: string) => void
+ * @param {function} onDone     - called once at end: ({ status, thread_id? }) => void
+ * @param {function} onError    - called on network/parse error: (message: string) => void
+ * @param {function} [onActivity] - called per semantic progress event:
+ *                                  ({ id, parentId, title, description, status }) => void
+ *                                  Never a node/tool/agent name — see backend/ai/activity.py.
  * @returns {function} abort  - call to cancel the stream mid-flight
  */
-export function streamQuery(prompt, onToken, onDone, onError) {
+export function streamQuery(prompt, onToken, onDone, onError, onActivity) {
   const controller = new AbortController();
   const uid = localStorage.getItem('user_id') || '';
 
@@ -80,6 +83,8 @@ export function streamQuery(prompt, onToken, onDone, onError) {
             const data = JSON.parse(line.slice(6));
             if (data.type === 'token') {
               onToken(data.content);
+            } else if (data.type === 'activity') {
+              onActivity?.(data);
             } else if (data.type === 'done') {
               onDone(data);
             } else if (data.type === 'error') {
