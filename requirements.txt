@@ -8,13 +8,15 @@ langchain-google-genai
 langchain-openai
 langchain-text-splitters
 langgraph
+langgraph-checkpoint-postgres
 pgvector
 psycopg2-binary
+psycopg[binary,pool]
 pydantic-settings
 python-dotenv
 redis
 sqlalchemy
+tavily-python
+tenacity
 uvicorn
 boto3
-ddgs
-trafilatura

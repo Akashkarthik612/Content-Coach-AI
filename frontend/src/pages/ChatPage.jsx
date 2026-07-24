@@ -1,1385 +1,1057 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
-import { streamQuery, resumeAI, refineAI, draftFromTopic } from '../api/ai'
-import TopicCard from '../components/AIAssistant/TopicCard'
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Plus, Search, Trash2, Settings, ChevronDown, Check, Copy, RotateCcw,
+  ArrowLeft, Clock, Send, X, ThumbsUp, MessageCircle, Repeat2, PanelLeft, Maximize2,
+} from 'lucide-react';
+import { streamQuery, resumeAI, refineAI } from '../api/ai';
+import { publishToLinkedIn } from '../api/linkedin';
+import { getVersions } from '../api/vault';
+import { getProfile } from '../api/profile';
 
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const CANVAS      = '#FAF6EF'
-const WARM_WHITE  = '#FFFEFB'
-const WARM_INPUT  = '#F6F1E8'
-const WARM_HOVER  = '#F3EDE2'
-const INK         = '#2A241D'
-const BODY        = '#3A332A'
-const MUTED       = '#8E8472'
-const FAINT       = '#A99E8C'
-const LABEL       = '#B3A896'
-const WARM_BDR    = 'rgba(80,64,46,0.10)'
-const WARM_BDR_MD = 'rgba(80,64,46,0.16)'
-const BLUE        = '#2563EB'
-const INDIGO      = '#6366F1'
-const GREEN       = '#16A34A'
-const RED         = '#B42318'
-const AMBER       = '#B45309'
-const FONT        = "'Hanken Grotesk',system-ui,sans-serif"
-const SERIF       = "'Newsreader',Georgia,serif"
-const MONO        = "'JetBrains Mono','Fira Code',monospace"
+/* ────────────────────────────────────────────────────────────────────────
+   Design tokens — ported from the "Honne Chat v3" design (Claude Design
+   project ff122375-c3bc-4438-aece-706b0bd557b0). Colors/fonts/radii match
+   the source .dc.html exactly; the trace/steps mechanism there was driven
+   by a fake timer and raw agent/tool names — here it's driven by the real
+   `activity` SSE events from backend/ai/activity.py, which already carry
+   only user-facing semantic labels (never a node or tool name).
+   ──────────────────────────────────────────────────────────────────────── */
+const BG        = '#F4F2EA';
+const SIDEBAR_BG = '#EFEDE3';
+const INK       = '#1B1C14';
+const ACCENT    = '#14663B';
+const ACCENT_TINT = 'rgba(20,102,59,.09)';
+const MUTED     = '#6C7064';
+const MUTED_2   = '#8A8C7C';
+const MUTED_3   = '#A6A895';
+const HAIRLINE  = 'rgba(27,28,20,.09)';
+const DANGER    = '#B42318';
+const AMBER_BG  = '#FCEED6';
+const AMBER_BORDER = 'rgba(180,83,9,.35)';
+const SERIF  = "'EB Garamond', serif";
+const SANS   = "'Hanken Grotesk', system-ui, sans-serif";
+const MONO   = "'JetBrains Mono', monospace";
 
-// ── CSS keyframes ─────────────────────────────────────────────────────────────
-const CSS = `
-  @keyframes ccBlink  { 0%,49%{opacity:1}50%,100%{opacity:0} }
-  @keyframes ccPulse  { 0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.7)} }
-  @keyframes ccBounce { 0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-4px);opacity:1} }
-  @keyframes ccRise   { from{transform:translateY(8px);opacity:0}to{transform:translateY(0);opacity:1} }
-  @keyframes ccFloat  { 0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)} }
-  @keyframes ccRing   { 0%{transform:scale(1);opacity:.55}70%{opacity:0}100%{transform:scale(1.65);opacity:0} }
-  ::-webkit-scrollbar { width:10px }
-  ::-webkit-scrollbar-thumb { background:rgba(80,64,46,.16);border-radius:999px;border:2px solid transparent;background-clip:padding-box }
-  ::-webkit-scrollbar-thumb:hover { background:rgba(80,64,46,.28);background-clip:padding-box }
-  .cc-chat-row:hover .cc-chat-menu { opacity:1!important }
-  .cc-aimsg:hover .cc-msg-actions { opacity:1!important }
-  @media(prefers-reduced-motion:reduce){*{animation:none!important}}
-`
+const KEYFRAMES = `
+@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..600;1,400..500&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@keyframes ccRise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes ccFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ccBreathe { 0%,100% { opacity: .55; transform: scale(.82); } 50% { opacity: 1; transform: scale(1); } }
+@keyframes ccCaret { 50% { opacity: 0; } }
+@keyframes ccShimmer { 0% { transform: translateX(-120%) skewX(-18deg); } 100% { transform: translateX(320%) skewX(-18deg); } }
+@media (prefers-reduced-motion: reduce) { *{ animation-duration: .001ms !important; } }
+`;
 
-// ── Agent config ──────────────────────────────────────────────────────────────
-const AGENTS = {
-  Writer:   { name: 'Writer Agent',   color: INDIGO,    tint: '#EEF0FF', path: 'M4 20l4-1L19 8a2 2 0 0 0-3-3L5 16l-1 4z' },
-  Research: { name: 'Research Agent', color: BLUE,      tint: '#EAF0FF', path: 'M11 4a7 7 0 105.2 11.7M21 21l-4.3-4.3' },
-  SEO:      { name: 'SEO Agent',      color: '#0F9D6B', tint: '#E7F6EF', path: 'M5 20V9M12 20V4M19 20v-7' },
-  Editor:   { name: 'Editor Agent',   color: AMBER,     tint: '#FCEED6', path: 'M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z' },
-}
-
-const ROUTE = [
-  { rx: /(research|trend|find|source|data|stat)/i, agent: 'Research' },
-  { rx: /(seo|keyword|rank|search)/i,              agent: 'SEO' },
-  { rx: /(edit|proofread|grammar|tighten|polish)/i, agent: 'Editor' },
-]
-function routeFor(text) {
-  for (const r of ROUTE) if (r.rx.test(text)) return r.agent
-  return 'Writer'
-}
-function routingTextFor(agent) {
-  return ({
-    Writer:   'Routing to the Writer Agent…',
-    Research: 'Pulling sources via the Research Agent…',
-    SEO:      'Checking intent with the SEO Agent…',
-    Editor:   'Handing off to the Editor Agent…',
-  })[agent] || 'Coordinating agents…'
-}
-
-// ── Fallback mock responses (used when backend is unreachable) ────────────────
-const DRAFT_TEXT = `Most SaaS tools are about to become invisible.
-
-For a decade we paid per seat to click around dashboards. The dashboard was the product. But a dashboard is just a place where work waits for a human.
-
-AI agents skip the waiting. They read the data, make the decision, and act — no tab, no login, no "where's that setting again?"
-
-The winners of the next cycle won't sell software you operate. They'll sell outcomes you approve.
-
-Your move: which tool in your stack is just a dashboard wearing a logo?`
-
-const MOCK = {
-  Research: `Here's what the Research Agent surfaced:\n\n• 41% of teams now run at least one autonomous agent in production (State of AI, 2026).\n• "Outcome-based" pricing grew 3× faster than per-seat last year.\n• The most-shared angle this week: "your stack is a dashboard graveyard."\n\nWant me to weave these into the post as cited proof points?`,
-  SEO:      `SEO Agent read the intent behind your topic.\n\nPrimary angle: "AI agents replacing SaaS" — high curiosity, low competition on LinkedIn.\nHook with a contrarian claim, then pay it off with one concrete number.\n\nShall I draft three opener variations tuned for reach?`,
-  Editor:   `Editor Agent tightened the draft:\n\n• Cut 22% of the words without losing the argument.\n• Made every sentence active voice.\n• Strengthened the closing line into a direct question.\n\nApprove to apply these edits to your document.`,
-  Writer:   DRAFT_TEXT,
-}
-function mockFor(agent, note) {
-  if (note) return `Revised per your note — "${note}".\n\n${DRAFT_TEXT.replace(/^Most SaaS tools/, 'Quick truth: most SaaS tools')}\n\n(Shorter, sharper, and it now opens on a stat-ready hook.)`
-  return MOCK[agent] || DRAFT_TEXT
-}
-
-// ── Chat history helpers ──────────────────────────────────────────────────────
-// chats is a flat array: { id, title, snippet, dot, createdAt, pinned }
-function groupChats(flatChats, search = '') {
-  const q    = search.trim().toLowerCase()
-  const list = q
-    ? flatChats.filter(c => (c.title + ' ' + (c.snippet || '')).toLowerCase().includes(q))
-    : flatChats
-
-  const pinned   = list.filter(c => c.pinned)
-  const unpinned = list.filter(c => !c.pinned)
-
-  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
-  const yestStart  = new Date(todayStart); yestStart.setDate(yestStart.getDate() - 1)
-  const weekStart  = new Date(todayStart); weekStart.setDate(weekStart.getDate() - 7)
-  const ts = todayStart.getTime(), ys = yestStart.getTime(), ws = weekStart.getTime()
-
-  const groups = []
-  if (pinned.length) groups.push({ group: 'Pinned', items: pinned })
-  const today = unpinned.filter(c => c.createdAt >= ts)
-  const yest  = unpinned.filter(c => c.createdAt >= ys && c.createdAt < ts)
-  const week  = unpinned.filter(c => c.createdAt >= ws && c.createdAt < ys)
-  if (today.length) groups.push({ group: 'Today',           items: today })
-  if (yest.length)  groups.push({ group: 'Yesterday',       items: yest })
-  if (week.length)  groups.push({ group: 'Previous 7 days', items: week })
-  return groups
-}
-
-// ── SVG helpers ───────────────────────────────────────────────────────────────
-function AgentIcon({ agent, size = 17 }) {
-  const a = AGENTS[agent] || AGENTS.Writer
-  const paths = a.path.split('M').filter(Boolean).map(p => 'M' + p)
+/* Inline LinkedIn glyph — used on the angle card's primary action, matching
+   the design's brand-colored draft button (no icon package ships this mark). */
+function LinkedInGlyph({ size = 16, color = 'currentColor' }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
-      stroke={a.color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      {paths.map((d, i) => <path key={i} d={d} />)}
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      <path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.85 0-2.13 1.44-2.13 2.94v5.67H9.35V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.07 2.07 0 1 1 0-4.14 2.07 2.07 0 0 1 0 4.14zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.73v20.54C0 23.22.79 24 1.77 24h20.45c.98 0 1.78-.78 1.78-1.73V1.73C24 .77 23.2 0 22.22 0z" />
     </svg>
-  )
+  );
 }
 
-function ThinkingDots() {
+function greetingPeriod() {
+  const h = new Date().getHours();
+  if (h < 12) return 'morning';
+  if (h < 17) return 'afternoon';
+  return 'evening';
+}
+
+function humanizeProvokes(type) {
+  if (type === 'long-dwell') return 'Long dwell';
+  if (type === 'comment') return 'Comment';
+  if (type === 'share') return 'Share';
+  return type || '';
+}
+
+let _seq = 1;
+const nextId = () => _seq++;
+
+/* ────────────────────────────────────────────────────────────────────────
+   Activity timeline — the only place that turns backend `activity` events
+   into UI. Flat, id-keyed, upserted in place; nested via parentId. Never
+   renders a node/tool/agent name — only whatever title the backend sent.
+   ──────────────────────────────────────────────────────────────────────── */
+function upsertActivity(activities, evt) {
+  const idx = activities.findIndex(a => a.id === evt.id);
+  if (idx === -1) return [...activities, evt];
+  const next = activities.slice();
+  next[idx] = { ...next[idx], ...evt };
+  return next;
+}
+
+function ActivityRow({ activity, nested }) {
+  const running = activity.status === 'running';
+  const done = activity.status === 'completed';
+  const failed = activity.status === 'failed';
   return (
-    <div style={{ display: 'flex', gap: 4 }}>
-      {[0, 0.15, 0.3].map((delay, i) => (
-        <span key={i} style={{
-          width: 7, height: 7, borderRadius: '50%', background: '#C4B9A6',
-          display: 'inline-block',
-          animation: `ccBounce 1.2s ease-in-out ${delay}s infinite`,
-        }} />
-      ))}
+    <div style={{ display: 'flex', gap: 10, paddingLeft: nested ? 22 : 0, animation: 'ccRise .3s cubic-bezier(.22,1,.36,1) both' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: '0 0 14px', paddingTop: 3 }}>
+        {running && (
+          <span style={{ position: 'relative', width: 8, height: 8, flex: '0 0 8px' }}>
+            <span style={{ position: 'absolute', inset: 0, borderRadius: 999, background: ACCENT, animation: 'ccBreathe 1.3s ease-in-out infinite' }} />
+          </span>
+        )}
+        {done && <Check size={13} color="#2FA35B" strokeWidth={2.6} />}
+        {failed && <X size={13} color={DANGER} strokeWidth={2.4} />}
+        {!running && !done && !failed && <span style={{ width: 8, height: 8, borderRadius: 999, background: 'rgba(27,28,20,.15)' }} />}
+      </div>
+      <div style={{ flex: 1, minWidth: 0, paddingBottom: 10 }}>
+        <span style={{ fontSize: 13, fontWeight: nested ? 500 : 600, color: INK, letterSpacing: '-.005em' }}>{activity.title}</span>
+        {activity.description && (
+          <div style={{ fontSize: 12, color: MUTED_2, marginTop: 2 }}>{activity.description}</div>
+        )}
+      </div>
     </div>
-  )
+  );
 }
 
-// ── 3-dot kebab menu for chat rows ───────────────────────────────────────────
-function ChatMenu({ chatId, pinned, onPin, onStartRename, onDelete }) {
-  const [open, setOpen] = useState(false)
-  const wrapRef = useRef(null)
-
-  useEffect(() => {
-    if (!open) return
-    function close(e) { if (!wrapRef.current?.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [open])
-
-  const items = [
-    {
-      label: pinned ? 'Unpin' : 'Pin',
-      icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M12 2l2.5 5H20l-4.5 3.5 1.5 5.5L12 13l-5 3 1.5-5.5L4 7h5.5z"/></svg>,
-      action: () => { onPin(chatId); setOpen(false) },
-      danger: false,
-    },
-    {
-      label: 'Rename',
-      icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4z"/></svg>,
-      action: () => { onStartRename(chatId); setOpen(false) },
-      danger: false,
-    },
-    {
-      label: 'Delete',
-      icon: <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>,
-      action: () => { onDelete(chatId); setOpen(false) },
-      danger: true,
-    },
-  ]
+function ActivityTimeline({ activities, expanded, onToggle, phaseDone }) {
+  if (activities.length === 0) return null;
+  const roots = activities.filter(a => !a.parentId);
+  const childrenOf = (id) => activities.filter(a => a.parentId === id);
+  const anyRunning = activities.some(a => a.status === 'running');
+  const title = phaseDone
+    ? `Done · ${roots.length} step${roots.length === 1 ? '' : 's'}`
+    : 'Working';
 
   return (
-    <div ref={wrapRef} style={{ position: 'relative', flexShrink: 0 }}>
-      <button
-        className="cc-chat-menu"
-        onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
-        title="More options"
-        style={{
-          opacity: 0, transition: 'opacity .15s',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: 22, height: 22, border: 'none', background: 'none',
-          borderRadius: 6, cursor: 'pointer',
-        }}
-        onMouseEnter={e => e.currentTarget.style.background = 'rgba(80,64,46,.12)'}
-        onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-        <svg width={3} height={13} viewBox="0 0 3 13" fill="none">
-          <circle cx="1.5" cy="1.5"  r="1.5" fill="#9C9082"/>
-          <circle cx="1.5" cy="6.5"  r="1.5" fill="#9C9082"/>
-          <circle cx="1.5" cy="11.5" r="1.5" fill="#9C9082"/>
-        </svg>
+    <div style={{ background: anyRunning ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.32)', border: `1px solid ${HAIRLINE}`, borderRadius: 14, overflow: 'hidden', marginBottom: expanded ? 18 : 0, transition: 'background .4s ease, margin-bottom .4s ease' }}>
+      <button onClick={onToggle} style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', padding: '12px 15px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left' }}>
+        {anyRunning ? (
+          <span style={{ position: 'relative', width: 8, height: 8, flex: '0 0 8px' }}>
+            <span style={{ position: 'absolute', inset: 0, borderRadius: 999, background: ACCENT, animation: 'ccBreathe 1.4s ease-in-out infinite' }} />
+          </span>
+        ) : (
+          <span style={{ width: 8, height: 8, flex: '0 0 8px', borderRadius: 999, background: '#2FA35B' }} />
+        )}
+        <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: '#3A3C30', letterSpacing: '-.005em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
+        <ChevronDown size={14} color={MUTED_3} style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform .3s cubic-bezier(.22,1,.36,1)' }} />
       </button>
-
-      {open && (
-        <div style={{
-          position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 50,
-          background: WARM_WHITE, border: `1px solid ${WARM_BDR_MD}`, borderRadius: 11,
-          boxShadow: '0 12px 28px -8px rgba(60,48,30,.3)', padding: 4, minWidth: 136,
-          animation: 'ccRise .14s ease-out',
-        }}>
-          {items.map(item => (
-            <button key={item.label} onClick={item.action}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 9, width: '100%',
-                padding: '8px 10px', border: 'none', background: 'none', borderRadius: 8,
-                fontFamily: FONT, fontSize: 13, fontWeight: 500,
-                color: item.danger ? RED : INK, cursor: 'pointer', textAlign: 'left',
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = item.danger ? '#FEE4E2' : WARM_HOVER}
-              onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-              {item.icon}
-              {item.label}
-            </button>
+      {expanded && (
+        <div style={{ padding: '0 15px 12px' }}>
+          {roots.map(r => (
+            <div key={r.id}>
+              <ActivityRow activity={r} nested={false} />
+              {childrenOf(r.id).map(c => <ActivityRow key={c.id} activity={c} nested />)}
+            </div>
           ))}
         </div>
       )}
     </div>
-  )
+  );
 }
 
-// ── User message ──────────────────────────────────────────────────────────────
-function UserMessage({ msg }) {
+/* ────────────────────────────────────────────────────────────────────────
+   Angle cards
+   ──────────────────────────────────────────────────────────────────────── */
+function AngleCard({ angle, index, onPick, onExpand, expanding, picking, expandedSummary }) {
+  const [hover, setHover] = useState(false);
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-end', animation: 'ccRise .22s ease-out' }}>
-      <div style={{ maxWidth: '80%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-        {msg.isRefine && (
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            fontFamily: MONO, fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase',
-            color: AMBER, background: '#FCEED6', padding: '3px 9px', borderRadius: 999,
-          }}>
-            <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke={AMBER} strokeWidth={2.4}><path d="M4 20l4-1L19 8a2 2 0 0 0-3-3L5 16l-1 4z" /></svg>
-            Modification
-          </span>
-        )}
-        <div style={{
-          padding: '12px 16px', borderRadius: '18px 18px 6px 18px',
-          background: BLUE, color: '#fff', fontSize: 14.5, lineHeight: 1.6,
-          boxShadow: '0 10px 24px -14px rgba(37,99,235,.7)', whiteSpace: 'pre-wrap',
-        }}>
+    <div
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        position: 'relative', background: '#fff', border: `1px solid ${HAIRLINE}`, borderRadius: 16,
+        padding: '22px 22px 20px', boxShadow: hover ? '0 22px 48px -26px rgba(20,60,30,.4)' : '0 1px 3px rgba(27,28,20,.05)',
+        transform: hover ? 'translateY(-3px)' : 'translateY(0)', transition: 'box-shadow .28s cubic-bezier(.22,1,.36,1), transform .28s cubic-bezier(.22,1,.36,1)',
+        overflow: 'hidden',
+      }}
+    >
+      <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '.11em', textTransform: 'uppercase', color: '#B0B2A2' }}>
+        {humanizeProvokes(angle.provokes_type)}
+      </span>
+      <div style={{ fontFamily: SERIF, fontSize: 22, fontWeight: 500, letterSpacing: '-.015em', color: INK, margin: '9px 0 8px', lineHeight: 1.14 }}>
+        {angle.title}
+      </div>
+      <div style={{ fontSize: 13, lineHeight: 1.6, color: '#7A7C6C', marginBottom: 14 }}>{angle.argument}</div>
+      <div style={{ fontSize: 11.5, color: '#B0B2A2', marginBottom: 18 }}>For: {angle.audience}</div>
+
+      {expandedSummary && (
+        <div style={{ fontSize: 12.5, lineHeight: 1.6, color: '#3A3C30', background: '#FAF9F3', border: `1px solid ${HAIRLINE}`, borderRadius: 10, padding: 10, marginBottom: 14, animation: 'ccFade .4s ease both' }}>
+          {expandedSummary}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <button
+          onClick={() => onPick(index)} disabled={picking}
+          style={{
+            position: 'relative', overflow: 'hidden', flex: 1, display: 'inline-flex', alignItems: 'center',
+            justifyContent: 'center', gap: 9, height: 44, padding: '0 16px', border: 'none', borderRadius: 11,
+            background: INK, color: BG, fontFamily: SANS, fontSize: 13.5, fontWeight: 600, letterSpacing: '-.005em',
+            cursor: picking ? 'default' : 'pointer', boxShadow: '0 1px 2px rgba(27,28,20,.18)',
+          }}
+        >
+          <LinkedInGlyph size={16} />
+          <span style={{ position: 'relative', zIndex: 2 }}>{picking ? 'Drafting…' : 'Draft for LinkedIn'}</span>
+          {!picking && (
+            <span style={{
+              position: 'absolute', top: 0, bottom: 0, left: 0, width: '45%', zIndex: 1,
+              background: 'linear-gradient(100deg, transparent, rgba(255,255,255,.32), transparent)',
+              animation: 'ccShimmer 2.8s ease-in-out infinite', pointerEvents: 'none',
+            }} />
+          )}
+        </button>
+        <button
+          onClick={() => onExpand(index)} disabled={expanding} title="Expand for more context"
+          style={{
+            flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+            height: 44, padding: '0 15px', border: `1px solid ${HAIRLINE}`, borderRadius: 11, background: '#fff',
+            color: '#3A3C30', fontFamily: SANS, fontSize: 13, fontWeight: 600, letterSpacing: '-.005em',
+            cursor: expanding ? 'default' : 'pointer',
+          }}
+        >
+          <Maximize2 size={14} />
+          <span>{expanding ? 'Expanding…' : 'Expand'}</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   One AI / user message
+   ──────────────────────────────────────────────────────────────────────── */
+function MessageBubble({ msg, onToggleTrace, onToggleAngles, onPick, onExpandAngle, onNoneFit, onApprove, onDecline, onOpenModify, onModifyTextChange, onCancelModify, onSendModify, onCopy, onOpenWorkspace, onRegenerate }) {
+  if (msg.role === 'user') {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'flex-end', animation: 'ccRise .5s cubic-bezier(.22,1,.36,1) both' }}>
+        <div style={{ maxWidth: '78%', padding: '12px 17px', borderRadius: '16px 16px 5px 16px', background: ACCENT, color: BG, fontSize: 14.5, lineHeight: 1.6, letterSpacing: '-.005em', boxShadow: '0 10px 24px -16px rgba(20,102,59,.7)', whiteSpace: 'pre-wrap' }}>
           {msg.text}
         </div>
       </div>
-    </div>
-  )
-}
+    );
+  }
 
-// ── AI message ────────────────────────────────────────────────────────────────
-function AIMessage({ msg, onApprove, onDecline, onOpenModify, onCancelModify, onModifyChange, onSendModify, onRegen, onDraftFromTopic }) {
-  const a    = AGENTS[msg.agent] || AGENTS.Writer
-  const done = msg.phase === 'done'
-  const hasBody    = msg.phase === 'streaming' || done
-  const showActions = done && !msg.decision
-  const cardBorder = msg.decision === 'approved'   ? 'rgba(22,163,74,.4)'
-    : msg.decision === 'declined' || msg.decision === 'failed' ? 'rgba(180,35,24,.3)' : WARM_BDR
+  const phaseDone = msg.phase === 'done';
+  const expanded = msg.traceOpen != null ? msg.traceOpen : !phaseDone;
 
   return (
-    <div className="cc-aimsg" style={{ display: 'flex', gap: 13, animation: 'ccRise .24s ease-out' }}>
-      <div style={{
-        width: 34, height: 34, borderRadius: 11, background: a.tint,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexShrink: 0, marginTop: 2,
-      }}>
-        <AgentIcon agent={msg.agent} size={17} />
+    <div style={{ display: 'flex', gap: 13, animation: 'ccFade .5s ease both' }}>
+      <div style={{ width: 30, height: 30, borderRadius: 9, background: '#fff', border: `1px solid ${HAIRLINE}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 30px', marginTop: 1, boxShadow: '0 1px 3px rgba(27,28,20,.05)' }}>
+        <span style={{ fontFamily: SERIF, fontSize: 17, color: ACCENT, fontStyle: 'italic', fontWeight: 500 }}>H</span>
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {msg.activities.length > 0 && (
+          <ActivityTimeline activities={msg.activities} expanded={expanded} onToggle={() => onToggleTrace(msg.id)} phaseDone={phaseDone} />
+        )}
+
+        {msg.error && (
+          <div style={{ color: DANGER, fontSize: 13.5, marginBottom: 8 }}>{msg.error}</div>
+        )}
+
+        {(msg.phase === 'streaming' || (phaseDone && msg.text)) && (
+          <div style={{ fontFamily: SERIF, fontSize: 17.5, lineHeight: 1.72, color: '#26281C', whiteSpace: 'pre-wrap', letterSpacing: '.003em', animation: 'ccFade .5s ease both' }}>
+            {msg.text}
+            {msg.phase === 'streaming' && (
+              <span style={{ display: 'inline-block', width: 2.5, height: 18, marginLeft: 2, borderRadius: 2, background: ACCENT, verticalAlign: -3, animation: 'ccCaret .9s step-end infinite' }} />
+            )}
+          </div>
+        )}
+
+        {msg.kind === 'angles' && phaseDone && (
+          <div style={{ marginTop: 20, animation: 'ccFade .5s ease both' }}>
+            <button
+              onClick={() => onToggleAngles(msg.id)}
+              style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', border: 'none', background: 'none', padding: 0, cursor: 'pointer', marginBottom: 16 }}
+            >
+              <span style={{ fontFamily: SERIF, fontSize: 22, fontWeight: 500, letterSpacing: '-.015em', color: INK }}>
+                {msg.angles.length} possible angle{msg.angles.length === 1 ? '' : 's'}
+              </span>
+              <span style={{ fontSize: 12.5, color: MUTED_3, fontWeight: 500 }}>
+                {msg.anglesOpen !== false ? 'Draft any angle straight to LinkedIn' : 'Collapsed · tap a chip to draft'}
+              </span>
+              <span style={{ flex: 1 }} />
+              <ChevronDown size={17} color={MUTED_3} style={{ transform: msg.anglesOpen !== false ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform .34s cubic-bezier(.22,1,.36,1)' }} />
+            </button>
+
+            {msg.anglesOpen !== false ? (
+              <div style={{ display: 'flex', flexDirection: 'row', gap: 14, overflowX: 'auto', overflowY: 'hidden', paddingBottom: 6, scrollSnapType: 'x proximity' }}>
+                {msg.angles.map((a, i) => (
+                  <div key={i} style={{ flex: '0 0 300px', width: 300, scrollSnapAlign: 'start' }}>
+                    <AngleCard
+                      angle={a} index={i}
+                      onPick={onPick} onExpand={onExpandAngle}
+                      expanding={msg.expandingIndex === i} picking={msg.pickingIndex === i}
+                      expandedSummary={msg.expandedSummaries?.[i]}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {msg.angles.map((a, i) => (
+                  <button
+                    key={i} onClick={() => onPick(i)} disabled={msg.pickingIndex === i}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 8, border: `1px solid ${HAIRLINE}`,
+                      background: '#fff', borderRadius: 999, padding: '8px 14px', fontSize: 12.5, fontWeight: 600,
+                      color: '#3A3C30', cursor: msg.pickingIndex === i ? 'default' : 'pointer',
+                    }}
+                  >
+                    <LinkedInGlyph size={13} color="#0A66C2" />
+                    {msg.pickingIndex === i ? 'Drafting…' : a.title}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button onClick={onNoneFit} style={{ ...linkBtn, marginTop: 14, color: MUTED_2 }}>None of these fit — let me describe it</button>
+          </div>
+        )}
+
+        {msg.kind === 'draft' && phaseDone && !msg.decision && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 16, flexWrap: 'wrap', animation: 'ccFade .4s ease both' }}>
+            <button onClick={onApprove} style={pillBtn('#DCFCE7', '#15803D')}><Check size={13} /> Approve</button>
+            <button onClick={onOpenModify} style={pillBtn('#F6F1E8', '#3A3C30')}>Modify</button>
+            <button onClick={onDecline} style={pillBtn('#FEE2E2', DANGER)}>Decline</button>
+            <span style={{ flex: 1 }} />
+            <button onClick={onCopy} style={pillBtn('transparent', MUTED_2)}><Copy size={13} /> {msg.copied ? 'Copied' : 'Copy'}</button>
+          </div>
+        )}
+
+        {msg.kind === 'draft' && msg.modifying && (
+          <div style={{ marginTop: 14, background: AMBER_BG, border: `1px solid ${AMBER_BORDER}`, borderRadius: 12, padding: 14 }}>
+            <textarea
+              value={msg.modifyText}
+              onChange={(e) => onModifyTextChange(msg.id, e.target.value)}
+              rows={5}
+              style={{ width: '100%', border: `1px solid ${HAIRLINE}`, borderRadius: 8, padding: 10, fontSize: 13.5, fontFamily: SANS, resize: 'vertical' }}
+            />
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <button onClick={() => onCancelModify(msg.id)} style={pillBtn('transparent', MUTED_2)}>Cancel</button>
+              <button onClick={() => onSendModify(msg.id)} style={pillBtn('#B45309', '#fff')}>Save changes</button>
+            </div>
+          </div>
+        )}
+
+        {msg.kind === 'draft' && msg.decision && (
+          <div style={{ marginTop: 16, animation: 'ccFade .4s ease both' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              {msg.decision === 'approved' && <span style={pillTag('#DCFCE7', '#15803D')}>Approved · saved to your vault</span>}
+              {msg.decision === 'edited' && <span style={pillTag('#DCFCE7', '#15803D')}>Saved with your edits</span>}
+              {msg.decision === 'declined' && (
+                <>
+                  <span style={pillTag('#FEE2E2', DANGER)}>Declined</span>
+                  <button onClick={onRegenerate} style={pillBtn('#F6F1E8', '#3A3C30')}><RotateCcw size={13} /> Regenerate</button>
+                </>
+              )}
+              {msg.postId && (msg.decision === 'approved' || msg.decision === 'edited') && (
+                <button onClick={() => onOpenWorkspace(msg.id)} style={pillBtn(ACCENT, '#fff')}>Open Workspace →</button>
+              )}
+            </div>
+            {msg.answerNote && <div style={{ fontSize: 12, color: MUTED_2, marginTop: 6 }}>{msg.answerNote}</div>}
+          </div>
+        )}
+
+        {msg.kind === 'direct' && phaseDone && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 12 }}>
+            <button onClick={onCopy} style={pillBtn('transparent', MUTED_2)}><Copy size={13} /> {msg.copied ? 'Copied' : 'Copy'}</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const linkBtn = { border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: '#3A3C30', letterSpacing: '-.005em' };
+
+function pillBtn(bg, color) {
+  return {
+    display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px', border: 'none',
+    background: bg, borderRadius: 8, fontSize: 12.5, fontWeight: 600, color, cursor: 'pointer',
+  };
+}
+function pillTag(bg, color) {
+  return { display: 'inline-flex', alignItems: 'center', height: 28, padding: '0 12px', borderRadius: 999, background: bg, color, fontSize: 12.5, fontWeight: 600 };
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   Composer
+   ──────────────────────────────────────────────────────────────────────── */
+function Composer({ draft, onDraft, onSend, disabled, taRef }) {
+  const [focused, setFocused] = useState(false);
+  const canSend = !!draft.trim() && !disabled;
+
+  const onKey = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      onSend();
+    }
+  };
+  const autosize = (el) => {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(172, el.scrollHeight) + 'px';
+  };
+
+  return (
+    <div style={{ flex: '0 0 auto', padding: '6px 28px 22px', background: `linear-gradient(to top, ${BG} 62%, rgba(244,242,234,0))` }}>
+      <div style={{ maxWidth: 720, margin: '0 auto' }}>
+        <div style={{
+          background: '#fff', border: `1px solid ${focused ? 'rgba(20,102,59,.5)' : 'rgba(27,28,20,.12)'}`, borderRadius: 18,
+          boxShadow: focused ? '0 0 0 4px rgba(20,102,59,.08), 0 18px 42px -28px rgba(20,60,30,.5)' : '0 12px 30px -24px rgba(20,60,30,.4)',
+          transition: 'border-color .28s cubic-bezier(.22,1,.36,1), box-shadow .28s cubic-bezier(.22,1,.36,1)',
+        }}>
+          <textarea
+            ref={(el) => { taRef.current = el; autosize(el); }}
+            value={draft}
+            onChange={(e) => { onDraft(e.target.value); autosize(e.target); }}
+            onKeyDown={onKey}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            rows={1}
+            placeholder="Drop a thought, or ask to research and write…"
+            style={{ display: 'block', width: '100%', border: 'none', background: 'none', fontSize: 15, lineHeight: 1.6, color: INK, letterSpacing: '-.005em', padding: '15px 18px 4px', resize: 'none', maxHeight: 172, overflowY: 'auto', fontFamily: SANS }}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', padding: '7px 10px 10px 16px' }}>
+            <span style={{ flex: 1 }} />
+            <button
+              onClick={onSend}
+              disabled={!canSend}
+              title="Send"
+              style={{
+                flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36,
+                border: 'none', borderRadius: 11, cursor: canSend ? 'pointer' : 'default',
+                background: canSend ? ACCENT : '#E4E2D6', boxShadow: canSend ? '0 10px 22px -12px rgba(20,102,59,.7)' : 'none',
+              }}
+            >
+              <Send size={16} color={canSend ? BG : '#B0B2A2'} />
+            </button>
+          </div>
+        </div>
+        <p style={{ textAlign: 'center', fontSize: 11, color: '#B7B9A9', margin: '11px 0 0', fontWeight: 500 }}>
+          Agents can make mistakes. Review drafts before publishing.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   Sidebar
+   ──────────────────────────────────────────────────────────────────────── */
+function Sidebar({ open, onToggle, chats, activeIndex, onSelect, onDelete, onNewChat, search, onSearch, userName }) {
+  const filtered = chats.filter(c => c.title.toLowerCase().includes(search.toLowerCase()));
+  return (
+    <aside style={{
+      flex: `0 0 ${open ? '256px' : '58px'}`, minWidth: open ? 256 : 58, width: open ? 256 : 58,
+      display: 'flex', flexDirection: 'column', background: SIDEBAR_BG, borderRight: `1px solid ${HAIRLINE}`, overflow: 'hidden',
+      transition: 'flex-basis .36s cubic-bezier(.22,1,.36,1), min-width .36s cubic-bezier(.22,1,.36,1), width .36s cubic-bezier(.22,1,.36,1)',
+    }}>
+      <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 4, padding: '14px 12px 12px', justifyContent: open ? 'flex-start' : 'center' }}>
+        <button onClick={onToggle} title={open ? 'Collapse sidebar' : 'Expand sidebar'} style={iconBtn}>
+          <PanelLeft size={16} strokeWidth={1.9} />
+        </button>
+        {open && (
+          <>
+            <span style={{ flex: 1, fontFamily: MONO, fontSize: 10, letterSpacing: '.15em', textTransform: 'uppercase', color: MUTED_3, fontWeight: 500 }}>Recent</span>
+            <button onClick={onNewChat} title="New conversation" style={iconBtn}><Plus size={15} /></button>
+          </>
+        )}
       </div>
 
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-          <span style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: '.06em', color: FAINT }}>Supervisor</span>
-          <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#C4B9A6" strokeWidth={2.4}><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-          <span style={{ fontSize: 12, fontWeight: 600, color: a.color }}>{a.name}</span>
-          {msg.isRefinement && (
-            <span style={{
-              fontSize: 10.5, fontFamily: MONO, letterSpacing: '.06em',
-              color: AMBER, background: '#FCEED6', padding: '2px 8px', borderRadius: 999,
-            }}>refined</span>
+      {open && (
+        <div style={{ flex: '0 0 auto', padding: '0 9px 8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#F6F1E8', borderRadius: 10, padding: '7px 10px' }}>
+            <Search size={13} color={MUTED_3} />
+            <input value={search} onChange={(e) => onSearch(e.target.value)} placeholder="Search"
+              style={{ border: 'none', background: 'none', fontSize: 12.5, flex: 1, color: INK, fontFamily: SANS }} />
+          </div>
+        </div>
+      )}
+
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '0 9px 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {open && filtered.map((c, i) => {
+          const active = i === activeIndex;
+          return (
+            <div key={c.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <button
+                onClick={() => onSelect(i)}
+                style={{
+                  display: 'flex', flexDirection: 'column', width: '100%', textAlign: 'left', padding: '9px 11px', border: 'none',
+                  borderRadius: 10, cursor: 'pointer', background: active ? ACCENT_TINT : 'transparent',
+                }}
+              >
+                <span style={{ fontSize: 13, fontWeight: active ? 600 : 500, color: active ? ACCENT : '#3A3C30', lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {c.title}
+                </span>
+                <span style={{ fontSize: 11, color: MUTED_3, marginTop: 2 }}>{c.time}</span>
+              </button>
+              <button onClick={() => onDelete(i)} title="Delete" style={{ position: 'absolute', right: 6, border: 'none', background: 'none', color: MUTED_3, cursor: 'pointer', padding: 4 }}>
+                <Trash2 size={13} />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ flex: '0 0 auto', borderTop: `1px solid ${HAIRLINE}`, padding: 10, display: 'flex', justifyContent: open ? 'stretch' : 'center' }}>
+        {open ? (
+          <button title="Settings" style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', padding: 8, border: 'none', background: 'none', borderRadius: 11, cursor: 'pointer' }}>
+            <span style={{ width: 32, height: 32, flex: '0 0 32px', borderRadius: 9, background: ACCENT, color: BG, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: SERIF, fontSize: 16, fontWeight: 600 }}>
+              {userName.charAt(0).toUpperCase()}
+            </span>
+            <div style={{ textAlign: 'left', minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: INK, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{userName}</div>
+              <div style={{ fontSize: 11, color: '#9A9C8C' }}>Settings</div>
+            </div>
+            <Settings size={15} color={MUTED_3} />
+          </button>
+        ) : (
+          <button title={`${userName} · Settings`} style={{ width: 32, height: 32, flex: '0 0 32px', borderRadius: 9, background: ACCENT, color: BG, border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: SERIF, fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>
+            {userName.charAt(0).toUpperCase()}
+          </button>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+const iconBtn = { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, flex: '0 0 26px', border: 'none', background: 'none', borderRadius: 8, color: MUTED_2, cursor: 'pointer' };
+
+/* ────────────────────────────────────────────────────────────────────────
+   Workspace view — post-approval redraft/publish surface
+   ──────────────────────────────────────────────────────────────────────── */
+function WorkspaceView({ ws, onBack, onModeChange, onDocChange, onCmdInput, onCmdKey, onSubmitCmd, onChip, onCopy, onPublish, onHistory, onToggleCmd, publishing, publishResult, versions, showVersions, userName, professionLine }) {
+  const words = ws.docText.trim() ? ws.docText.trim().split(/\s+/).length : 0;
+  const readTime = Math.max(1, Math.ceil(words / 200)) + ' min read';
+  const isEdit = ws.mode === 'edit';
+  const cmdCan = !!ws.cmdInput.trim();
+  const userInitial = (userName || '?').charAt(0).toUpperCase();
+  const cmdOpen = ws.cmdOpen !== false;
+
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'ccFade .4s ease both' }}>
+      <header style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 24px', background: 'rgba(244,242,234,.85)', backdropFilter: 'blur(14px)', borderBottom: `1px solid ${HAIRLINE}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+          <button onClick={onBack} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, height: 32, padding: '0 12px 0 10px', border: `1px solid ${HAIRLINE}`, background: '#fff', borderRadius: 9, fontSize: 12.5, fontWeight: 600, color: '#3A3C30', cursor: 'pointer' }}>
+            <ArrowLeft size={15} /> Chat
+          </button>
+          <span style={{ width: 1, height: 18, background: HAIRLINE }} />
+          <div style={{ fontFamily: SERIF, fontSize: 18, fontWeight: 500, color: INK, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ws.title}</div>
+          <span style={pillTag('rgba(27,28,20,.05)', '#7A7C6C')}>LinkedIn Post</span>
+          <span style={pillTag('rgba(27,28,20,.05)', '#7A7C6C')}>{readTime}</span>
+          <span style={pillTag('rgba(27,28,20,.05)', '#7A7C6C')}>{words} words</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={onCopy} style={pillBtn('transparent', MUTED_2)}><Copy size={13} /> {ws.copied ? 'Copied' : 'Copy'}</button>
+          <button onClick={onHistory} style={pillBtn('transparent', MUTED_2)}><Clock size={13} /> History</button>
+          <button onClick={onPublish} disabled={publishing} style={pillBtn(ACCENT, '#fff')}>{publishing ? 'Publishing…' : 'Publish'}</button>
+        </div>
+      </header>
+
+      {publishResult && (
+        <div style={{ padding: '8px 24px', fontSize: 12.5, color: publishResult.ok ? '#15803D' : DANGER, background: publishResult.ok ? '#DCFCE7' : '#FEE2E2' }}>
+          {publishResult.message}
+        </div>
+      )}
+
+      {showVersions && (
+        <div style={{ padding: '10px 24px', borderBottom: `1px solid ${HAIRLINE}`, background: '#fff' }}>
+          <div style={{ fontSize: 11.5, fontWeight: 600, color: MUTED_2, marginBottom: 6 }}>VERSION HISTORY</div>
+          {versions.length === 0 && <div style={{ fontSize: 12.5, color: MUTED_3 }}>No saved versions yet.</div>}
+          {versions.map(v => (
+            <div key={v.id} style={{ fontSize: 12.5, color: '#3A3C30', padding: '4px 0' }}>
+              v{v.version_number} {v.change_summary ? `— ${v.change_summary}` : ''}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
+        {/* LEFT: command assistant */}
+        <div style={{
+          flex: `0 0 ${cmdOpen ? '300px' : '56px'}`, minWidth: cmdOpen ? 300 : 56, display: 'flex', flexDirection: 'column',
+          background: SIDEBAR_BG, borderRight: `1px solid ${HAIRLINE}`, overflow: 'hidden',
+          transition: 'flex-basis .36s cubic-bezier(.22,1,.36,1), min-width .36s cubic-bezier(.22,1,.36,1)',
+        }}>
+          <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'flex-start', gap: 8, padding: '16px 14px 12px', justifyContent: cmdOpen ? 'flex-start' : 'center' }}>
+            <button onClick={onToggleCmd} title={cmdOpen ? 'Collapse writer agent' : 'Expand writer agent'} style={iconBtn}>
+              <PanelLeft size={16} strokeWidth={1.9} />
+            </button>
+            {cmdOpen && (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase', color: MUTED_3, fontWeight: 500 }}>Refine</span>
+                <p style={{ fontSize: 13, color: '#7A7C6C', margin: '6px 0 0', lineHeight: 1.5 }}>Direct the draft. No pleasantries needed — just tell it what to change.</p>
+              </div>
+            )}
+          </div>
+          {cmdOpen && (
+            <>
+              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '8px 16px 12px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {ws.commands.map(c => (
+                  <div key={c.id} style={{ animation: 'ccRise .3s cubic-bezier(.22,1,.36,1) both' }}>
+                    <div style={{ background: '#fff', border: `1px solid ${HAIRLINE}`, borderRadius: '11px 11px 11px 4px', padding: '9px 12px' }}>
+                      <span style={{ fontSize: 13, color: INK, lineHeight: 1.5 }}>{c.text}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, paddingLeft: 2 }}>
+                      <Check size={12} color="#2FA35B" />
+                      <span style={{ fontSize: 11.5, color: MUTED_2 }}>{c.response}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ flex: '0 0 auto', padding: '6px 12px 6px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {['Make the hook stronger', 'Add statistics', 'Shorten this'].map(label => (
+                    <button key={label} onClick={() => onChip(label)} style={{ border: `1px solid ${HAIRLINE}`, background: '#fff', borderRadius: 999, padding: '5px 11px', fontSize: 11.5, color: '#7A7C6C', fontWeight: 500, cursor: 'pointer' }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ flex: '0 0 auto', padding: '8px 12px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#fff', border: `1px solid ${HAIRLINE}`, borderRadius: 12, padding: '4px 4px 4px 13px' }}>
+                  <input value={ws.cmdInput} onChange={(e) => onCmdInput(e.target.value)} onKeyDown={onCmdKey}
+                    placeholder="Refine the draft…" style={{ flex: 1, minWidth: 0, border: 'none', background: 'none', fontSize: 13, color: INK, padding: '7px 0', fontFamily: SANS }} />
+                  <button onClick={onSubmitCmd} disabled={!cmdCan} title="Send" style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, border: 'none', borderRadius: 9, cursor: cmdCan ? 'pointer' : 'default', background: cmdCan ? ACCENT : '#E4E2D6' }}>
+                    <Send size={14} color={cmdCan ? BG : '#B0B2A2'} />
+                  </button>
+                </div>
+              </div>
+            </>
           )}
         </div>
 
-        {msg.phase === 'routing' && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            padding: '13px 16px', background: WARM_WHITE,
-            border: `1px solid ${WARM_BDR}`, borderRadius: 16, width: 'fit-content',
-          }}>
-            <ThinkingDots />
-            <span style={{ fontSize: 12.5, color: FAINT, fontStyle: 'italic', fontFamily: SERIF }}>
-              {msg.isRefinement ? 'Applying your changes…' : routingTextFor(msg.agent)}
-            </span>
-          </div>
-        )}
-
-        {msg.phase === 'topics' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {msg.topics.map(topic => (
-              <TopicCard
-                key={topic.id}
-                topic={topic}
-                disabled={!!msg.draftingTopicId}
-                onDraftLinkedIn={t => onDraftFromTopic(msg.id, t)}
-              />
-            ))}
-          </div>
-        )}
-
-        {hasBody && (
-          <>
-            <div style={{
-              padding: '16px 18px', background: WARM_WHITE,
-              border: `1px solid ${cardBorder}`, borderRadius: 16,
-              boxShadow: '0 14px 34px -28px rgba(60,48,30,.5)',
-              transition: 'border-color .3s',
-            }}>
-              <div style={{ fontSize: 14.5, lineHeight: 1.78, color: BODY, whiteSpace: 'pre-wrap' }}>
-                {msg.text}
-                {msg.phase === 'streaming' && (
-                  <span style={{
-                    display: 'inline-block', width: 8, height: 17, marginLeft: 1,
-                    borderRadius: 1, background: BLUE, verticalAlign: '-3px',
-                    animation: 'ccBlink 1s step-end infinite',
-                  }} />
-                )}
-              </div>
-
-              {msg.decision === 'approved' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14, paddingTop: 13, borderTop: '1px solid rgba(80,64,46,.08)' }}>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 7,
-                    fontSize: 12.5, fontWeight: 600, color: '#15803D', background: '#DCFCE7',
-                    padding: '6px 12px', borderRadius: 999,
-                  }}>
-                    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="#15803D" strokeWidth={2.6}><path d="M20 6L9 17l-5-5" /></svg>
-                    Approved · added to draft
-                  </span>
-                </div>
-              )}
-
-              {msg.decision === 'declined' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, paddingTop: 13, borderTop: '1px solid rgba(80,64,46,.08)' }}>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 7,
-                    fontSize: 12.5, fontWeight: 600, color: RED, background: '#FEE4E2',
-                    padding: '6px 12px', borderRadius: 999,
-                  }}>
-                    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={RED} strokeWidth={2.6}><path d="M6 6l12 12M18 6L6 18" /></svg>
-                    Declined
-                  </span>
-                  <button onClick={() => onRegen(msg.id)}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6,
-                      height: 30, padding: '0 12px', border: `1px solid ${WARM_BDR_MD}`,
-                      background: '#fff', borderRadius: 9, fontFamily: FONT,
-                      fontSize: 12.5, fontWeight: 600, color: MUTED, cursor: 'pointer',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(37,99,235,.5)'; e.currentTarget.style.color = BLUE }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = WARM_BDR_MD; e.currentTarget.style.color = MUTED }}>
-                    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2}><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/></svg>
-                    Regenerate
-                  </button>
-                </div>
-              )}
-
-              {msg.decision === 'failed' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, paddingTop: 13, borderTop: '1px solid rgba(80,64,46,.08)' }}>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 7,
-                    fontSize: 12.5, fontWeight: 600, color: RED, background: '#FEE4E2',
-                    padding: '6px 12px', borderRadius: 999,
-                  }}>
-                    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={RED} strokeWidth={2.6}><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L14.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
-                    Couldn't save — try again
-                  </span>
-                  <button onClick={() => onApprove(msg.id)}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6,
-                      height: 30, padding: '0 12px', border: `1px solid ${WARM_BDR_MD}`,
-                      background: '#fff', borderRadius: 9, fontFamily: FONT,
-                      fontSize: 12.5, fontWeight: 600, color: MUTED, cursor: 'pointer',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(37,99,235,.5)'; e.currentTarget.style.color = BLUE }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = WARM_BDR_MD; e.currentTarget.style.color = MUTED }}>
-                    Retry
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {showActions && (
-              <div className="cc-msg-actions"
-                style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 11, opacity: 0, transition: 'opacity .18s' }}>
-                <button onClick={() => onApprove(msg.id)}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 7,
-                    height: 36, padding: '0 15px', border: 'none', borderRadius: 10,
-                    fontFamily: FONT, fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer',
-                    background: GREEN, boxShadow: '0 10px 22px -12px rgba(22,163,74,.7)',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.filter = 'brightness(1.06)'}
-                  onMouseLeave={e => e.currentTarget.style.filter = 'none'}>
-                  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.4}><path d="M20 6L9 17l-5-5" /></svg>
-                  Approve
-                </button>
-
-                <button onClick={() => onOpenModify(msg.id)}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 7,
-                    height: 36, padding: '0 15px', borderRadius: 10,
-                    border: `1px solid ${msg.modifyOpen ? 'rgba(37,99,235,.5)' : WARM_BDR_MD}`,
-                    background: msg.modifyOpen ? '#EAF0FF' : WARM_WHITE,
-                    fontFamily: FONT, fontSize: 13, fontWeight: 600,
-                    color: msg.modifyOpen ? BLUE : '#6B6151', cursor: 'pointer',
-                  }}>
-                  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2}><path d="M4 20l4-1L19 8a2 2 0 0 0-3-3L5 16l-1 4z" /></svg>
-                  Make changes
-                </button>
-
-                <button onClick={() => onDecline(msg.id)}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 7,
-                    height: 36, padding: '0 15px',
-                    border: `1px solid ${WARM_BDR_MD}`, background: WARM_WHITE,
-                    borderRadius: 10, fontFamily: FONT, fontSize: 13, fontWeight: 600,
-                    color: MUTED, cursor: 'pointer', transition: 'border-color .15s,color .15s',
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(180,35,24,.45)'; e.currentTarget.style.color = RED }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = WARM_BDR_MD; e.currentTarget.style.color = MUTED }}>
-                  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2}><path d="M6 6l12 12M18 6L6 18" /></svg>
-                  Decline
-                </button>
-
-                <span style={{ flex: 1 }} />
-
-                <button onClick={() => { try { navigator.clipboard.writeText(msg.text) } catch {} }}
-                  title="Copy"
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    width: 36, height: 36, border: `1px solid rgba(80,64,46,.14)`,
-                    background: WARM_WHITE, borderRadius: 10, cursor: 'pointer',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = WARM_INPUT}
-                  onMouseLeave={e => e.currentTarget.style.background = WARM_WHITE}>
-                  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth={2}>
-                    <rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>
-                  </svg>
-                </button>
-              </div>
-            )}
-
-            {msg.modifyOpen && (
-              <div style={{
-                marginTop: 11, padding: 14, background: '#FFF9EE',
-                border: '1px solid #F4DFB6', borderRadius: 14, animation: 'ccRise .18s ease-out',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 9 }}>
-                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={AMBER} strokeWidth={2}><path d="M4 20l4-1L19 8a2 2 0 0 0-3-3L5 16l-1 4z" /></svg>
-                  <span style={{ fontSize: 12.5, fontWeight: 600, color: '#92660C' }}>Tell the agent what to change</span>
-                  <span style={{ fontSize: 11.5, color: FAINT }}>(or just type in the chat box below)</span>
-                </div>
-                <textarea
-                  value={msg.modifyText || ''}
-                  onChange={e => onModifyChange(msg.id, e.target.value)}
-                  placeholder="e.g. Make it shorter, add a real stat, end with a question…"
-                  rows={2}
-                  style={{
-                    width: '100%', border: '1px solid #EAD3A3', borderRadius: 11,
-                    padding: '11px 13px', fontFamily: FONT, fontSize: 13.5, lineHeight: 1.55,
-                    color: BODY, background: '#fff', resize: 'vertical', outline: 'none',
-                  }}
-                  onFocus={e => { e.currentTarget.style.borderColor = '#E0A93A'; e.currentTarget.style.boxShadow = '0 0 0 4px rgba(224,169,58,.18)' }}
-                  onBlur={e => { e.currentTarget.style.borderColor = '#EAD3A3'; e.currentTarget.style.boxShadow = 'none' }}
-                />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
-                  {[
-                    ['Shorter',             'Make it noticeably shorter'],
-                    ['Add a stat',          'Add one concrete, credible statistic'],
-                    ['End with a question', 'End on a sharp question to drive comments'],
-                  ].map(([chip, val]) => (
-                    <button key={chip} onClick={() => onModifyChange(msg.id, val)}
-                      style={{
-                        height: 28, padding: '0 11px', border: '1px solid #EAD3A3',
-                        background: '#fff', borderRadius: 999,
-                        fontFamily: FONT, fontSize: 11.5, fontWeight: 600, color: '#92660C', cursor: 'pointer',
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#FCEED6'}
-                      onMouseLeave={e => e.currentTarget.style.background = '#fff'}>
-                      {chip}
-                    </button>
-                  ))}
-                  <span style={{ flex: 1 }} />
-                  <button onClick={() => onCancelModify(msg.id)}
-                    style={{
-                      height: 34, padding: '0 13px', border: 'none', background: 'none',
-                      borderRadius: 9, fontFamily: FONT, fontSize: 13, fontWeight: 600, color: MUTED, cursor: 'pointer',
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(80,64,46,.07)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                    Cancel
-                  </button>
-                  <button onClick={() => onSendModify(msg.id)}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 7,
-                      height: 34, padding: '0 15px', border: 'none', borderRadius: 9,
-                      fontFamily: FONT, fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer',
-                      background: 'linear-gradient(135deg,#F59E0B,#EA8A06)',
-                      boxShadow: '0 9px 20px -10px rgba(234,138,6,.7)',
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.filter = 'brightness(1.05)'}
-                    onMouseLeave={e => e.currentTarget.style.filter = 'none'}>
-                    Send to agent
-                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.3} strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z" /></svg>
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ── Composer ──────────────────────────────────────────────────────────────────
-function Composer({ draft, onChange, onKeyDown, onSend, taRef, micActive, onToggleMic, onChip, big = false, hasLatestDraft = false }) {
-  const canSend = !!draft.trim()
-  const btnSize = big ? 42 : 40
-  const radius  = big ? 22 : 18
-
-  function autosize(el) {
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = Math.min(big ? 180 : 160, el.scrollHeight) + 'px'
-  }
-
-  const toolChips = [
-    { label: 'Attach',    stroke: '#8E8472', icon: 'M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95L9.9 18.36a2 2 0 0 1-2.83-2.83l8.49-8.49', onClick: () => {} },
-    { label: 'Research',  stroke: BLUE,      icon: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14M21 21l-4.3-4.3',                                                                         onClick: () => onChip('Research the latest on ') },
-    { label: 'Draft',     stroke: INDIGO,    icon: 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z',                                                                         onClick: () => onChip('Draft a LinkedIn post about ') },
-    { label: 'Repurpose', stroke: '#0F9D6B', icon: 'M3 3v5h5M3.05 13A9 9 0 1 0 6 5.3L3 8',                                                                                       onClick: () => onChip('Repurpose this into ') },
-  ]
-
-  const composerShadow = big
-    ? '0 26px 60px -30px rgba(60,48,30,.6)'
-    : '0 16px 38px -24px rgba(60,48,30,.5)'
-
-  return (
-    <div style={{
-      width: '100%', background: WARM_WHITE,
-      border: `1px solid ${WARM_BDR_MD}`, borderRadius: radius,
-      boxShadow: composerShadow, transition: 'border-color .18s, box-shadow .18s',
-    }}
-    onFocusCapture={e => { e.currentTarget.style.borderColor = BLUE; e.currentTarget.style.boxShadow = `0 0 0 4px rgba(37,99,235,.1),${composerShadow}` }}
-    onBlurCapture={e => { e.currentTarget.style.borderColor = WARM_BDR_MD; e.currentTarget.style.boxShadow = composerShadow }}>
-      {/* meta strip */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: big ? '13px 16px 0' : '11px 14px 0',
-      }}>
-        <span style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          padding: big ? '6px 10px' : '5px 9px', borderRadius: big ? 9 : 8,
-          background: 'linear-gradient(135deg,#2563EB,#6366F1)',
-          color: '#fff', fontSize: big ? 11 : 10.5, fontWeight: 700, letterSpacing: '.03em',
-        }}>
-          <svg width={12} height={12} viewBox="0 0 24 24" fill="#fff">
-            <path d="M12 2l1.6 4.6L18 8l-4.4 1.4L12 14l-1.6-4.6L6 8z"/>
-          </svg>
-          Supervisor
-        </span>
-        <span style={{ fontSize: big ? 11.5 : 11, color: FAINT }}>
-          {hasLatestDraft ? 'refines the draft directly · no supervisor overhead' : 'routes to the right agent automatically'}
-        </span>
-      </div>
-
-      <textarea
-        ref={taRef}
-        value={draft}
-        onChange={e => { onChange(e.target.value); autosize(e.target) }}
-        onKeyDown={onKeyDown}
-        rows={big ? 2 : 1}
-        placeholder={hasLatestDraft ? 'Tell the agent what to change — or ask something new…' : 'Ask your agents to research, write, rewrite, or repurpose anything…'}
-        style={{
-          display: 'block', width: '100%', border: 'none', background: 'none',
-          fontFamily: FONT, fontSize: big ? 15.5 : 14.5, lineHeight: 1.6, color: INK,
-          padding: big ? '14px 16px 6px' : '10px 14px 4px',
-          resize: 'none', maxHeight: big ? 180 : 160, overflowY: 'auto', outline: 'none',
-        }}
-      />
-
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-        padding: big ? '8px 12px 12px' : '6px 10px 10px',
-      }}>
-        {toolChips.map(t => {
-          const paths = t.icon.split('M').filter(Boolean).map(p => 'M' + p)
-          return (
-            <button key={t.label} onClick={t.onClick}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 7,
-                height: big ? 34 : 32, padding: `0 ${big ? 12 : 11}px`,
-                border: `1px solid ${WARM_BDR_MD}`, background: WARM_WHITE, borderRadius: 10,
-                fontFamily: FONT, fontSize: big ? 12.5 : 12, fontWeight: 600, color: '#6B6151', cursor: 'pointer',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(37,99,235,.4)'; e.currentTarget.style.color = BLUE }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = WARM_BDR_MD; e.currentTarget.style.color = '#6B6151' }}>
-              <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={t.stroke} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                {paths.map((d, i) => <path key={i} d={d} />)}
-              </svg>
-              {t.label}
-            </button>
-          )
-        })}
-        <span style={{ flex: 1 }} />
-        <button onClick={onToggleMic} title="Voice input" style={{
-          position: 'relative', flexShrink: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: btnSize, height: btnSize,
-          border: `1px solid ${WARM_BDR_MD}`, borderRadius: big ? 13 : 12,
-          background: micActive ? '#EF4444' : WARM_INPUT, cursor: 'pointer',
-        }}>
-          {micActive && <span style={{ position: 'absolute', inset: -3, borderRadius: big ? 15 : 14, border: '2px solid #EF4444', animation: 'ccRing 1.5s ease-out infinite' }} />}
-          <svg width={big ? 17 : 16} height={big ? 17 : 16} viewBox="0 0 24 24" fill="none" stroke={micActive ? '#fff' : '#7C7264'} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-            <rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>
-          </svg>
-        </button>
-        <button onClick={onSend} title="Send" style={{
-          flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: btnSize, height: btnSize, border: 'none', borderRadius: big ? 13 : 12,
-          cursor: canSend ? 'pointer' : 'default',
-          background: canSend ? BLUE : '#D8CFC0',
-          boxShadow: canSend ? '0 10px 22px -10px rgba(37,99,235,.7)' : 'none',
-          opacity: canSend ? 1 : 0.7, transition: 'background .18s, opacity .18s',
-        }}
-        onMouseEnter={e => { if (canSend) e.currentTarget.style.filter = 'brightness(1.06)' }}
-        onMouseLeave={e => e.currentTarget.style.filter = 'none'}>
-          <svg width={big ? 18 : 17} height={big ? 18 : 17} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/>
-          </svg>
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ── Welcome / empty state ─────────────────────────────────────────────────────
-function WelcomeState({ draft, onChange, onKeyDown, onSend, taRef, micActive, onToggleMic, onChip }) {
-  const displayName = localStorage.getItem('display_name') ?? localStorage.getItem('username') ?? 'User'
-
-  const suggestChips = [
-    { label: 'Write a LinkedIn post',   prefix: 'Write a LinkedIn post about ' },
-    { label: 'Draft a newsletter',      prefix: 'Draft a newsletter issue on ' },
-    { label: 'Turn into an X thread',   prefix: 'Turn this into an X thread: ' },
-    { label: 'Find trending angles',    prefix: 'Find trending angles on ' },
-    { label: 'Plan a content calendar', prefix: 'Plan a 2-week content calendar for ' },
-  ]
-
-  return (
-    <div style={{
-      flex: 1, minHeight: 0, overflowY: 'auto', position: 'relative',
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'safe center', padding: '26px 26px 14px',
-    }}>
-      <div style={{
-        position: 'absolute', inset: 0, pointerEvents: 'none',
-        background: 'radial-gradient(58% 50% at 50% 34%, rgba(37,99,235,.10), rgba(99,102,241,.05) 42%, transparent 72%)',
-      }} />
-
-      <div style={{
-        position: 'relative', width: '100%', maxWidth: 680, margin: 'auto 0',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16,
-      }}>
-        {/* mascot */}
-        <div style={{ position: 'relative', width: 420, maxWidth: '100%', height: 104 }}>
-          <div style={{
-            position: 'absolute', left: 12, top: 58, whiteSpace: 'nowrap',
-            display: 'flex', alignItems: 'center', gap: 8,
-            background: WARM_WHITE, border: `1px solid ${WARM_BDR}`,
-            padding: '7px 11px', borderRadius: '14px 14px 14px 5px',
-            boxShadow: '0 14px 28px -20px rgba(60,48,30,.55)',
-          }}>
-            <span style={{ width: 18, height: 18, borderRadius: 6, background: '#EEF0FF', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke={INDIGO} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round"><path d="M4 20l4-1L19 8a2 2 0 0 0-3-3L5 16z"/></svg>
-            </span>
-            <span style={{ fontSize: 12.5, fontWeight: 500, color: '#5B5142' }}>Ready when you are</span>
-          </div>
-          <div style={{
-            position: 'absolute', right: 12, top: 8, whiteSpace: 'nowrap',
-            display: 'flex', alignItems: 'center', gap: 8,
-            background: WARM_WHITE, border: `1px solid ${WARM_BDR}`,
-            padding: '7px 11px', borderRadius: '14px 14px 5px 14px',
-            boxShadow: '0 14px 28px -20px rgba(60,48,30,.55)',
-          }}>
-            <span style={{ width: 18, height: 18, borderRadius: 6, background: '#EAF0FF', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width={11} height={11} viewBox="0 0 24 24" fill="none" stroke={BLUE} strokeWidth={2.4}><circle cx="11" cy="11" r="6"/><path d="M21 21l-3.5-3.5"/></svg>
-            </span>
-            <span style={{ fontSize: 12.5, fontWeight: 500, color: '#5B5142' }}>4 agents on standby</span>
-          </div>
-          <div style={{ position: 'absolute', left: '50%', top: 0, transform: 'translateX(-50%)' }}>
-            <div style={{ position: 'relative', animation: 'ccFloat 5.5s ease-in-out infinite' }}>
-              <span style={{ position: 'absolute', inset: -12, borderRadius: 28, background: 'radial-gradient(closest-side, rgba(37,99,235,.4), transparent)', animation: 'ccRing 2.8s ease-out infinite' }} />
-              <div style={{ position: 'relative', width: 80, height: 80, borderRadius: 24, background: 'linear-gradient(135deg,#2563EB,#6366F1)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 24px 46px -20px rgba(37,99,235,.8), inset 0 2px 7px rgba(255,255,255,.28)' }}>
-                <svg width={37} height={37} viewBox="0 0 24 24" fill="#fff">
-                  <path d="M12 2.4l1.9 5.3L19.3 9l-5.4 1.9L12 16.4l-1.9-5.5L4.7 9l5.4-1.3z"/>
-                  <circle cx="18.6" cy="5.4" r="1.5"/>
-                </svg>
-              </div>
+        {/* RIGHT: document */}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#FAF9F3' }}>
+          <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 28px', borderBottom: `1px solid ${HAIRLINE}` }}>
+            <div style={{ display: 'inline-flex', background: 'rgba(27,28,20,.05)', borderRadius: 10, padding: 3 }}>
+              <button onClick={() => onModeChange('edit')} style={{ height: 28, padding: '0 13px', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', background: isEdit ? '#fff' : 'transparent', color: isEdit ? ACCENT : MUTED_2 }}>Edit</button>
+              <button onClick={() => onModeChange('view')} style={{ height: 28, padding: '0 13px', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', background: !isEdit ? '#fff' : 'transparent', color: !isEdit ? ACCENT : MUTED_2 }}>Preview</button>
             </div>
           </div>
-        </div>
-
-        <div style={{ textAlign: 'center' }}>
-          <h1 style={{ fontFamily: SERIF, fontSize: 34, lineHeight: 1.15, fontWeight: 600, letterSpacing: '-.02em', margin: '0 0 8px', color: INK }}>
-            <span style={{ color: LABEL }}>Hi {displayName},</span>
-            {' '}ready to create<br />something worth publishing?
-          </h1>
-          <p style={{ fontSize: 14, lineHeight: 1.55, color: MUTED, margin: '0 auto', maxWidth: 460 }}>
-            One prompt to the Supervisor and it routes to your Writer, Research, SEO &amp; Editor agents — then hands back a draft for you to approve.
-          </p>
-        </div>
-
-        <Composer draft={draft} onChange={onChange} onKeyDown={onKeyDown} onSend={onSend}
-          taRef={taRef} micActive={micActive} onToggleMic={onToggleMic} onChip={onChip} big={true} />
-
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {suggestChips.map(s => (
-            <button key={s.label} onClick={() => onChip(s.prefix)}
-              style={{
-                height: 34, padding: '0 14px', border: `1px solid ${WARM_BDR_MD}`,
-                background: WARM_WHITE, borderRadius: 999, fontFamily: FONT,
-                fontSize: 12.5, fontWeight: 600, color: '#6B6151', cursor: 'pointer',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(37,99,235,.4)'; e.currentTarget.style.color = BLUE; e.currentTarget.style.background = '#F8F4EC' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = WARM_BDR_MD; e.currentTarget.style.color = '#6B6151'; e.currentTarget.style.background = WARM_WHITE }}>
-              {s.label}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Chat history sidebar ──────────────────────────────────────────────────────
-function ChatHistoryRail({ chats, search, onSearch, activeChat, onSelect, onNew, onPin, onRename, onDelete }) {
-  const displayName = localStorage.getItem('display_name') ?? localStorage.getItem('username') ?? 'User'
-  const initial     = displayName[0]?.toUpperCase() ?? 'U'
-
-  const [renamingId,  setRenamingId]  = useState(null)
-  const [renameValue, setRenameValue] = useState('')
-  const renameRef = useRef(null)
-
-  useEffect(() => {
-    if (renamingId && renameRef.current) renameRef.current.focus()
-  }, [renamingId])
-
-  function commitRename(id) {
-    const val = renameValue.trim()
-    if (val) onRename(id, val)
-    setRenamingId(null)
-    setRenameValue('')
-  }
-
-  const groups = groupChats(chats, search)
-
-  return (
-    <aside style={{
-      width: 286, flexShrink: 0, display: 'flex', flexDirection: 'column',
-      background: WARM_WHITE, borderRight: `1px solid ${WARM_BDR}`, fontFamily: FONT,
-    }}>
-      {/* brand */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '18px 18px 14px' }}>
-        <div style={{
-          width: 32, height: 32, borderRadius: 10, flexShrink: 0,
-          background: 'linear-gradient(135deg,#2563EB,#6366F1)',
-          boxShadow: '0 6px 16px -7px rgba(37,99,235,.7)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <span style={{ fontFamily: SERIF, fontSize: 19, color: '#fff', marginTop: -2 }}>C</span>
-        </div>
-        <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-.01em', color: INK }}>
-          ContentCoach<span style={{ color: BLUE }}> AI</span>
-        </span>
-      </div>
-
-      {/* new chat */}
-      <div style={{ padding: '4px 14px 12px' }}>
-        <button onClick={onNew}
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
-            width: '100%', height: 42, border: 'none', borderRadius: 12,
-            fontFamily: FONT, fontSize: 13.5, fontWeight: 600, color: '#fff', cursor: 'pointer',
-            background: BLUE, boxShadow: '0 10px 22px -10px rgba(37,99,235,.6)',
-          }}
-          onMouseEnter={e => e.currentTarget.style.filter = 'brightness(1.06)'}
-          onMouseLeave={e => e.currentTarget.style.filter = 'none'}>
-          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.3} strokeLinecap="round">
-            <path d="M12 5v14M5 12h14"/>
-          </svg>
-          New chat
-        </button>
-      </div>
-
-      {/* search */}
-      <div style={{ padding: '0 14px 10px' }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 9, height: 38, padding: '0 12px',
-          background: WARM_INPUT, border: `1px solid rgba(80,64,46,.08)`, borderRadius: 11,
-        }}>
-          <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="#9C9082" strokeWidth={2}><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-          <input value={search} onChange={e => onSearch(e.target.value)}
-            placeholder="Search chats"
-            style={{ flex: 1, border: 'none', background: 'none', fontFamily: FONT, fontSize: 13, color: INK, padding: 0, outline: 'none' }} />
-        </div>
-      </div>
-
-      {/* chat list */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 10px 10px' }}>
-        {groups.length === 0 && (
-          <p style={{ textAlign: 'center', fontSize: 12.5, color: FAINT, margin: '24px 0', fontFamily: FONT }}>
-            {search ? 'No chats match your search.' : 'No chats yet — start one above.'}
-          </p>
-        )}
-
-        {groups.map(g => (
-          <div key={g.group} style={{ marginBottom: 6 }}>
-            <div style={{
-              fontFamily: MONO, fontSize: 10, letterSpacing: '.13em', textTransform: 'uppercase',
-              color: FAINT, padding: '12px 8px 6px',
-            }}>
-              {g.group}
-            </div>
-
-            {g.items.map(c => {
-              const isActive   = c.id === activeChat
-              const isRenaming = c.id === renamingId
-
-              return (
-                <div key={c.id} className="cc-chat-row"
-                  onClick={() => !isRenaming && onSelect(c.id)}
-                  style={{
-                    position: 'relative', display: 'flex', flexDirection: 'column', gap: 2,
-                    padding: '9px 11px', borderRadius: 11,
-                    cursor: isRenaming ? 'default' : 'pointer',
-                    background: isActive ? '#EAF0FF' : 'transparent',
-                    transition: 'background .12s',
-                  }}
-                  onMouseEnter={e => { if (!isActive && !isRenaming) e.currentTarget.style.background = WARM_HOVER }}
-                  onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent' }}>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {c.pinned
-                      ? <svg width={10} height={10} viewBox="0 0 24 24" fill={BLUE} style={{ flexShrink: 0 }}><path d="M12 2l2.5 5H20l-4.5 3.5 1.5 5.5L12 13l-5 3 1.5-5.5L4 7h5.5z"/></svg>
-                      : <span style={{ width: 6, height: 6, borderRadius: '50%', flexShrink: 0, background: c.dot }} />
-                    }
-
-                    {isRenaming ? (
-                      <input
-                        ref={renameRef}
-                        value={renameValue}
-                        onChange={e => setRenameValue(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter')  { e.preventDefault(); commitRename(c.id) }
-                          if (e.key === 'Escape') { setRenamingId(null); setRenameValue('') }
-                        }}
-                        onBlur={() => commitRename(c.id)}
-                        onClick={e => e.stopPropagation()}
-                        style={{
-                          flex: 1, minWidth: 0, border: `1px solid ${BLUE}`, borderRadius: 6,
-                          padding: '2px 6px', fontFamily: FONT, fontSize: 13, fontWeight: 600,
-                          color: INK, background: '#fff', outline: 'none',
-                          boxShadow: '0 0 0 3px rgba(37,99,235,.12)',
-                        }}
-                      />
-                    ) : (
-                      <span style={{
-                        flex: 1, minWidth: 0, fontSize: 13, fontWeight: isActive ? 700 : 500,
-                        color: isActive ? BLUE : '#3A332A',
-                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                      }}>
-                        {c.title}
-                      </span>
-                    )}
-
-                    <ChatMenu
-                      chatId={c.id}
-                      pinned={c.pinned}
-                      onPin={onPin}
-                      onStartRename={id => { setRenamingId(id); setRenameValue(c.title) }}
-                      onDelete={onDelete}
-                    />
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+            <div style={{ minHeight: '100%', display: 'flex', justifyContent: 'center', padding: isEdit ? '36px 28px 72px' : '44px 28px 64px', background: 'radial-gradient(120% 90% at 50% 0%, rgba(20,102,59,.05), transparent 60%)' }}>
+              <div style={{ width: '100%', maxWidth: 540, height: 'fit-content', background: '#fff', border: `1px solid ${HAIRLINE}`, borderRadius: 16, boxShadow: isEdit ? '0 30px 70px -46px rgba(20,60,30,.45), 0 6px 20px -14px rgba(27,28,20,.18)' : '0 40px 90px -50px rgba(20,60,30,.5), 0 8px 24px -16px rgba(27,28,20,.2)', overflow: 'hidden', animation: 'ccRise .4s cubic-bezier(.22,1,.36,1) both' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '18px 20px 12px' }}>
+                  <span style={{ width: 44, height: 44, flex: '0 0 44px', borderRadius: 999, background: ACCENT, color: BG, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: SERIF, fontSize: 20, fontWeight: 600 }}>
+                    {userInitial}
+                  </span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14.5, fontWeight: 700, color: INK }}>{userName}</div>
+                    <div style={{ fontSize: 12, color: '#9A9C8C', marginTop: 1 }}>{professionLine}</div>
+                    <div style={{ fontSize: 11.5, color: '#9A9C8C', marginTop: 1 }}>Draft preview · 🌐</div>
                   </div>
-
-                  {!isRenaming && (
-                    <span style={{
-                      fontSize: 11.5, color: FAINT, paddingLeft: 14,
-                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                    }}>
-                      {c.snippet}
-                    </span>
+                  {isEdit && (
+                    <>
+                      <span style={{ flex: 1 }} />
+                      <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', color: '#B0B2A2', border: `1px solid ${HAIRLINE}`, borderRadius: 999, padding: '4px 9px' }}>Editable</span>
+                    </>
                   )}
                 </div>
-              )
-            })}
+
+                {isEdit ? (
+                  <textarea
+                    value={ws.docText}
+                    onChange={(e) => { onDocChange(e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+                    ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; } }}
+                    placeholder="Write your post…"
+                    style={{ display: 'block', width: '100%', border: 'none', background: 'none', padding: '0 20px 20px', fontFamily: SANS, fontSize: 14.5, lineHeight: 1.7, color: INK, letterSpacing: '-.003em', resize: 'none', overflow: 'hidden', minHeight: 220 }}
+                  />
+                ) : (
+                  <>
+                    <div style={{ padding: '0 20px 16px', fontSize: 14.5, lineHeight: 1.7, color: INK, whiteSpace: 'pre-wrap', letterSpacing: '-.003em' }}>{ws.docText}</div>
+                    <div style={{ display: 'flex', gap: 26, padding: '11px 20px', borderTop: `1px solid ${HAIRLINE}`, color: '#9A9C8C', fontSize: 13, fontWeight: 500 }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ThumbsUp size={15} strokeWidth={1.8} />Like</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><MessageCircle size={15} strokeWidth={1.8} />Comment</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Repeat2 size={15} strokeWidth={1.8} />Repost</span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Send size={15} strokeWidth={1.8} />Send</span>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
-        ))}
-      </div>
-
-      {/* user footer */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '12px 16px', borderTop: `1px solid ${WARM_BDR}` }}>
-        <div style={{
-          width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
-          background: 'linear-gradient(135deg,#2563EB,#6366F1)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: '#fff', fontFamily: SERIF, fontSize: 15,
-        }}>
-          {initial}
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</p>
-          <p style={{ margin: 0, fontSize: 11.5, color: FAINT }}>Pro plan</p>
-        </div>
-        <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke={FAINT} strokeWidth={1.9}>
-          <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
-        </svg>
       </div>
-    </aside>
-  )
+    </div>
+  );
 }
 
-// ── Chat header ───────────────────────────────────────────────────────────────
-function ChatHeader({ title, isEmpty }) {
-  const agentStack = ['Research', 'Writer', 'Editor']
-  return (
-    <header style={{
-      flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '14px 26px', borderBottom: `1px solid rgba(80,64,46,.09)`,
-      background: 'rgba(250,246,239,.82)', backdropFilter: 'blur(12px)', zIndex: 5,
-    }}>
-      <div style={{ minWidth: 0 }}>
-        <h1 style={{
-          fontFamily: SERIF, fontSize: 20, fontWeight: 600, letterSpacing: '-.01em',
-          margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: INK,
-        }}>
-          {title}
-        </h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: GREEN, animation: 'ccPulse 2.4s ease-in-out infinite' }} />
-          <span style={{ fontSize: 12, color: MUTED, fontFamily: FONT }}>
-            {isEmpty
-              ? 'Supervisor ready · 4 agents on standby'
-              : <>Supervisor coordinating <strong style={{ color: '#6B6151', fontWeight: 600 }}>3 agents</strong></>}
-          </span>
-        </div>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', marginRight: 4 }}>
-          {agentStack.map((key, i) => {
-            const a = AGENTS[key]
-            return (
-              <span key={key} title={a.name} style={{
-                width: 30, height: 30, borderRadius: '50%', background: a.tint,
-                border: `2px solid ${CANVAS}`, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                marginLeft: i === 0 ? 0 : -7,
-              }}>
-                <AgentIcon agent={key} size={14} />
-              </span>
-            )
-          })}
-        </div>
-        <button style={{
-          display: 'flex', alignItems: 'center', gap: 7, height: 36, padding: '0 13px',
-          border: `1px solid rgba(80,64,46,.14)`, background: WARM_WHITE,
-          borderRadius: 10, fontFamily: FONT, fontSize: 13, fontWeight: 600, color: '#5B5142', cursor: 'pointer',
-        }}
-        onMouseEnter={e => e.currentTarget.style.background = WARM_INPUT}
-        onMouseLeave={e => e.currentTarget.style.background = WARM_WHITE}>
-          <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="#7C7264" strokeWidth={2}>
-            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
-            <path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>
-          </svg>
-          Share
-        </button>
-      </div>
-    </header>
-  )
-}
-
-// ── Main page ─────────────────────────────────────────────────────────────────
+/* ────────────────────────────────────────────────────────────────────────
+   Main page
+   ──────────────────────────────────────────────────────────────────────── */
 export default function ChatPage() {
-  const [draft,       setDraft]       = useState('')
-  const [search,      setSearch]      = useState('')
-  const [activeChat,  setActiveChat]  = useState(null)
-  const [chatTitle,   setChatTitle]   = useState('New chat')
-  // flat list, newest first, max 10 — populated by real user chats only
-  const [chats,       setChats]       = useState([])
-  const [messages,    setMessages]    = useState([])
-  const [micActive,   setMicActive]   = useState(false)
-  const [seq,         setSeq]         = useState(100)
-  // tracks the most recent writer draft so follow-up messages can use /refine
-  const [latestDraft, setLatestDraft] = useState('')
+  const navigate = useNavigate();
+  const userName = localStorage.getItem('username') || 'there';
 
-  const busy          = useRef(false)
-  const abortRef      = useRef(null)
-  const scrollRef     = useRef(null)
-  const taRef         = useRef(null)
-  // ref mirrors activeChat so async stream callbacks can read current value
-  const activeChatRef = useRef(null)
+  const [sideOpen, setSideOpen] = useState(true);
+  const [search, setSearch] = useState('');
+  const [chats, setChats] = useState([]);          // in-memory session history only
+  const [activeChat, setActiveChat] = useState(-1);
+  const [messages, setMessages] = useState([]);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [view, setView] = useState('chat');
+  const [ws, setWs] = useState(null);
+  const [publishing, setPublishing] = useState(false);
+  const [publishResult, setPublishResult] = useState(null);
+  const [showVersions, setShowVersions] = useState(false);
+  const [versions, setVersions] = useState([]);
+  const [profile, setProfile] = useState(null);
 
-  useEffect(() => { activeChatRef.current = activeChat }, [activeChat])
+  const taRef = useRef(null);
+  const scrollRef = useRef(null);
+  const abortRef = useRef(null);
+
+  // Real name/profession for the workspace's LinkedIn preview card — scoped
+  // to the logged-in user via X-User-Id (see api/profile.js). null until
+  // loaded, or if the user skipped onboarding and has no profile row yet.
+  useEffect(() => {
+    let cancelled = false;
+    getProfile().then(p => { if (!cancelled) setProfile(p); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  const professionLine = profile?.profession || profile?.role || 'Creator on Honne';
 
   const scrollDown = useCallback(() => {
     requestAnimationFrame(() => {
-      const el = scrollRef.current
-      if (!el) return
-      if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) el.scrollTop = el.scrollHeight
-    })
-  }, [])
+      if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    });
+  }, []);
 
-  function patch(id, fields) {
-    setMessages(prev => prev.map(m => m.id === id ? { ...m, ...fields } : m))
-  }
+  const patchMessage = (id, fields) => {
+    setMessages(prev => prev.map(m => (m.id === id ? { ...m, ...(typeof fields === 'function' ? fields(m) : fields) } : m)));
+  };
 
-  // ── Chat history management ─────────────────────────────────────────────────
-
-  function addChatToHistory(userText, agent) {
-    const title = userText.length > 42 ? userText.slice(0, 42).trimEnd() + '…' : userText
-    const entry = {
-      id:        `chat-${Date.now()}`,
-      title,
-      snippet:   `${AGENTS[agent].name} · responding`,
-      dot:       AGENTS[agent].color,
-      createdAt: Date.now(),
-      pinned:    false,
+  const newChat = () => {
+    abortRef.current?.();
+    if (messages.length > 0) {
+      const firstUser = messages.find(m => m.role === 'user');
+      setChats(prev => [{ id: nextId(), title: firstUser ? firstUser.text.slice(0, 60) : 'New chat', time: 'Just now' }, ...prev]);
     }
-    setChats(prev => [entry, ...prev].slice(0, 10))
-    setActiveChat(entry.id)
-    activeChatRef.current = entry.id
-    setChatTitle(title)
-    return entry.id
-  }
+    setMessages([]);
+    setDraft('');
+    setBusy(false);
+    setView('chat');
+    setWs(null);
+  };
 
-  function updateChatSnippet(chatId, agentName) {
-    setChats(prev => prev.map(c => c.id === chatId ? { ...c, snippet: `${agentName} · done` } : c))
-  }
+  const send = (overrideText) => {
+    const text = (overrideText ?? draft).trim();
+    if (!text || busy) return;
 
-  function handlePinChat(id) {
-    setChats(prev => prev.map(c => c.id === id ? { ...c, pinned: !c.pinned } : c))
-  }
+    const userMsg = { id: nextId(), role: 'user', text };
+    const aiId = nextId();
+    const aiMsg = {
+      id: aiId, role: 'ai', phase: 'working', kind: '', text: '',
+      activities: [], traceOpen: null, angles: [], expandingIndex: -1, pickingIndex: -1,
+      expandedSummaries: {}, decision: null, postId: '', threadId: '',
+      copied: false, error: '', modifying: false, modifyText: '', userPrompt: text,
+    };
+    setMessages(prev => [...prev, userMsg, aiMsg]);
+    setDraft('');
+    setBusy(true);
+    scrollDown();
 
-  function handleRenameChat(id, newTitle) {
-    setChats(prev => prev.map(c => c.id === id ? { ...c, title: newTitle } : c))
-    if (id === activeChat) setChatTitle(newTitle)
-  }
-
-  function handleDeleteChat(id) {
-    setChats(prev => prev.filter(c => c.id !== id))
-    if (activeChat === id) handleNewChat()
-  }
-
-  // ── Sending messages ────────────────────────────────────────────────────────
-
-  function send() {
-    const text = draft.trim()
-    if (!text || busy.current) return
-    busy.current = true
-    setDraft('')
-    if (taRef.current) taRef.current.style.height = 'auto'
-
-    if (latestDraft) {
-      // Follow-up in an active writing session → direct refinement, no supervisor
-      doRefine(latestDraft, text)
-    } else {
-      // First message or non-writing session → full pipeline
-      pushExchange(text, false)
-    }
-  }
-
-  function pushExchange(userText, isRefine, noteForFallback) {
-    const agent = routeFor(userText)
-    const uid   = seq + 1
-    const aid   = seq + 2
-    setSeq(s => s + 2)
-
-    // Auto-register new chat on the first message
-    let chatId = activeChatRef.current
-    if (!isRefine && messages.length === 0) {
-      chatId = addChatToHistory(userText, agent)
-    }
-
-    setMessages(prev => [
-      ...prev,
-      { id: uid, role: 'user', text: userText, isRefine },
-      { id: aid, role: 'ai', agent, phase: 'routing', text: '', decision: null, modifyOpen: false, modifyText: '', thread_id: null },
-    ])
-    setTimeout(scrollDown, 50)
-
-    setTimeout(() => {
-      patch(aid, { phase: 'streaming', text: '' })
-      let accumulated = ''
-
-      const abort = streamQuery(
-        userText,
-        token => { accumulated += token; patch(aid, { text: accumulated }); scrollDown() },
-        doneData => {
-          const topics = doneData?.research_topics
-          if (Array.isArray(topics) && topics.length > 0) {
-            // Standalone research turn — render clickable topic cards instead of prose
-            patch(aid, { phase: 'topics', topics, draftingTopicId: null })
-            if (chatId) updateChatSnippet(chatId, AGENTS[agent].name)
-            busy.current = false
-            scrollDown()
-            return
-          }
-
-          const finalText = doneData?.answer || doneData?.draft || accumulated || mockFor(agent, noteForFallback)
-          const threadId  = doneData?.thread_id || null
-          const isHITL    = doneData?.status === 'awaiting_approval'
-          patch(aid, { phase: 'done', text: finalText, thread_id: threadId, decision: isHITL ? null : 'auto' })
-          // Store the draft so follow-up messages can use /refine
-          if (isHITL) setLatestDraft(finalText)
-          if (chatId) updateChatSnippet(chatId, AGENTS[agent].name)
-          busy.current = false
-          scrollDown()
-        },
-        _err => simulateStream(aid, mockFor(agent, noteForFallback), chatId, agent, true)
-      )
-      abortRef.current = abort
-    }, 850)
-  }
-
-  // Lightweight refinement — single LLM call, bypasses graph
-  function doRefine(baseDraft, note) {
-    const agent = 'Writer'
-    const uid   = seq + 1
-    const aid   = seq + 2
-    setSeq(s => s + 2)
-
-    setMessages(prev => [
-      ...prev,
-      { id: uid, role: 'user', text: note, isRefine: true },
-      { id: aid, role: 'ai', agent, phase: 'routing', text: '', decision: null, modifyOpen: false, modifyText: '', thread_id: null, isRefinement: true },
-    ])
-    setTimeout(scrollDown, 50)
-
-    const chatId = activeChatRef.current
-    ;(async () => {
-      patch(aid, { phase: 'streaming', text: '' })
-      try {
-        const data    = await refineAI(baseDraft, note)
-        const refined = data.refined_draft || mockFor(agent, note)
-        patch(aid, { phase: 'done', text: refined, decision: null })
-        setLatestDraft(refined)
-        if (chatId) updateChatSnippet(chatId, AGENTS[agent].name)
-      } catch {
-        simulateStream(aid, mockFor(agent, note), chatId, agent, true)
+    const onToken = (chunk) => {
+      patchMessage(aiId, (m) => ({ phase: 'streaming', kind: m.kind || 'draft', text: m.text + chunk }));
+      scrollDown();
+    };
+    const onActivity = (evt) => {
+      patchMessage(aiId, (m) => ({ activities: upsertActivity(m.activities, evt) }));
+    };
+    const onDone = (data) => {
+      setBusy(false);
+      if (data.status === 'awaiting_angle_selection') {
+        patchMessage(aiId, { phase: 'done', kind: 'angles', angles: data.angles || [], threadId: data.thread_id });
+      } else if (data.status === 'awaiting_approval') {
+        patchMessage(aiId, { phase: 'done', kind: 'draft', threadId: data.thread_id, postId: data.post_id || '' });
+      } else {
+        patchMessage(aiId, (m) => ({ phase: 'done', kind: 'direct', text: m.text || data.answer || '' }));
       }
-      busy.current = false
-      scrollDown()
-    })()
-  }
+      scrollDown();
+    };
+    const onError = (message) => {
+      setBusy(false);
+      patchMessage(aiId, { phase: 'done', error: message });
+    };
 
-  function simulateStream(id, fullText, chatId, agent, setDraftWhenDone = false) {
-    let i = 0
-    const timer = setInterval(() => {
-      i += 3 + Math.floor(Math.random() * 3)
-      if (i >= fullText.length) {
-        clearInterval(timer)
-        patch(id, { phase: 'done', text: fullText })
-        if (setDraftWhenDone) setLatestDraft(fullText)
-        if (chatId) updateChatSnippet(chatId, AGENTS[agent]?.name || 'Writer Agent')
-        busy.current = false
-        scrollDown()
-        return
-      }
-      patch(id, { text: fullText.slice(0, i) })
-      if (i % 60 < 5) scrollDown()
-    }, 24)
-  }
+    abortRef.current = streamQuery(text, onToken, onDone, onError, onActivity);
+  };
 
-  // Draft a full post from ONE picked research topic card — skips supervisor's
-  // classification entirely on the backend since the target pipeline is already known.
-  async function handleDraftFromTopic(sourceMsgId, topic) {
-    if (busy.current) return
-    busy.current = true
-    patch(sourceMsgId, { draftingTopicId: topic.id })
+  const toggleTrace = (id) => {
+    patchMessage(id, (m) => ({ traceOpen: !(m.traceOpen != null ? m.traceOpen : m.phase !== 'done') }));
+  };
 
-    const aid = seq + 1
-    setSeq(s => s + 1)
-    setMessages(prev => [
-      ...prev,
-      { id: aid, role: 'ai', agent: 'Writer', phase: 'routing', text: '', decision: null, modifyOpen: false, modifyText: '', thread_id: null },
-    ])
-    setTimeout(scrollDown, 50)
+  const toggleAngles = (id) => {
+    patchMessage(id, (m) => ({ anglesOpen: !(m.anglesOpen !== false) }));
+  };
 
-    const chatId = activeChatRef.current
+  const pickAngle = async (aiId, index) => {
+    const msg = messages.find(m => m.id === aiId);
+    if (!msg) return;
+    patchMessage(aiId, { pickingIndex: index });
     try {
-      patch(aid, { phase: 'streaming', text: '' })
-      const data      = await draftFromTopic(topic)
-      const isHITL    = data.status === 'awaiting_approval'
-      const finalText = data.draft || data.answer || ''
-      patch(aid, { phase: 'done', text: finalText, thread_id: data.thread_id || null, decision: isHITL ? null : 'auto' })
-      if (isHITL) setLatestDraft(finalText)
-      if (chatId) updateChatSnippet(chatId, AGENTS.Writer.name)
+      const data = await resumeAI(msg.threadId, 'pick', '', index);
+      if (data.status === 'awaiting_angle_selection') {
+        patchMessage(aiId, { pickingIndex: -1, angles: data.angles || [], error: data.error || '' });
+      } else if (data.status === 'awaiting_approval') {
+        // Drafted from the picked angle — this same message now carries the draft.
+        patchMessage(aiId, {
+          pickingIndex: -1, kind: 'draft', text: data.draft || data.answer || '',
+          phase: 'done', postId: data.post_id || '', decision: null,
+        });
+      }
     } catch {
-      patch(aid, { phase: 'done', text: 'Could not draft this post — try again.', decision: 'auto' })
+      patchMessage(aiId, { pickingIndex: -1, error: 'Something went wrong drafting this angle.' });
+    }
+  };
+
+  const expandAngle = async (aiId, index) => {
+    const msg = messages.find(m => m.id === aiId);
+    if (!msg) return;
+    patchMessage(aiId, { expandingIndex: index });
+    try {
+      const data = await resumeAI(msg.threadId, 'expand', '', index);
+      patchMessage(aiId, (m) => ({
+        expandingIndex: -1,
+        expandedSummaries: { ...m.expandedSummaries, [index]: data.expanded_summary || '' },
+      }));
+    } catch {
+      patchMessage(aiId, { expandingIndex: -1 });
+    }
+  };
+
+  const noneFit = async (aiId) => {
+    const msg = messages.find(m => m.id === aiId);
+    if (!msg) return;
+    try {
+      const data = await resumeAI(msg.threadId, 'none_fit', '');
+      if (data.status === 'awaiting_angle_selection') {
+        // Re-classified back into another research pass — fresh angle set.
+        patchMessage(aiId, { angles: data.angles || [], expandedSummaries: {}, error: data.error || '' });
+      } else {
+        patchMessage(aiId, (m) => ({ kind: 'direct', text: data.answer || m.text, angles: [] }));
+      }
+    } catch {
+      /* leave angle grid as-is on failure */
+    }
+  };
+
+  const approve = async (aiId) => {
+    const msg = messages.find(m => m.id === aiId);
+    if (!msg) return;
+    try {
+      const data = await resumeAI(msg.threadId, 'approved');
+      patchMessage(aiId, { decision: 'approved', postId: data.post_id || msg.postId, answerNote: data.answer });
+    } catch {
+      patchMessage(aiId, { error: 'Could not save the draft. Please try again.' });
+    }
+  };
+
+  const decline = async (aiId) => {
+    const msg = messages.find(m => m.id === aiId);
+    if (!msg) return;
+    try {
+      await resumeAI(msg.threadId, 'rejected');
+      patchMessage(aiId, { decision: 'declined' });
+    } catch {
+      patchMessage(aiId, { error: 'Something went wrong.' });
+    }
+  };
+
+  const regenerate = (aiId) => {
+    const msg = messages.find(m => m.id === aiId);
+    if (!msg) return;
+    send(msg.userPrompt);
+  };
+
+  const openModify = (aiId) => {
+    const msg = messages.find(m => m.id === aiId);
+    patchMessage(aiId, { modifying: true, modifyText: msg?.text || '' });
+  };
+  const modifyTextChange = (aiId, newText) => patchMessage(aiId, { modifyText: newText });
+  const cancelModify = (aiId) => patchMessage(aiId, { modifying: false });
+  const sendModify = async (aiId) => {
+    const msg = messages.find(m => m.id === aiId);
+    if (!msg) return;
+    try {
+      const data = await resumeAI(msg.threadId, 'edited', msg.modifyText);
+      patchMessage(aiId, { modifying: false, decision: 'edited', text: msg.modifyText, postId: data.post_id || msg.postId });
+    } catch {
+      patchMessage(aiId, { error: 'Could not save your edit.' });
+    }
+  };
+
+  const copyMsg = (aiId) => {
+    const msg = messages.find(m => m.id === aiId);
+    if (!msg) return;
+    try { navigator.clipboard.writeText(msg.text); } catch { /* clipboard unavailable */ }
+    patchMessage(aiId, { copied: true });
+    setTimeout(() => patchMessage(aiId, { copied: false }), 1600);
+  };
+
+  const openWorkspace = (aiId) => {
+    const msg = messages.find(m => m.id === aiId);
+    if (!msg) return;
+    setWs({
+      messageId: aiId, title: msg.userPrompt.slice(0, 60) || 'Untitled draft', docText: msg.text,
+      mode: 'edit', commands: [], cmdInput: '', postId: msg.postId, copied: false,
+    });
+    setPublishResult(null);
+    setShowVersions(false);
+    setView('workspace');
+  };
+  const backToChat = () => setView('chat');
+
+  const patchWs = (fields) => setWs(prev => (prev ? { ...prev, ...(typeof fields === 'function' ? fields(prev) : fields) } : prev));
+
+  const submitWsCmd = async (text) => {
+    const note = (text ?? ws?.cmdInput ?? '').trim();
+    if (!note || !ws) return;
+    patchWs({ cmdInput: '' });
+    try {
+      const data = await refineAI(ws.docText, note);
+      patchWs((w) => ({ docText: data.refined_draft || w.docText, commands: [...w.commands, { id: nextId(), text: note, response: 'Applied to the draft.' }] }));
+    } catch {
+      patchWs((w) => ({ commands: [...w.commands, { id: nextId(), text: note, response: 'Could not apply this change.' }] }));
+    }
+  };
+
+  const wsPublish = async () => {
+    if (!ws?.postId) {
+      setPublishResult({ ok: false, message: 'Approve the draft first — there is nothing saved to publish yet.' });
+      return;
+    }
+    setPublishing(true);
+    setPublishResult(null);
+    try {
+      const result = await publishToLinkedIn(ws.postId);
+      if (result.needs_auth && result.auth_url) {
+        window.location.href = result.auth_url;
+        return;
+      }
+      setPublishResult(result.published
+        ? { ok: true, message: 'Published to LinkedIn.' }
+        : { ok: false, message: result.reason || 'Publish failed.' });
+    } catch {
+      setPublishResult({ ok: false, message: 'Something went wrong publishing this post.' });
     } finally {
-      busy.current = false
-      patch(sourceMsgId, { draftingTopicId: null })
-      scrollDown()
+      setPublishing(false);
     }
-  }
+  };
 
-  // ── HITL decisions ──────────────────────────────────────────────────────────
-
-  async function handleApprove(id) {
-    const msg = messages.find(m => m.id === id)
-    if (msg?.thread_id) {
-      try {
-        await resumeAI(msg.thread_id, 'approved')
-      } catch (err) {
-        console.error('[chat] approve failed:', err)
-        patch(id, { decision: 'failed' })
-        return
-      }
+  const wsHistory = async () => {
+    if (!ws?.postId) return;
+    setShowVersions(v => !v);
+    if (!showVersions) {
+      try { setVersions(await getVersions(ws.postId)); } catch { setVersions([]); }
     }
-    patch(id, { decision: 'approved', modifyOpen: false })
-    // Draft's fate is decided — clear the sticky /refine flag so the NEXT message
-    // starts a fresh turn instead of silently editing a resolved draft.
-    setLatestDraft('')
-  }
+  };
 
-  async function handleDecline(id) {
-    const msg = messages.find(m => m.id === id)
-    if (msg?.thread_id) {
-      try {
-        await resumeAI(msg.thread_id, 'rejected')
-      } catch (err) {
-        console.error('[chat] decline failed:', err)
-        patch(id, { decision: 'failed' })
-        return
-      }
-    }
-    patch(id, { decision: 'declined', modifyOpen: false })
-    setLatestDraft('')
-  }
+  const wsCopy = () => {
+    if (!ws) return;
+    try { navigator.clipboard.writeText(ws.docText); } catch { /* clipboard unavailable */ }
+    patchWs({ copied: true });
+    setTimeout(() => patchWs({ copied: false }), 1600);
+  };
 
-  function handleOpenModify(id) {
-    setMessages(prev => prev.map(m => ({ ...m, modifyOpen: m.id === id ? true : m.modifyOpen })))
-    setTimeout(scrollDown, 50)
-  }
-  function handleCancelModify(id)      { patch(id, { modifyOpen: false }) }
-  function handleModifyChange(id, val) { patch(id, { modifyText: val }) }
+  useEffect(() => () => abortRef.current?.(), []);
 
-  async function handleSendModify(id) {
-    const msg  = messages.find(m => m.id === id)
-    const note = (msg?.modifyText || '').trim() || 'Make it tighter and punchier'
-    // Mark the old response as superseded
-    patch(id, { modifyOpen: false, modifyText: '', decision: 'superseded' })
-    // Refine using the draft in this specific message (not latestDraft, in case user goes back up)
-    const base = msg?.text || latestDraft
-    busy.current = true
-    doRefine(base, note)
-  }
-
-  function handleRegen(id) {
-    const msg = messages.find(m => m.id === id)
-    if (!msg) return
-    patch(id, { decision: null, phase: 'routing', text: '' })
-    busy.current = true
-    setTimeout(() => simulateStream(id, mockFor(msg.agent), activeChatRef.current, msg.agent, true), 700)
-  }
-
-  // ── Navigation ──────────────────────────────────────────────────────────────
-
-  function handleNewChat() {
-    if (abortRef.current) { abortRef.current(); abortRef.current = null }
-    busy.current = false
-    setMessages([])
-    setDraft('')
-    setLatestDraft('')
-    setActiveChat(null)
-    activeChatRef.current = null
-    setChatTitle('New chat')
-  }
-
-  function handleSelectChat(id) {
-    setActiveChat(id)
-    activeChatRef.current = id
-    const c = chats.find(x => x.id === id)
-    setChatTitle(c ? c.title : 'Chat')
-    setMessages([])
-    setLatestDraft('')
-  }
-
-  function handleKeyDown(e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
-  }
-
-  function handleChip(text) {
-    setDraft(text)
-    setTimeout(() => {
-      taRef.current?.focus()
-      if (taRef.current) {
-        taRef.current.style.height = 'auto'
-        taRef.current.style.height = Math.min(180, taRef.current.scrollHeight) + 'px'
-      }
-    }, 0)
-  }
-
-  const isEmpty = messages.length === 0
+  const isEmpty = messages.length === 0;
+  const anyWorking = messages.some(m => m.role === 'ai' && m.phase !== 'done');
 
   return (
-    <div style={{
-      display: 'flex', height: '100vh', overflow: 'hidden',
-      background: CANVAS, fontFamily: FONT, color: INK, WebkitFontSmoothing: 'antialiased',
-    }}>
-      <style>{CSS}</style>
+    <div style={{ height: '100vh', overflow: 'hidden', background: BG, color: INK, fontFamily: SANS }}>
+      <style>{KEYFRAMES}</style>
 
-      <ChatHistoryRail
-        chats={chats}
-        search={search}
-        onSearch={setSearch}
-        activeChat={activeChat}
-        onSelect={handleSelectChat}
-        onNew={handleNewChat}
-        onPin={handlePinChat}
-        onRename={handleRenameChat}
-        onDelete={handleDeleteChat}
-      />
-
-      <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: CANVAS }}>
-        <ChatHeader title={chatTitle} isEmpty={isEmpty} />
-
-        {isEmpty ? (
-          <WelcomeState
-            draft={draft} onChange={setDraft} onKeyDown={handleKeyDown}
-            onSend={send} taRef={taRef}
-            micActive={micActive} onToggleMic={() => setMicActive(m => !m)}
-            onChip={handleChip}
+      {view === 'workspace' && ws ? (
+        <WorkspaceView
+          ws={ws}
+          onBack={backToChat}
+          onModeChange={(mode) => patchWs({ mode })}
+          onDocChange={(v) => patchWs({ docText: v })}
+          onCmdInput={(v) => patchWs({ cmdInput: v })}
+          onCmdKey={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitWsCmd(); } }}
+          onSubmitCmd={() => submitWsCmd()}
+          onChip={(label) => submitWsCmd(label)}
+          onCopy={wsCopy}
+          onPublish={wsPublish}
+          onHistory={wsHistory}
+          onToggleCmd={() => patchWs((w) => ({ cmdOpen: !(w.cmdOpen !== false) }))}
+          publishing={publishing}
+          publishResult={publishResult}
+          versions={versions}
+          showVersions={showVersions}
+          userName={userName}
+          professionLine={professionLine}
+        />
+      ) : (
+        <div style={{ height: '100%', display: 'flex', animation: 'ccFade .35s ease both' }}>
+          <Sidebar
+            open={sideOpen} onToggle={() => setSideOpen(o => !o)}
+            chats={chats} activeIndex={activeChat}
+            onSelect={setActiveChat} onDelete={(i) => setChats(prev => prev.filter((_, idx) => idx !== i))}
+            onNewChat={newChat} search={search} onSearch={setSearch} userName={userName}
           />
-        ) : (
-          <>
-            <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}
-              aria-live="polite" aria-label="Chat messages">
-              <div style={{ maxWidth: 760, margin: '0 auto', padding: '30px 26px 18px', display: 'flex', flexDirection: 'column', gap: 22 }}>
-                {messages.map(m => (
-                  m.role === 'user'
-                    ? <UserMessage key={m.id} msg={m} />
-                    : <AIMessage key={m.id} msg={m}
-                        onApprove={handleApprove}
-                        onDecline={handleDecline}
-                        onOpenModify={handleOpenModify}
-                        onCancelModify={handleCancelModify}
-                        onModifyChange={handleModifyChange}
-                        onSendModify={handleSendModify}
-                        onRegen={handleRegen}
-                        onDraftFromTopic={handleDraftFromTopic}
-                      />
-                ))}
-              </div>
-            </div>
 
-            <div style={{ flexShrink: 0, padding: '10px 26px 16px' }}>
-              <div style={{ maxWidth: 760, margin: '0 auto' }}>
-                <Composer
-                  draft={draft} onChange={setDraft} onKeyDown={handleKeyDown}
-                  onSend={send} taRef={taRef}
-                  micActive={micActive} onToggleMic={() => setMicActive(m => !m)}
-                  onChip={handleChip}
-                  big={false}
-                  hasLatestDraft={!!latestDraft}
-                />
-                <p style={{ textAlign: 'center', fontSize: 11, color: '#B5AB99', fontFamily: FONT, margin: '9px 0 0' }}>
-                  Agents can make mistakes — review drafts before publishing.
-                </p>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <header style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 28px', background: 'rgba(244,242,234,.72)', backdropFilter: 'blur(14px)', borderBottom: `1px solid ${HAIRLINE}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button onClick={() => navigate('/dashboard')} title="Back to dashboard" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 10px', border: `1px solid ${HAIRLINE}`, background: '#fff', borderRadius: 9, fontSize: 12.5, fontWeight: 600, color: '#3A3C30', cursor: 'pointer' }}>
+                  <ArrowLeft size={14} /> Dashboard
+                </button>
+                <span style={{ width: 1, height: 16, background: HAIRLINE }} />
+                <span style={{ fontFamily: SERIF, fontWeight: 600, fontSize: 22, letterSpacing: '-.01em', color: ACCENT }}>Honne</span>
+                <span style={{ width: 1, height: 16, background: HAIRLINE }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ position: 'relative', width: 8, height: 8, flex: '0 0 8px' }}>
+                    <span style={{ position: 'absolute', inset: 0, borderRadius: 999, background: anyWorking ? ACCENT : '#2FA35B' }} />
+                    {anyWorking && <span style={{ position: 'absolute', inset: -3, borderRadius: 999, background: ACCENT, opacity: .28, animation: 'ccBreathe 2.4s ease-in-out infinite' }} />}
+                  </span>
+                  <span style={{ fontSize: 13, color: MUTED, fontWeight: 500 }}>{anyWorking ? 'Working on it…' : (isEmpty ? 'Ready when you are' : 'Ready')}</span>
+                </div>
               </div>
-            </div>
-          </>
-        )}
-      </main>
+              <button onClick={newChat} title="New conversation" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 34, padding: '0 14px', border: `1px solid ${HAIRLINE}`, background: '#fff', borderRadius: 10, fontSize: 13, fontWeight: 600, color: '#3A3C30', cursor: 'pointer' }}>
+                <Plus size={14} /> New
+              </button>
+            </header>
+
+            {isEmpty ? (
+              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+                <div style={{ width: '100%', maxWidth: 600, textAlign: 'center', animation: 'ccRise .6s cubic-bezier(.22,1,.36,1) both' }}>
+                  <h1 style={{ fontFamily: SERIF, fontWeight: 400, fontSize: 46, lineHeight: 1.06, letterSpacing: '-.02em', margin: '0 0 12px', color: INK }}>
+                    Good <span style={{ color: '#7A2230' }}>{greetingPeriod()}</span>, {userName}.
+                  </h1>
+                  <p style={{ fontFamily: SERIF, fontStyle: 'italic', fontSize: 19, color: '#9A9C8C', margin: 0 }}>What should we work on?</p>
+                </div>
+              </div>
+            ) : (
+              <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
+                <div style={{ maxWidth: 760, margin: '0 auto', padding: '32px 28px 24px', display: 'flex', flexDirection: 'column', gap: 26 }}>
+                  {messages.map(m => (
+                    <MessageBubble
+                      key={m.id} msg={m}
+                      onToggleTrace={toggleTrace}
+                      onToggleAngles={toggleAngles}
+                      onPick={(i) => pickAngle(m.id, i)}
+                      onExpandAngle={(i) => expandAngle(m.id, i)}
+                      onNoneFit={() => noneFit(m.id)}
+                      onApprove={() => approve(m.id)}
+                      onDecline={() => decline(m.id)}
+                      onOpenModify={() => openModify(m.id)}
+                      onModifyTextChange={modifyTextChange}
+                      onCancelModify={cancelModify}
+                      onSendModify={sendModify}
+                      onCopy={() => copyMsg(m.id)}
+                      onOpenWorkspace={openWorkspace}
+                      onRegenerate={() => regenerate(m.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <Composer draft={draft} onDraft={setDraft} onSend={() => send()} disabled={busy} taRef={taRef} />
+          </div>
+        </div>
+      )}
     </div>
-  )
+  );
 }

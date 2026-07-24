@@ -15,10 +15,13 @@ Gemini Embedding API is not called again for the same query text (24-h TTL).
 import asyncio
 import json
 import logging
+import re
+from uuid import UUID
+
 from langchain_core.tools import tool
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from sqlalchemy import text
-from uuid import UUID
+from tavily import TavilyClient
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +29,10 @@ from backend.core.config import settings
 from backend.core.database import SessionLocal
 from backend.core.cache import (
     async_get, async_set, async_get_json, async_set_json,
-    tool_key, embed_key, query_hash,
-    _TOOL_TTL,
+    tool_key, embed_key, query_hash, search_key,
+    _TOOL_TTL, _SEARCH_TTL,
 )
-from backend.vault.models import Post, PostPublishLog, PostStatus, PostTag, PostVersion
+from backend.vault.models import Post, PostStatus, PostTag, PostVersion
 
 EMBEDDING_DIM = 768
 
@@ -41,8 +44,26 @@ _embeddings = GoogleGenerativeAIEmbeddings(
     google_api_key=settings.LANGCHAIN_API_KEY_GEMINI,
 )
 
+# Tavily web search — global (not user-scoped) results cache, see cache.search_key
+_tavily_client = TavilyClient(api_key=settings.TAVILY_API_KEY)
+_SEARCH_MAX_RESULTS = 4
+_SEARCH_DEPTH = "basic"           # cheaper than "advanced" — explicit constant, not a default left implicit
+_SEARCH_QUERY_CHAR_CAP = 400      # cheap defensive guard against pathological query strings
+
+
+def _strip_html(raw_html: str) -> str:
+    text_only = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", raw_html, flags=re.DOTALL | re.IGNORECASE)
+    text_only = re.sub(r"<[^>]+>", " ", text_only)
+    return re.sub(r"\s+", " ", text_only).strip()
+
 
 # ── Sync DB helpers (wrapped in asyncio.to_thread) ────────────────────────────
+
+def _tavily_search_sync(query: str) -> list[dict]:
+    return _tavily_client.search(
+        query=query, search_depth=_SEARCH_DEPTH, max_results=_SEARCH_MAX_RESULTS
+    ).get("results", [])
+
 
 def _search_posts_sql(user_id: str, embedding_str: str) -> list:
     sql = text("""
@@ -95,50 +116,6 @@ def _fetch_topic_inventory_sql(uid: UUID) -> tuple:
             .all()
         )
     return posts, tags
-
-
-def _fetch_post_analytics_sql(uid: UUID) -> list:
-    # One row per post (latest publish event). Includes 150-char preview so the
-    # analytics node can summarise post content alongside metrics.
-    sql = text("""
-        SELECT DISTINCT ON (p.id)
-            p.title,
-            p.status::text                  AS status,
-            p.created_at::date              AS created_date,
-            ppl.platform,
-            ppl.published_at::date          AS published_date,
-            pv.char_count,
-            LEFT(pv.content, 150)           AS content_preview,
-            COALESCE(pa.impressions, 0)     AS impressions,
-            COALESCE(pa.reactions,   0)     AS reactions
-        FROM posts p
-        LEFT JOIN post_publish_log ppl ON ppl.post_id = p.id
-        LEFT JOIN post_versions    pv  ON pv.id        = ppl.version_id
-        LEFT JOIN post_analytics   pa  ON pa.post_id   = p.id
-        WHERE p.user_id = (:user_id)::uuid
-        ORDER BY p.id, ppl.published_at DESC NULLS LAST
-    """)
-    with SessionLocal() as db:
-        return db.execute(sql, {"user_id": str(uid)}).fetchall()
-
-
-def _fetch_publish_history_sql(uid: UUID) -> list:
-    with SessionLocal() as db:
-        return (
-            db.query(
-                Post.title,
-                PostPublishLog.platform,
-                PostPublishLog.published_at,
-                PostVersion.char_count,
-                PostVersion.change_summary,
-            )
-            .join(Post, Post.id == PostPublishLog.post_id)
-            .join(PostVersion, PostVersion.id == PostPublishLog.version_id)
-            .filter(Post.user_id == uid)
-            .order_by(PostPublishLog.published_at.desc())
-            .limit(50)
-            .all()
-        )
 
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
@@ -253,69 +230,67 @@ async def get_topic_inventory(user_id: str) -> str:
     return result
 
 
-@tool
-async def get_post_analytics(user_id: str) -> str:
-    """Fetch all posts with performance metrics (impressions, reactions), publish history,
-    and a short content preview. Use for any analytics, performance, or posting pattern questions."""
-    logger.debug("get_post_analytics: user_id=%s", user_id)
-    ck = tool_key("get_post_analytics", user_id)
-    cached = await async_get(ck)
-    if cached:
-        return cached
-
-    uid  = UUID(user_id)
-    rows = await asyncio.to_thread(_fetch_post_analytics_sql, uid)
-    logger.debug("get_post_analytics: row_count=%d user_id=%s", len(rows), user_id)
-
-    if not rows:
-        result = "[NO_ANALYTICS_CONTEXT: no posts found yet]"
-    else:
-        lines = [
-            "## Post Analytics\n",
-            "| Title | Status | Published | Platform | Chars | Impressions | Reactions | Preview |",
-            "|---|---|---|---|---|---|---|---|",
-        ]
-        for title, status, created_date, platform, published_date, char_count, content_preview, impressions, reactions in rows:
-            pub     = str(published_date) if published_date else f"draft ({created_date})"
-            plat    = platform or "—"
-            chars   = str(char_count) if char_count else "—"
-            preview = (content_preview or "").replace("\n", " ").replace("|", "/")
-            lines.append(
-                f"| {title} | {status} | {pub} | {plat} | {chars} | {impressions} | {reactions} | {preview} |"
-            )
-        result = "\n".join(lines)
-
-    await async_set(ck, result, ttl=_TOOL_TTL)
-    return result
 
 
 @tool
-async def analyze_publish_history(user_id: str) -> str:
-    """Fetch the user's full publish history (platform, date, char count, change summaries) for engagement analysis.
-    Use this to answer questions about posting patterns, optimal times, and performance trends."""
-    ck = tool_key("analyze_publish_history", user_id)
+async def get_style_memory(user_id: str) -> str:
+    """Fetch the user's long-term and short-term writing style profile (voice, tone,
+    structure, recurring themes). Use for meta-questions about the user's own writing
+    style or how it has evolved — not for drafting, that's writer_node's job."""
+    logger.debug("get_style_memory: user_id=%s", user_id)
+    from backend.ai.style_memory import format_style_memory_for_writer
+    from backend.ai.style_memory import get_style_memory as _fetch_style_memory
+
+    memory = await _fetch_style_memory(user_id)
+    if not memory:
+        return "[NO_CONTEXT_FOUND: no style memory yet — user hasn't published enough posts]"
+    return format_style_memory_for_writer(memory)
+
+
+@tool
+async def web_search(query: str) -> str:
+    """Search the web for current information on a topic. Returns a short list of
+    candidate URLs with titles and snippets — use fetch_and_summarize_url on one
+    of them for more detail once a promising source is found."""
+    # TODO: no per-user rate limiting yet — this tool costs money per call and
+    # takes an LLM-controllable query string. Add a rate:websearch:{user_id}:{yyyymmdd}
+    # Redis counter before this is exposed to untrusted/high-volume traffic.
+    logger.debug("web_search: query_len=%d", len(query or ""))
+    if not query or not query.strip():
+        return "[NO_CONTEXT_FOUND: empty search query]"
+
+    query = query.strip()[:_SEARCH_QUERY_CHAR_CAP]
+    ck = search_key(query)
+
     cached = await async_get(ck)
     if cached:
+        logger.debug("web_search cache hit: query=%r", query)
         return cached
 
-    uid  = UUID(user_id)
-    rows = await asyncio.to_thread(_fetch_publish_history_sql, uid)
+    try:
+        results = await asyncio.to_thread(_tavily_search_sync, query)
+    except Exception as exc:
+        logger.warning("web_search: Tavily search failed for %r — %s", query, exc)
+        return "[SEARCH_FAILED: web search temporarily unavailable]"
 
-    if not rows:
-        result = "[NO_ANALYTICS_CONTEXT: no published posts in log yet]"
-    else:
-        lines = [
-            "## Publish History\n",
-            "| Title | Platform | Published | Chars | Change Summary |",
-            "|---|---|---|---|---|",
-        ]
-        for title, platform, published_at, char_count, change_summary in rows:
-            chars   = str(char_count) if char_count else "—"
-            summary = (change_summary or "—")[:60]
-            lines.append(
-                f"| {title} | {platform} | {published_at:%Y-%m-%d} | {chars} | {summary} |"
-            )
-        result = "\n".join(lines)
+    if not results:
+        result = "[NO_CONTEXT_FOUND: no web results found for that query]"
+        await async_set(ck, result, ttl=_SEARCH_TTL)
+        return result
 
-    await async_set(ck, result, ttl=_TOOL_TTL)
+    lines = [f'## Web Search Results — "{query}"\n']
+    for r in results:
+        lines.append(f"### {r.get('title') or '(untitled)'}")
+        lines.append(r.get("url") or "")
+        lines.append(r.get("content") or "")
+        lines.append("")
+    result = "\n".join(lines)
+
+    await async_set(ck, result, ttl=_SEARCH_TTL)
     return result
+
+
+
+
+
+

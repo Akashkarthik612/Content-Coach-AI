@@ -1,10 +1,14 @@
 """
-Style Agent — LLM-based style analysis + style retriever node.
+Style Agent — LLM-based style analysis.
 
 analyze_style: pure LLM function; extracts a 9-key writing style dict from post content.
-style_retriever_node: LangGraph node; manages cache/DB reads and triggers analysis when needed.
+_fetch_posts_and_count: DB helper, used by context_loaders.py's StyleContextLoader for its
+on-demand fallback (published posts exist but no user_style_memory row yet).
+
+The former style_retriever_node (a distinct graph node) was folded into writer_node — see
+context_loaders.py's StyleContextLoader, which calls analyze_style() and
+_fetch_posts_and_count() directly as a plain pre-step, no longer a Send-dispatched worker.
 """
-import asyncio
 import json
 import logging
 from uuid import UUID
@@ -14,7 +18,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from backend.ai._log_setup import log_style_json
-from backend.ai.worker_states import StyleRetrieverState
+from backend.ai.llm_retry import invoke_with_retry_sync
 from backend.core.config import settings
 from backend.core.database import SessionLocal
 from backend.vault.models import Post, PostStatus, PostVersion
@@ -24,9 +28,10 @@ logger = logging.getLogger(__name__)
 # ── LLM instance ──────────────────────────────────────────────────────────────
 
 _llm = ChatGoogleGenerativeAI(
-    model="gemini-2.0-flash-lite",
+    model="gemini-3.1-flash-lite",
     temperature=0.1,
-    max_output_tokens=512,
+    max_output_tokens=1024,  # was 512 — no thinking-budget risk on this non-thinking model,
+                             # just cheap headroom against the 9-sentence JSON output running long
     google_api_key=settings.LANGCHAIN_API_KEY_GEMINI,
 )
 
@@ -71,7 +76,7 @@ def analyze_style(post_contents: list[str]) -> dict:
 
     combined = "\n\n---\n\n".join(post_contents)
 
-    response = _llm.invoke([
+    response = invoke_with_retry_sync(_llm, [
         SystemMessage(content=_SYSTEM),
         HumanMessage(content=f"Posts to analyze:\n\n{combined}"),
     ])
@@ -94,7 +99,7 @@ def analyze_style(post_contents: list[str]) -> dict:
     return result
 
 
-# ── Graph node ────────────────────────────────────────────────────────────────
+# ── Helpers used by context_loaders.py's StyleContextLoader ───────────────────
 
 def _fetch_posts_and_count(user_id: str, limit: int) -> tuple[list[str], int]:
     """Fetch published post contents + total published count in one DB session."""
@@ -118,41 +123,3 @@ def _fetch_posts_and_count(user_id: str, limit: int) -> tuple[list[str], int]:
             .all()
         )
     return [r.content for r in rows if r.content], count
-
-
-async def style_retriever_node(state: StyleRetrieverState) -> dict:
-    from backend.ai.style_memory import (  # local import breaks circular dependency
-        get_style_memory,
-        sync_check_and_refresh_style_memory,
-        _write_db_and_cache,
-    )
-
-    user_id = state["user_id"]
-    logger.debug("style_retriever_node invoked: user_id=%s", user_id)
-
-    memory = await get_style_memory(user_id)
-
-    if memory is None:
-        logger.info("style_retriever_node: no style memory — running on-demand analysis")
-        posts, published_count = await asyncio.to_thread(_fetch_posts_and_count, user_id, 20)
-
-        if not posts:
-            logger.info("style_retriever_node: no published posts yet — cold-start")
-            log_style_json(logger, f"style_retriever_node cold-start user={user_id}", {})
-            return {"style_json": {}}
-
-        lt_dict = await asyncio.to_thread(analyze_style, posts[:20])
-        st_dict = await asyncio.to_thread(analyze_style, posts[:5]) if len(posts) >= 5 else None
-
-        await asyncio.to_thread(
-            _write_db_and_cache, user_id, lt_dict, st_dict, published_count, None
-        )
-        logger.info("style_retriever_node: analysis complete, post_count=%d", len(posts))
-        result = {"long_term": lt_dict, "short_term": st_dict}
-        log_style_json(logger, f"style_retriever_node on-demand user={user_id}", result)
-        return {"style_json": result}
-
-    asyncio.ensure_future(asyncio.to_thread(sync_check_and_refresh_style_memory, user_id))
-    logger.debug("style_retriever_node: returning cached style_json, stale-check fired")
-    log_style_json(logger, f"style_retriever_node cache-hit user={user_id}", memory)
-    return {"style_json": memory}

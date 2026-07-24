@@ -27,7 +27,7 @@ def _get_or_create_ai_drafts_folder(db: Session, user_id: UUID) -> Folder:
     return folder
 
 
-def save_draft_to_vault(user_id: str, draft: str, query: str) -> str:
+def save_draft_to_vault(user_id: str, draft: str, query: str) -> tuple[str, str]:
     """
     Persists an AI-generated draft as a new post (version 1) in the vault.
 
@@ -35,8 +35,10 @@ def save_draft_to_vault(user_id: str, draft: str, query: str) -> str:
     Falls back to the first 60 chars of the user's query if the draft has no
     usable first line.
 
-    Returns the saved post title so human_approval_node can include it in the
-    answer message.
+    Returns (post_id, title) — human_approval_node includes the title in its
+    answer message and forwards post_id through state so the frontend's
+    Workspace view can call the existing LinkedIn publish / version-history
+    endpoints (both keyed by post_id) without a separate lookup.
     """
     uid = UUID(user_id)
 
@@ -67,4 +69,4 @@ def save_draft_to_vault(user_id: str, draft: str, query: str) -> str:
         db.add(version)
         db.commit()
 
-    return title
+    return str(post.id), title

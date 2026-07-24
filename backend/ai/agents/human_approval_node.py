@@ -2,6 +2,7 @@ import asyncio
 
 from langgraph.types import interrupt
 
+from backend.ai.activity import emit_node_activity
 from backend.ai.state import AgentState
 from backend.ai.agents.sql_fetch_node import save_draft_to_vault
 
@@ -26,16 +27,18 @@ async def human_approval_node(state: AgentState) -> dict:
         { "action": "edited",   "content": "<edited post text>" }
         { "action": "rejected" }
     """
+    emit_node_activity("human_approval_node", "completed")
     decision: dict = interrupt({"draft": state["draft"]})
 
     action = decision.get("action", "rejected")
 
     if action == "approved":
-        saved_title = await asyncio.to_thread(
+        post_id, saved_title = await asyncio.to_thread(
             save_draft_to_vault, state["user_id"], state["draft"], state["query"]
         )
         return {
             "approval_status": "approved",
+            "post_id": post_id,
             "answer": (
                 f'Draft approved and saved to your vault as "{saved_title}". '
                 "You can find it in My Work."
@@ -44,12 +47,13 @@ async def human_approval_node(state: AgentState) -> dict:
 
     if action == "edited":
         edited = decision.get("content", state["draft"])
-        saved_title = await asyncio.to_thread(
+        post_id, saved_title = await asyncio.to_thread(
             save_draft_to_vault, state["user_id"], edited, state["query"]
         )
         return {
             "approval_status": "edited",
             "draft":  edited,
+            "post_id": post_id,
             "answer": (
                 f'Edited draft saved to your vault as "{saved_title}". '
                 "You can find it in My Work."

@@ -10,10 +10,16 @@ Key namespaces:
   embed:{query_hash}                          — query embedding vectors, TTL 24 h
   style:lt:{user_id}                          — long-term style JSON, TTL 24 h
   style:st:{user_id}                          — short-term style JSON, TTL 1 h
+  search:{query_hash}                         — web search results, TTL 15 min — GLOBAL
+                                                 (not user-scoped: a search query/page isn't
+                                                 tenant-private, so one user's lookup warms
+                                                 the cache for everyone; never touched by
+                                                 invalidate_user_tool_cache)
 """
 import hashlib
 import json
 import logging
+import re
 
 import redis
 import redis.asyncio as aioredis
@@ -27,6 +33,7 @@ _TOOL_TTL       = 1800   # 30 minutes — safety net; invalidated actively on sa
 _EMBED_TTL      = 86400  # 24 hours   — content-addressed; same text = same vector
 _LT_STYLE_TTL   = 86400  # 24 hours   — long-term style; replaced on LT analysis run
 _ST_STYLE_TTL   = 3600   # 1 hour     — short-term style; replaced on ST analysis run
+_SEARCH_TTL     = 900    # 15 minutes — dedupe repeated queries without serving stale results too long
 
 
 # ── Lazy singletons ───────────────────────────────────────────────────────────
@@ -72,6 +79,17 @@ def style_st_key(user_id: str) -> str:
     return f"style:st:{user_id}"
 
 
+def search_key(query: str) -> str:
+    """Global (not per-user) — the same web search query returns the same
+    result for any tenant, so this namespace is deliberately outside
+    tool:*:{user_id}* and is never touched by invalidate_user_tool_cache.
+    Lowercased + whitespace-collapsed before hashing so near-duplicate
+    queries (case, extra spaces) share one cache entry instead of each
+    paying for their own Tavily call."""
+    normalized = re.sub(r"\s+", " ", query.strip().lower())
+    return f"search:{query_hash(normalized)}"
+
+
 # ── Async helpers (used by @tool functions) ───────────────────────────────────
 
 async def async_get(key: str) -> str | None:
@@ -96,6 +114,13 @@ async def async_get_json(key: str) -> list | None:
 
 async def async_set_json(key: str, value: list, ttl: int = _EMBED_TTL) -> None:
     await async_set(key, json.dumps(value), ttl=ttl)
+
+
+async def async_delete(key: str) -> None:
+    try:
+        await _get_async().delete(key)
+    except Exception:
+        logger.warning("Redis async_delete failed for key %s", key)
 
 
 async def invalidate_user_tool_cache(user_id: str) -> None:
