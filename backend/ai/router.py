@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from backend.ai._log_setup import setup_ai_file_logging
 from backend.ai.checkpointing.service import ThreadRegistryService, ThreadSessionService
 from backend.ai.schemas.research import ResearchTopic, topic_to_flat
+from backend.ai.thread_state import shape_thread_state
 from backend.auth.models import User
 from backend.core.dependencies import get_current_user, get_db
 
@@ -32,20 +33,45 @@ def get_assistant(request: Request):
 # ── Request / Response schemas ────────────────────────────────────────────────
 
 class QueryRequest(BaseModel):
-    prompt: str
+    prompt:     str
+    session_id: str | None = None  # groups this thread with earlier ones from the same frontend chat
 
 
 class QueryResponse(BaseModel):
     answer:            str
     draft:             str = ""
     thread_id:         str = ""
+    session_id:        str = ""          # echoes back the resolved session_id (minted server-side if omitted)
     status:            str = "complete"  # "complete" | "awaiting_approval" | "awaiting_angle_selection"
     angles:            list = []         # awaiting_angle_selection only
     actions:           list = []         # awaiting_angle_selection only
+    summary:           str = ""          # awaiting_angle_selection only — personalized 2-4 line intro
     expanded_angle_id: int | None = None # set after an "expand" resume
     expanded_summary:  str = ""          # set after an "expand" resume
     error:             str = ""          # set on an invalid pick/expand angle_id
     post_id:           str = ""          # set once human_approval_node saves a draft (approved/edited)
+
+
+class ThreadStateResponse(BaseModel):
+    """Rehydration shape for GET /threads/{id} and GET /sessions/{id}/threads —
+    built by shape_thread_state(), the single source of truth for "what does
+    this thread's current pause state mean" (also used by /stream, /query, /resume)."""
+    thread_id:       str
+    created_at:      str = ""
+    user_prompt:     str = ""
+    status:          str  # "complete" | "awaiting_approval" | "awaiting_angle_selection"
+    answer:          str = ""
+    draft:           str = ""
+    post_id:         str = ""
+    angles:          list = []
+    actions:         list = []
+    summary:         str = ""
+    approval_status: str = ""  # "" | "approved" | "edited" | "rejected" — only meaningful when status=="complete"
+
+
+class SessionThreadsResponse(BaseModel):
+    session_id: str
+    threads:    list[ThreadStateResponse] = []
 
 
 class ResumeRequest(BaseModel):
@@ -73,14 +99,16 @@ class TopicPayload(BaseModel):
 
 
 class DraftFromTopicRequest(BaseModel):
-    topic:    TopicPayload
-    platform: str = "linkedin"   # forward-compat; only linkedin is wired up today
+    topic:      TopicPayload
+    platform:   str = "linkedin"   # forward-compat; only linkedin is wired up today
+    session_id: str | None = None
 
 
-def _build_initial_state(prompt: str, user_id: str) -> dict:
+def _build_initial_state(prompt: str, user_id: str, session_id: str) -> dict:
     return {
         "query":           prompt,
         "user_id":         user_id,
+        "session_id":      session_id,
         "messages":        [HumanMessage(content=prompt)],
         "task_type":       "",
         "route":           "",
@@ -116,7 +144,7 @@ async def stream_query(
                                                           progress, never a node/tool/agent name
                                                           (see backend/ai/activity.py)
       {"type": "done",     "status": "awaiting_approval", "thread_id": "...", "post_id"?}
-      {"type": "done",     "status": "awaiting_angle_selection", "thread_id": "...", "angles": [...], "actions": [...]}
+      {"type": "done",     "status": "awaiting_angle_selection", "thread_id": "...", "angles": [...], "actions": [...], "summary": "..."}
       {"type": "done",     "status": "complete"}
       {"type": "error",    "message": "..."}
 
@@ -144,8 +172,8 @@ async def stream_query(
         raise HTTPException(status_code=422, detail="Prompt cannot be empty.")
 
     session = ThreadSessionService(ThreadRegistryService(db))
-    thread_id, config = session.start(str(user.id))
-    initial_state = _build_initial_state(body.prompt, str(user.id))
+    thread_id, session_id, config = session.start(str(user.id), body.session_id)
+    initial_state = _build_initial_state(body.prompt, str(user.id), session_id)
 
     async def generate():
         has_writer_output = False
@@ -187,7 +215,7 @@ async def stream_query(
             if has_writer_output:
                 final_state = await assistant.aget_state(config)
                 post_id = final_state.values.get("post_id", "")
-                yield f"data: {json.dumps({'type': 'done', 'status': 'awaiting_approval', 'thread_id': thread_id, 'route': 'style_retrieval', 'post_id': post_id})}\n\n"
+                yield f"data: {json.dumps({'type': 'done', 'status': 'awaiting_approval', 'thread_id': thread_id, 'session_id': session_id, 'route': 'style_retrieval', 'post_id': post_id})}\n\n"
 
             else:
                 # Nothing streamed live this turn. Either supervisor_node's
@@ -200,23 +228,25 @@ async def stream_query(
                 final_state = await assistant.aget_state(config)
                 values      = final_state.values
                 route       = values.get("route") or "direct"
+                shaped      = shape_thread_state(thread_id, final_state)
 
-                if final_state.interrupts:
+                if shaped["status"] == "awaiting_angle_selection":
                     # Paused mid-graph (angle_review_node) — thread stays active,
                     # no session.complete(), until /resume sends a decision. Same
                     # reason the has_writer_output branch above skips it too.
-                    interrupt_value = final_state.interrupts[0].value
                     angle_payload = {
-                        "type":      "done",
-                        "status":    "awaiting_angle_selection",
-                        "thread_id": thread_id,
-                        "angles":    interrupt_value.get("angles", []),
-                        "actions":   interrupt_value.get("actions", []),
+                        "type":       "done",
+                        "status":     "awaiting_angle_selection",
+                        "thread_id":  thread_id,
+                        "session_id": session_id,
+                        "angles":     shaped["angles"],
+                        "actions":    shaped["actions"],
+                        "summary":    shaped["summary"],
                     }
                     yield f"data: {json.dumps(angle_payload)}\n\n"
                 else:
-                    digest_answer = values.get("answer") or ""
-                    done_payload  = {"type": "done", "status": "complete", "route": route}
+                    digest_answer = shaped["answer"]
+                    done_payload  = {"type": "done", "status": "complete", "route": route, "session_id": session_id}
 
                     session.complete(thread_id)
 
@@ -255,8 +285,8 @@ async def query(
         raise HTTPException(status_code=422, detail="Prompt cannot be empty.")
 
     session = ThreadSessionService(ThreadRegistryService(db))
-    thread_id, config = session.start(str(user.id))
-    initial_state = _build_initial_state(body.prompt, str(user.id))
+    thread_id, session_id, config = session.start(str(user.id), body.session_id)
+    initial_state = _build_initial_state(body.prompt, str(user.id), session_id)
 
     state = await assistant.ainvoke(initial_state, config=config)
     logger.info("query: state after invoke — draft=%r answer=%r route=%r",
@@ -267,6 +297,7 @@ async def query(
             answer="",
             draft=state["draft"],
             thread_id=thread_id,
+            session_id=session_id,
             status="awaiting_approval",
         )
 
@@ -275,16 +306,15 @@ async def query(
     # payload, so it needs the same aget_state() check /resume uses.
     if not state.get("answer"):
         final_state = await assistant.aget_state(config)
-        if final_state.interrupts:
-            interrupt_value = final_state.interrupts[0].value
+        shaped = shape_thread_state(thread_id, final_state)
+        if shaped["status"] == "awaiting_angle_selection":
             return QueryResponse(
-                answer="", thread_id=thread_id, status="awaiting_angle_selection",
-                angles=interrupt_value.get("angles", []),
-                actions=interrupt_value.get("actions", []),
+                answer="", thread_id=thread_id, session_id=session_id, status="awaiting_angle_selection",
+                angles=shaped["angles"], actions=shaped["actions"], summary=shaped["summary"],
             )
 
     session.complete(thread_id)
-    return QueryResponse(answer=state["answer"], post_id=state.get("post_id", ""))
+    return QueryResponse(answer=state["answer"], session_id=session_id, post_id=state.get("post_id", ""))
 
 
 # ── /draft-from-topic — write a post from ONE picked research topic card ──────
@@ -308,10 +338,11 @@ async def draft_from_topic(
     user_prompt = f"Write a LinkedIn post about: {body.topic.title}"
 
     session = ThreadSessionService(ThreadRegistryService(db))
-    thread_id, config = session.start(str(user.id))
+    thread_id, session_id, config = session.start(str(user.id), body.session_id)
     initial_state = {
         "query":           body.topic.title,
         "user_id":         str(user.id),
+        "session_id":      session_id,
         "messages":        [HumanMessage(content=user_prompt)],
         "task_type":       "write",
         "route":           "style_retrieval",
@@ -335,10 +366,10 @@ async def draft_from_topic(
                 state.get("draft", "")[:80], state.get("answer", "")[:80])
 
     if state.get("draft") and not state.get("answer"):
-        return QueryResponse(answer="", draft=state["draft"], thread_id=thread_id, status="awaiting_approval")
+        return QueryResponse(answer="", draft=state["draft"], thread_id=thread_id, session_id=session_id, status="awaiting_approval")
 
     session.complete(thread_id)
-    return QueryResponse(answer=state.get("answer", ""), post_id=state.get("post_id", ""))
+    return QueryResponse(answer=state.get("answer", ""), session_id=session_id, post_id=state.get("post_id", ""))
 
 
 # ── /resume — HITL approval ────────────────────────────────────────────────────
@@ -365,25 +396,25 @@ async def resume(
     # its own interrupt). Check for that via aget_state(), same as /stream
     # does, before deciding the thread is done.
     final_state = await assistant.aget_state(config)
-    values      = final_state.values
+    shaped      = shape_thread_state(body.thread_id, final_state)
 
-    if final_state.interrupts:
-        interrupt_value = final_state.interrupts[0].value
+    if shaped["status"] == "awaiting_approval":
+        # human_approval_node paused again — e.g. the picked angle just
+        # got written up and is now awaiting approval.
+        return QueryResponse(
+            answer="", draft=shaped["draft"],
+            thread_id=body.thread_id, status="awaiting_approval",
+        )
 
-        if "draft" in interrupt_value:
-            # human_approval_node paused again — e.g. the picked angle just
-            # got written up and is now awaiting approval.
-            return QueryResponse(
-                answer="", draft=interrupt_value["draft"],
-                thread_id=body.thread_id, status="awaiting_approval",
-            )
-
+    if shaped["status"] == "awaiting_angle_selection":
         # angle_review_node re-interrupted — bad pick, an "expand" result, or
         # the "modify"/invalid-angle_id error note re-surfacing the same angles.
+        # expanded_angle_id/expanded_summary/error are resume-action-specific,
+        # not part of the general thread shape, so they're read separately here.
+        interrupt_value = final_state.interrupts[0].value
         return QueryResponse(
             answer="", thread_id=body.thread_id, status="awaiting_angle_selection",
-            angles=interrupt_value.get("angles", []),
-            actions=interrupt_value.get("actions", []),
+            angles=shaped["angles"], actions=shaped["actions"], summary=shaped["summary"],
             expanded_angle_id=interrupt_value.get("expanded_angle_id"),
             expanded_summary=interrupt_value.get("expanded_summary", ""),
             error=interrupt_value.get("error", ""),
@@ -391,7 +422,47 @@ async def resume(
 
     # No pending interrupt — the graph actually reached END.
     session.complete(body.thread_id)
-    return QueryResponse(answer=values.get("answer", ""), post_id=values.get("post_id", ""))
+    return QueryResponse(answer=shaped["answer"], post_id=shaped["post_id"])
+
+
+# ── GET /threads, GET /sessions/{id}/threads — read-back for chat rehydration ─
+#
+# Both routes are read-only: they use ThreadRegistryService.is_owner() directly
+# (no .touch() side effect), unlike /resume's resume_config(). This is the
+# "door" that was previously missing entirely — assistant.aget_state() was
+# only ever called inline, right after driving that same request's own turn
+# forward, with no way for the frontend to read a thread back out afterward.
+
+@router.get("/threads/{thread_id}", response_model=ThreadStateResponse)
+async def get_thread(
+    thread_id: str,
+    assistant = Depends(get_assistant),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not ThreadRegistryService(db).is_owner(thread_id, str(user.id)):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    state = await assistant.aget_state({"configurable": {"thread_id": thread_id}})
+    return ThreadStateResponse(**shape_thread_state(thread_id, state))
+
+
+@router.get("/sessions/{session_id}/threads", response_model=SessionThreadsResponse)
+async def get_session_threads(
+    session_id: str,
+    assistant = Depends(get_assistant),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """All threads belonging to one frontend chat, oldest first — powers
+    sidebar-switch/reload rehydration on the frontend. Ownership is enforced
+    by list_for_session() itself (scoped by user_id), so an unowned/unknown
+    session_id just yields an empty list rather than a 403."""
+    rows = ThreadRegistryService(db).list_for_session(session_id, str(user.id))
+    threads = []
+    for row in rows:
+        state = await assistant.aget_state({"configurable": {"thread_id": str(row.thread_id)}})
+        threads.append(ThreadStateResponse(**shape_thread_state(str(row.thread_id), state, row.created_at)))
+    return SessionThreadsResponse(session_id=session_id, threads=threads)
 
 
 # ── /refine — single-call writer refinement (no graph traversal) ──────────────

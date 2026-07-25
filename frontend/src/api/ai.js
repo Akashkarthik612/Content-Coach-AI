@@ -8,8 +8,8 @@ api.interceptors.request.use(config => {
   return config;
 });
 
-export const queryAI = (prompt) =>
-  api.post('/query', { prompt }).then(r => r.data);
+export const queryAI = (prompt, sessionId = null) =>
+  api.post('/query', { prompt, session_id: sessionId }).then(r => r.data);
 
 export const resumeAI = (thread_id, action, content = '', angle_id = null) =>
   api.post('/resume', { thread_id, action, content, angle_id }).then(r => r.data);
@@ -24,24 +24,37 @@ export const refineAI = (draft, note) =>
  *
  * @param {object} topic     - one item from a message's `topics` array
  * @param {string} platform  - defaults to 'linkedin' (only platform wired up today)
- * @returns {Promise<{answer, draft, thread_id, status}>}
+ * @param {string} [sessionId] - groups this thread with earlier ones from the same chat
+ * @returns {Promise<{answer, draft, thread_id, session_id, status}>}
  */
-export const draftFromTopic = (topic, platform = 'linkedin') =>
-  api.post('/draft-from-topic', { topic, platform }).then(r => r.data);
+export const draftFromTopic = (topic, platform = 'linkedin', sessionId = null) =>
+  api.post('/draft-from-topic', { topic, platform, session_id: sessionId }).then(r => r.data);
+
+/**
+ * Fetch the full stored history for one frontend "chat" — every thread_id
+ * grouped under this session_id, oldest first, each shaped by the backend's
+ * shape_thread_state(). Powers sidebar-switch/reload rehydration.
+ *
+ * @param {string} sessionId
+ * @returns {Promise<{session_id, threads: Array}>}
+ */
+export const getSessionThreads = (sessionId) =>
+  api.get(`/sessions/${sessionId}/threads`).then(r => r.data);
 
 /**
  * SSE streaming query. Calls /stream and fires callbacks as events arrive.
  *
  * @param {string}   prompt
+ * @param {string}   sessionId  - groups this thread with earlier ones from the same chat
  * @param {function} onToken    - called with each text chunk: (chunk: string) => void
- * @param {function} onDone     - called once at end: ({ status, thread_id? }) => void
+ * @param {function} onDone     - called once at end: ({ status, thread_id?, session_id? }) => void
  * @param {function} onError    - called on network/parse error: (message: string) => void
  * @param {function} [onActivity] - called per semantic progress event:
  *                                  ({ id, parentId, title, description, status }) => void
  *                                  Never a node/tool/agent name — see backend/ai/activity.py.
  * @returns {function} abort  - call to cancel the stream mid-flight
  */
-export function streamQuery(prompt, onToken, onDone, onError, onActivity) {
+export function streamQuery(prompt, sessionId, onToken, onDone, onError, onActivity) {
   const controller = new AbortController();
   const uid = localStorage.getItem('user_id') || '';
 
@@ -53,7 +66,7 @@ export function streamQuery(prompt, onToken, onDone, onError, onActivity) {
           'Content-Type': 'application/json',
           'X-User-Id':    uid,
         },
-        body:   JSON.stringify({ prompt }),
+        body:   JSON.stringify({ prompt, session_id: sessionId }),
         signal: controller.signal,
       });
 

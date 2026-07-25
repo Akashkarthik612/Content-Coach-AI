@@ -8,6 +8,12 @@ class AgentState(TypedDict):
     query:   str
     user_id: str
 
+    # Groups this thread with sibling threads from the same frontend "chat" —
+    # read only by get_session_context (tools.py) to look up earlier threads.
+    # Absent on any checkpoint written before this field existed; always read
+    # via .get(), never direct indexing, since old checkpoints won't have it.
+    session_id: str
+
     # Message history — add_messages reducer appends every turn.
     # Includes HumanMessage, AIMessage (with tool_calls), and ToolMessage (tool results).
     messages: Annotated[list[HumanMessage | AIMessage], add_messages]
@@ -21,9 +27,12 @@ class AgentState(TypedDict):
     # Overrunning it forces route="direct" instead of raising.
     steps_taken: int
 
-    # Set by researcher_node: {"angles": [5 ResearchAngle dicts], "search_context": str}.
-    # Read by angle_review_node (surfaced in the interrupt payload) and by
-    # map_chosen_angle_node (indexed by picked_angle_id) once the user picks one.
+    # Set by researcher_node: {"angles": [5 ResearchAngle dicts], "search_context": str,
+    # "summary": str}. "summary" is a short (2-4 sentence) personalized intro, grounded in
+    # the user's profile when available, explaining what's being proposed and why — may be
+    # "" if the LLM omitted it, never required. Read by angle_review_node (surfaced in the
+    # interrupt payload) and by map_chosen_angle_node (indexed by picked_angle_id) once the
+    # user picks one.
     research_result: dict
 
     # Set by angle_review_node once the user picks an angle (interrupt resume

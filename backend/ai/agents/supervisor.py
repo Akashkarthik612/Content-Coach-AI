@@ -6,6 +6,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, ValidationError
 
 from backend.ai.agents.tools import (
+    get_session_context,
     get_style_memory,
     get_topic_inventory,
     search_vault_posts,
@@ -42,6 +43,7 @@ _all_tools = [
     search_vault_posts,
     get_topic_inventory,
     get_style_memory,
+    get_session_context,
 ]
 _llm_agent = _llm.bind_tools(_all_tools)
 
@@ -67,6 +69,13 @@ Tools available (always pass user_id="{user_id}"):
   - search_vault_posts(user_id, query)   → search the user's saved posts
   - get_topic_inventory(user_id)         → all post titles and tags
   - get_style_memory(user_id)            → the user's long/short-term writing style
+  - get_session_context(question)        → look up prior drafts/angles/answers from
+                                            EARLIER IN THIS SAME CHAT SESSION. Call this
+                                            ONLY when the current message references
+                                            something said earlier in this conversation
+                                            (e.g. "that draft", "the audience we discussed",
+                                            "the last post") — never for a fresh,
+                                            self-contained request.
 
 ROUTING RULES
 -------------

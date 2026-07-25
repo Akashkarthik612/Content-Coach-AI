@@ -16,15 +16,18 @@ import asyncio
 import json
 import logging
 import re
+from typing import Annotated
 from uuid import UUID
 
 from langchain_core.tools import tool
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langgraph.prebuilt import InjectedState
 from sqlalchemy import text
 from tavily import TavilyClient
 
 logger = logging.getLogger(__name__)
 
+from backend.ai.checkpointing.models import ThreadRegistry
 from backend.core.config import settings
 from backend.core.database import SessionLocal
 from backend.core.cache import (
@@ -33,6 +36,8 @@ from backend.core.cache import (
     _TOOL_TTL, _SEARCH_TTL,
 )
 from backend.vault.models import Post, PostStatus, PostTag, PostVersion
+
+_SESSION_CONTEXT_MAX_THREADS = 6  # recency cap — keeps the recall tool's own cost bounded even in a very long session
 
 EMBEDDING_DIM = 768
 
@@ -97,6 +102,17 @@ def _fetch_style_samples_sql(uid: UUID, limit: int = 2) -> list:
             .limit(limit)
             .all()
         )
+
+
+def _fetch_session_thread_ids_sql(user_id: str, session_id: str) -> list[str]:
+    with SessionLocal() as db:
+        rows = (
+            db.query(ThreadRegistry.thread_id)
+            .filter(ThreadRegistry.session_id == UUID(session_id), ThreadRegistry.user_id == UUID(user_id))
+            .order_by(ThreadRegistry.created_at.asc())
+            .all()
+        )
+    return [str(r[0]) for r in rows]
 
 
 def _fetch_topic_inventory_sql(uid: UUID) -> tuple:
@@ -245,6 +261,42 @@ async def get_style_memory(user_id: str) -> str:
     if not memory:
         return "[NO_CONTEXT_FOUND: no style memory yet — user hasn't published enough posts]"
     return format_style_memory_for_writer(memory)
+
+
+@tool
+async def get_session_context(question: str, state: Annotated[dict, InjectedState]) -> str:
+    """Look up prior drafts, research angles, or answers from earlier in this
+    chat session. Call this ONLY when the user's message references something
+    said earlier in the same conversation (e.g. "that draft", "the audience we
+    discussed", "the last post") — not for a fresh, self-contained request."""
+    session_id = state.get("session_id")
+    user_id    = state["user_id"]
+    logger.debug("get_session_context: user_id=%s session_id=%s", user_id, session_id)
+
+    if not session_id:
+        return "[NO_SESSION_CONTEXT: this is a new session with no prior history]"
+
+    thread_ids = await asyncio.to_thread(_fetch_session_thread_ids_sql, user_id, session_id)
+    if not thread_ids:
+        return "[NO_SESSION_CONTEXT: no earlier threads in this session]"
+
+    # Local imports avoid a module-load-time circular import (assistant_registry
+    # is set by main.py only after graph.py/tools.py have already been imported).
+    from backend.ai.assistant_registry import get_assistant_instance
+    from backend.ai.thread_state import shape_thread_state
+
+    assistant = get_assistant_instance()
+    parts = []
+    for tid in thread_ids[-_SESSION_CONTEXT_MAX_THREADS:]:
+        thread_state = await assistant.aget_state({"configurable": {"thread_id": tid}})
+        shaped = shape_thread_state(tid, thread_state)
+        summary = shaped["answer"] or shaped["draft"]
+        if summary:
+            parts.append(f'Earlier, you asked: "{shaped["user_prompt"]}"\nResponse: {summary}')
+
+    if not parts:
+        return "[NO_SESSION_CONTEXT: nothing usable found from earlier in this session]"
+    return "\n\n---\n\n".join(parts)
 
 
 @tool

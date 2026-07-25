@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 _ACTIONS = ["pick", "expand", "modify", "none_fit"]
 
-
+1
 async def angle_review_node(state: AgentState) -> dict:
     """
     INTERRUPT node — pauses after researcher_node so the frontend can show the
@@ -26,8 +26,12 @@ async def angle_review_node(state: AgentState) -> dict:
     """
     angles = state["research_result"]["angles"]
     search_context = state["research_result"].get("search_context", "")
+    # Personalized 2-4 line intro from researcher_node — kept in every re-interrupt
+    # payload below so an "expand"/"modify"/invalid-pick round-trip never drops the
+    # intro text the frontend is already showing.
+    summary = state["research_result"].get("summary", "")
 
-    payload = {"angles": angles, "actions": _ACTIONS}
+    payload = {"angles": angles, "actions": _ACTIONS, "summary": summary}
 
     while True:
         decision: dict = interrupt(payload)
@@ -37,7 +41,7 @@ async def angle_review_node(state: AgentState) -> dict:
             angle_id = decision.get("angle_id")
             if not isinstance(angle_id, int) or not (0 <= angle_id < len(angles)):
                 logger.warning("angle_review_node: invalid angle_id=%r on pick — re-prompting", angle_id)
-                payload = {"angles": angles, "actions": _ACTIONS, "error": "Invalid angle_id."}
+                payload = {"angles": angles, "actions": _ACTIONS, "summary": summary, "error": "Invalid angle_id."}
                 continue
             return {"picked_angle_id": angle_id, "entry_point": "angle_review"}
 
@@ -45,14 +49,15 @@ async def angle_review_node(state: AgentState) -> dict:
             angle_id = decision.get("angle_id")
             if not isinstance(angle_id, int) or not (0 <= angle_id < len(angles)):
                 logger.warning("angle_review_node: invalid angle_id=%r on expand — re-prompting", angle_id)
-                payload = {"angles": angles, "actions": _ACTIONS, "error": "Invalid angle_id."}
+                payload = {"angles": angles, "actions": _ACTIONS, "summary": summary, "error": "Invalid angle_id."}
                 continue
-            summary = await expand_research_angle(angles[angle_id], search_context)
+            expanded_summary = await expand_research_angle(angles[angle_id], search_context)
             payload = {
                 "angles": angles,
                 "actions": _ACTIONS,
+                "summary": summary,
                 "expanded_angle_id": angle_id,
-                "expanded_summary": summary,
+                "expanded_summary": expanded_summary,
             }
             continue
 
@@ -63,6 +68,7 @@ async def angle_review_node(state: AgentState) -> dict:
             payload = {
                 "angles": angles,
                 "actions": _ACTIONS,
+                "summary": summary,
                 "error": "Modify isn't supported yet — pick an angle, expand one, or say none of these fit.",
             }
             continue

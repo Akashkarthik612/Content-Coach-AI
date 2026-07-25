@@ -4,7 +4,7 @@ import {
   Plus, Search, Trash2, Settings, ChevronDown, Check, Copy, RotateCcw,
   ArrowLeft, Clock, Send, X, ThumbsUp, MessageCircle, Repeat2, PanelLeft, Maximize2,
 } from 'lucide-react';
-import { streamQuery, resumeAI, refineAI } from '../api/ai';
+import { streamQuery, resumeAI, refineAI, getSessionThreads } from '../api/ai';
 import { publishToLinkedIn } from '../api/linkedin';
 import { getVersions } from '../api/vault';
 import { getProfile } from '../api/profile';
@@ -27,8 +27,6 @@ const MUTED_2   = '#8A8C7C';
 const MUTED_3   = '#A6A895';
 const HAIRLINE  = 'rgba(27,28,20,.09)';
 const DANGER    = '#B42318';
-const AMBER_BG  = '#FCEED6';
-const AMBER_BORDER = 'rgba(180,83,9,.35)';
 const SERIF  = "'EB Garamond', serif";
 const SANS   = "'Hanken Grotesk', system-ui, sans-serif";
 const MONO   = "'JetBrains Mono', monospace";
@@ -69,6 +67,38 @@ function humanizeProvokes(type) {
 
 let _seq = 1;
 const nextId = () => _seq++;
+
+/* ────────────────────────────────────────────────────────────────────────
+   Rehydration — maps one backend ThreadStateResponse (GET /sessions/{id}/threads)
+   back into the [userMsg, aiMsg] pair MessageBubble already knows how to
+   render. Mirrors send()'s onDone branching (angles / draft / direct), plus
+   approval_status so an already-approved/edited/declined draft shows the
+   right decision badge instead of live Approve/Decline buttons.
+   ──────────────────────────────────────────────────────────────────────── */
+function threadToMessages(t) {
+  const userMsg = { id: nextId(), role: 'user', text: t.user_prompt };
+  const aiId = nextId();
+  const base = {
+    id: aiId, role: 'ai', phase: 'done', text: '', activities: [], traceOpen: false,
+    angles: [], summary: '', expandingIndex: -1, pickingIndex: -1, expandedSummaries: {},
+    decision: null, postId: t.post_id || '', threadId: t.thread_id,
+    copied: false, error: '', userPrompt: t.user_prompt,
+    answerNote: '',
+  };
+
+  if (t.status === 'awaiting_angle_selection') {
+    return [userMsg, { ...base, kind: 'angles', angles: t.angles || [], summary: t.summary || '' }];
+  }
+  if (t.status === 'awaiting_approval') {
+    return [userMsg, { ...base, kind: 'draft', text: t.draft || '' }];
+  }
+  // complete
+  if (t.draft) {
+    const decisionMap = { approved: 'approved', edited: 'edited', rejected: 'declined' };
+    return [userMsg, { ...base, kind: 'draft', text: t.draft, decision: decisionMap[t.approval_status] || null }];
+  }
+  return [userMsg, { ...base, kind: 'direct', text: t.answer || '' }];
+}
 
 /* ────────────────────────────────────────────────────────────────────────
    Activity timeline — the only place that turns backend `activity` events
@@ -216,7 +246,7 @@ function AngleCard({ angle, index, onPick, onExpand, expanding, picking, expande
 /* ────────────────────────────────────────────────────────────────────────
    One AI / user message
    ──────────────────────────────────────────────────────────────────────── */
-function MessageBubble({ msg, onToggleTrace, onToggleAngles, onPick, onExpandAngle, onNoneFit, onApprove, onDecline, onOpenModify, onModifyTextChange, onCancelModify, onSendModify, onCopy, onOpenWorkspace, onRegenerate }) {
+function MessageBubble({ msg, onToggleTrace, onToggleAngles, onPick, onExpandAngle, onNoneFit, onCopy, onOpenWorkspace, onRegenerate }) {
   if (msg.role === 'user') {
     return (
       <div style={{ display: 'flex', justifyContent: 'flex-end', animation: 'ccRise .5s cubic-bezier(.22,1,.36,1) both' }}>
@@ -255,6 +285,11 @@ function MessageBubble({ msg, onToggleTrace, onToggleAngles, onPick, onExpandAng
 
         {msg.kind === 'angles' && phaseDone && (
           <div style={{ marginTop: 20, animation: 'ccFade .5s ease both' }}>
+            {msg.summary && (
+              <div style={{ fontFamily: SERIF, fontSize: 16, lineHeight: 1.65, color: '#3A3C30', marginBottom: 16 }}>
+                {msg.summary}
+              </div>
+            )}
             <button
               onClick={() => onToggleAngles(msg.id)}
               style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', border: 'none', background: 'none', padding: 0, cursor: 'pointer', marginBottom: 16 }}
@@ -270,16 +305,15 @@ function MessageBubble({ msg, onToggleTrace, onToggleAngles, onPick, onExpandAng
             </button>
 
             {msg.anglesOpen !== false ? (
-              <div style={{ display: 'flex', flexDirection: 'row', gap: 14, overflowX: 'auto', overflowY: 'hidden', paddingBottom: 6, scrollSnapType: 'x proximity' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                 {msg.angles.map((a, i) => (
-                  <div key={i} style={{ flex: '0 0 300px', width: 300, scrollSnapAlign: 'start' }}>
-                    <AngleCard
-                      angle={a} index={i}
-                      onPick={onPick} onExpand={onExpandAngle}
-                      expanding={msg.expandingIndex === i} picking={msg.pickingIndex === i}
-                      expandedSummary={msg.expandedSummaries?.[i]}
-                    />
-                  </div>
+                  <AngleCard
+                    key={i}
+                    angle={a} index={i}
+                    onPick={onPick} onExpand={onExpandAngle}
+                    expanding={msg.expandingIndex === i} picking={msg.pickingIndex === i}
+                    expandedSummary={msg.expandedSummaries?.[i]}
+                  />
                 ))}
               </div>
             ) : (
@@ -305,26 +339,9 @@ function MessageBubble({ msg, onToggleTrace, onToggleAngles, onPick, onExpandAng
 
         {msg.kind === 'draft' && phaseDone && !msg.decision && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 16, flexWrap: 'wrap', animation: 'ccFade .4s ease both' }}>
-            <button onClick={onApprove} style={pillBtn('#DCFCE7', '#15803D')}><Check size={13} /> Approve</button>
-            <button onClick={onOpenModify} style={pillBtn('#F6F1E8', '#3A3C30')}>Modify</button>
-            <button onClick={onDecline} style={pillBtn('#FEE2E2', DANGER)}>Decline</button>
+            <button onClick={() => onOpenWorkspace(msg.id)} style={pillBtn(ACCENT, '#fff')}>Open Workspace →</button>
             <span style={{ flex: 1 }} />
             <button onClick={onCopy} style={pillBtn('transparent', MUTED_2)}><Copy size={13} /> {msg.copied ? 'Copied' : 'Copy'}</button>
-          </div>
-        )}
-
-        {msg.kind === 'draft' && msg.modifying && (
-          <div style={{ marginTop: 14, background: AMBER_BG, border: `1px solid ${AMBER_BORDER}`, borderRadius: 12, padding: 14 }}>
-            <textarea
-              value={msg.modifyText}
-              onChange={(e) => onModifyTextChange(msg.id, e.target.value)}
-              rows={5}
-              style={{ width: '100%', border: `1px solid ${HAIRLINE}`, borderRadius: 8, padding: 10, fontSize: 13.5, fontFamily: SANS, resize: 'vertical' }}
-            />
-            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-              <button onClick={() => onCancelModify(msg.id)} style={pillBtn('transparent', MUTED_2)}>Cancel</button>
-              <button onClick={() => onSendModify(msg.id)} style={pillBtn('#B45309', '#fff')}>Save changes</button>
-            </div>
           </div>
         )}
 
@@ -516,7 +533,7 @@ const iconBtn = { display: 'flex', alignItems: 'center', justifyContent: 'center
 /* ────────────────────────────────────────────────────────────────────────
    Workspace view — post-approval redraft/publish surface
    ──────────────────────────────────────────────────────────────────────── */
-function WorkspaceView({ ws, onBack, onModeChange, onDocChange, onCmdInput, onCmdKey, onSubmitCmd, onChip, onCopy, onPublish, onHistory, onToggleCmd, publishing, publishResult, versions, showVersions, userName, professionLine }) {
+function WorkspaceView({ ws, onBack, onModeChange, onDocChange, onCmdInput, onCmdKey, onSubmitCmd, onChip, onCopy, onPublish, onHistory, onToggleCmd, onApprove, onDecline, publishing, publishResult, versions, showVersions, userName, professionLine }) {
   const words = ws.docText.trim() ? ws.docText.trim().split(/\s+/).length : 0;
   const readTime = Math.max(1, Math.ceil(words / 200)) + ' min read';
   const isEdit = ws.mode === 'edit';
@@ -538,11 +555,26 @@ function WorkspaceView({ ws, onBack, onModeChange, onDocChange, onCmdInput, onCm
           <span style={pillTag('rgba(27,28,20,.05)', '#7A7C6C')}>{words} words</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {!ws.decision && (
+            <>
+              <button onClick={onApprove} style={pillBtn('#DCFCE7', '#15803D')}><Check size={13} /> Approve</button>
+              <button onClick={onDecline} style={pillBtn('#FEE2E2', DANGER)}>Decline</button>
+              <span style={{ width: 1, height: 18, background: HAIRLINE }} />
+            </>
+          )}
+          {ws.decision === 'approved' && <span style={pillTag('#DCFCE7', '#15803D')}>Approved · saved to your vault</span>}
+          {ws.decision === 'edited' && <span style={pillTag('#DCFCE7', '#15803D')}>Saved with your edits</span>}
           <button onClick={onCopy} style={pillBtn('transparent', MUTED_2)}><Copy size={13} /> {ws.copied ? 'Copied' : 'Copy'}</button>
           <button onClick={onHistory} style={pillBtn('transparent', MUTED_2)}><Clock size={13} /> History</button>
           <button onClick={onPublish} disabled={publishing} style={pillBtn(ACCENT, '#fff')}>{publishing ? 'Publishing…' : 'Publish'}</button>
         </div>
       </header>
+
+      {ws.error && (
+        <div style={{ padding: '8px 24px', fontSize: 12.5, color: DANGER, background: '#FEE2E2' }}>
+          {ws.error}
+        </div>
+      )}
 
       {publishResult && (
         <div style={{ padding: '8px 24px', fontSize: 12.5, color: publishResult.ok ? '#15803D' : DANGER, background: publishResult.ok ? '#DCFCE7' : '#FEE2E2' }}>
@@ -684,6 +716,7 @@ export default function ChatPage() {
   const [search, setSearch] = useState('');
   const [chats, setChats] = useState([]);          // in-memory session history only
   const [activeChat, setActiveChat] = useState(-1);
+  const [currentSessionId, setCurrentSessionId] = useState(() => crypto.randomUUID());
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -709,6 +742,24 @@ export default function ChatPage() {
   }, []);
   const professionLine = profile?.profession || profile?.role || 'Creator on Honne';
 
+  // Restore the most recent chat on a fresh page load — the same read path
+  // (GET /sessions/{id}/threads) selectChat() below uses for sidebar switching.
+  useEffect(() => {
+    const lastSessionId = localStorage.getItem('lastSessionId');
+    if (!lastSessionId) return;
+    setCurrentSessionId(lastSessionId);
+    getSessionThreads(lastSessionId)
+      .then(data => {
+        const rehydrated = (data.threads || []).flatMap(threadToMessages);
+        if (rehydrated.length > 0) setMessages(rehydrated);
+      })
+      .catch(() => { /* no prior session, or it's since expired — start fresh */ });
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('lastSessionId', currentSessionId);
+  }, [currentSessionId]);
+
   const scrollDown = useCallback(() => {
     requestAnimationFrame(() => {
       if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -723,13 +774,32 @@ export default function ChatPage() {
     abortRef.current?.();
     if (messages.length > 0) {
       const firstUser = messages.find(m => m.role === 'user');
-      setChats(prev => [{ id: nextId(), title: firstUser ? firstUser.text.slice(0, 60) : 'New chat', time: 'Just now' }, ...prev]);
+      setChats(prev => [{ id: nextId(), sessionId: currentSessionId, title: firstUser ? firstUser.text.slice(0, 60) : 'New chat', time: 'Just now' }, ...prev]);
     }
+    setCurrentSessionId(crypto.randomUUID());
+    setActiveChat(-1);
     setMessages([]);
     setDraft('');
     setBusy(false);
     setView('chat');
     setWs(null);
+  };
+
+  const selectChat = async (i) => {
+    const chat = chats[i];
+    if (!chat) return;
+    abortRef.current?.();
+    setActiveChat(i);
+    setCurrentSessionId(chat.sessionId);
+    setBusy(false);
+    setView('chat');
+    setWs(null);
+    try {
+      const data = await getSessionThreads(chat.sessionId);
+      setMessages((data.threads || []).flatMap(threadToMessages));
+    } catch {
+      setMessages([]);
+    }
   };
 
   const send = (overrideText) => {
@@ -740,16 +810,18 @@ export default function ChatPage() {
     const aiId = nextId();
     const aiMsg = {
       id: aiId, role: 'ai', phase: 'working', kind: '', text: '',
-      activities: [], traceOpen: null, angles: [], expandingIndex: -1, pickingIndex: -1,
+      activities: [], traceOpen: null, angles: [], summary: '', expandingIndex: -1, pickingIndex: -1,
       expandedSummaries: {}, decision: null, postId: '', threadId: '',
-      copied: false, error: '', modifying: false, modifyText: '', userPrompt: text,
+      copied: false, error: '', userPrompt: text,
     };
     setMessages(prev => [...prev, userMsg, aiMsg]);
     setDraft('');
     setBusy(true);
     scrollDown();
 
+    let draftText = '';
     const onToken = (chunk) => {
+      draftText += chunk;
       patchMessage(aiId, (m) => ({ phase: 'streaming', kind: m.kind || 'draft', text: m.text + chunk }));
       scrollDown();
     };
@@ -758,10 +830,19 @@ export default function ChatPage() {
     };
     const onDone = (data) => {
       setBusy(false);
+      if (data.session_id) setCurrentSessionId(data.session_id);
       if (data.status === 'awaiting_angle_selection') {
-        patchMessage(aiId, { phase: 'done', kind: 'angles', angles: data.angles || [], threadId: data.thread_id });
+        patchMessage(aiId, { phase: 'done', kind: 'angles', angles: data.angles || [], summary: data.summary || '', threadId: data.thread_id });
       } else if (data.status === 'awaiting_approval') {
         patchMessage(aiId, { phase: 'done', kind: 'draft', threadId: data.thread_id, postId: data.post_id || '' });
+        setWs({
+          messageId: aiId, threadId: data.thread_id, title: text.slice(0, 60) || 'Untitled draft',
+          docText: draftText, originalDraft: draftText, decision: null,
+          mode: 'edit', commands: [], cmdInput: '', postId: data.post_id || '', copied: false, error: '',
+        });
+        setPublishResult(null);
+        setShowVersions(false);
+        setView('workspace');
       } else {
         patchMessage(aiId, (m) => ({ phase: 'done', kind: 'direct', text: m.text || data.answer || '' }));
       }
@@ -772,7 +853,7 @@ export default function ChatPage() {
       patchMessage(aiId, { phase: 'done', error: message });
     };
 
-    abortRef.current = streamQuery(text, onToken, onDone, onError, onActivity);
+    abortRef.current = streamQuery(text, currentSessionId, onToken, onDone, onError, onActivity);
   };
 
   const toggleTrace = (id) => {
@@ -790,13 +871,22 @@ export default function ChatPage() {
     try {
       const data = await resumeAI(msg.threadId, 'pick', '', index);
       if (data.status === 'awaiting_angle_selection') {
-        patchMessage(aiId, { pickingIndex: -1, angles: data.angles || [], error: data.error || '' });
+        patchMessage(aiId, { pickingIndex: -1, angles: data.angles || [], summary: data.summary || '', error: data.error || '' });
       } else if (data.status === 'awaiting_approval') {
         // Drafted from the picked angle — this same message now carries the draft.
+        const draftText = data.draft || data.answer || '';
         patchMessage(aiId, {
-          pickingIndex: -1, kind: 'draft', text: data.draft || data.answer || '',
+          pickingIndex: -1, kind: 'draft', text: draftText,
           phase: 'done', postId: data.post_id || '', decision: null,
         });
+        setWs({
+          messageId: aiId, threadId: msg.threadId, title: msg.userPrompt?.slice(0, 60) || 'Untitled draft',
+          docText: draftText, originalDraft: draftText, decision: null,
+          mode: 'edit', commands: [], cmdInput: '', postId: data.post_id || '', copied: false, error: '',
+        });
+        setPublishResult(null);
+        setShowVersions(false);
+        setView('workspace');
       }
     } catch {
       patchMessage(aiId, { pickingIndex: -1, error: 'Something went wrong drafting this angle.' });
@@ -825,7 +915,7 @@ export default function ChatPage() {
       const data = await resumeAI(msg.threadId, 'none_fit', '');
       if (data.status === 'awaiting_angle_selection') {
         // Re-classified back into another research pass — fresh angle set.
-        patchMessage(aiId, { angles: data.angles || [], expandedSummaries: {}, error: data.error || '' });
+        patchMessage(aiId, { angles: data.angles || [], summary: data.summary || '', expandedSummaries: {}, error: data.error || '' });
       } else {
         patchMessage(aiId, (m) => ({ kind: 'direct', text: data.answer || m.text, angles: [] }));
       }
@@ -834,49 +924,10 @@ export default function ChatPage() {
     }
   };
 
-  const approve = async (aiId) => {
-    const msg = messages.find(m => m.id === aiId);
-    if (!msg) return;
-    try {
-      const data = await resumeAI(msg.threadId, 'approved');
-      patchMessage(aiId, { decision: 'approved', postId: data.post_id || msg.postId, answerNote: data.answer });
-    } catch {
-      patchMessage(aiId, { error: 'Could not save the draft. Please try again.' });
-    }
-  };
-
-  const decline = async (aiId) => {
-    const msg = messages.find(m => m.id === aiId);
-    if (!msg) return;
-    try {
-      await resumeAI(msg.threadId, 'rejected');
-      patchMessage(aiId, { decision: 'declined' });
-    } catch {
-      patchMessage(aiId, { error: 'Something went wrong.' });
-    }
-  };
-
   const regenerate = (aiId) => {
     const msg = messages.find(m => m.id === aiId);
     if (!msg) return;
     send(msg.userPrompt);
-  };
-
-  const openModify = (aiId) => {
-    const msg = messages.find(m => m.id === aiId);
-    patchMessage(aiId, { modifying: true, modifyText: msg?.text || '' });
-  };
-  const modifyTextChange = (aiId, newText) => patchMessage(aiId, { modifyText: newText });
-  const cancelModify = (aiId) => patchMessage(aiId, { modifying: false });
-  const sendModify = async (aiId) => {
-    const msg = messages.find(m => m.id === aiId);
-    if (!msg) return;
-    try {
-      const data = await resumeAI(msg.threadId, 'edited', msg.modifyText);
-      patchMessage(aiId, { modifying: false, decision: 'edited', text: msg.modifyText, postId: data.post_id || msg.postId });
-    } catch {
-      patchMessage(aiId, { error: 'Could not save your edit.' });
-    }
   };
 
   const copyMsg = (aiId) => {
@@ -891,8 +942,9 @@ export default function ChatPage() {
     const msg = messages.find(m => m.id === aiId);
     if (!msg) return;
     setWs({
-      messageId: aiId, title: msg.userPrompt.slice(0, 60) || 'Untitled draft', docText: msg.text,
-      mode: 'edit', commands: [], cmdInput: '', postId: msg.postId, copied: false,
+      messageId: aiId, threadId: msg.threadId, title: msg.userPrompt.slice(0, 60) || 'Untitled draft',
+      docText: msg.text, originalDraft: msg.text, decision: msg.decision || null,
+      mode: 'edit', commands: [], cmdInput: '', postId: msg.postId, copied: false, error: '',
     });
     setPublishResult(null);
     setShowVersions(false);
@@ -901,6 +953,33 @@ export default function ChatPage() {
   const backToChat = () => setView('chat');
 
   const patchWs = (fields) => setWs(prev => (prev ? { ...prev, ...(typeof fields === 'function' ? fields(prev) : fields) } : prev));
+
+  const wsApprove = async () => {
+    if (!ws) return;
+    const edited = ws.docText !== ws.originalDraft;
+    try {
+      const data = edited
+        ? await resumeAI(ws.threadId, 'edited', ws.docText)
+        : await resumeAI(ws.threadId, 'approved');
+      const decision = edited ? 'edited' : 'approved';
+      const postId = data.post_id || ws.postId;
+      patchWs({ decision, postId, error: '' });
+      if (ws.messageId) patchMessage(ws.messageId, { decision, postId, text: ws.docText, answerNote: data.answer });
+    } catch {
+      patchWs({ error: 'Could not save the draft. Please try again.' });
+    }
+  };
+
+  const wsDecline = async () => {
+    if (!ws) return;
+    try {
+      await resumeAI(ws.threadId, 'rejected');
+      if (ws.messageId) patchMessage(ws.messageId, { decision: 'declined' });
+      backToChat();
+    } catch {
+      patchWs({ error: 'Something went wrong declining this draft.' });
+    }
+  };
 
   const submitWsCmd = async (text) => {
     const note = (text ?? ws?.cmdInput ?? '').trim();
@@ -975,6 +1054,8 @@ export default function ChatPage() {
           onPublish={wsPublish}
           onHistory={wsHistory}
           onToggleCmd={() => patchWs((w) => ({ cmdOpen: !(w.cmdOpen !== false) }))}
+          onApprove={wsApprove}
+          onDecline={wsDecline}
           publishing={publishing}
           publishResult={publishResult}
           versions={versions}
@@ -987,7 +1068,7 @@ export default function ChatPage() {
           <Sidebar
             open={sideOpen} onToggle={() => setSideOpen(o => !o)}
             chats={chats} activeIndex={activeChat}
-            onSelect={setActiveChat} onDelete={(i) => setChats(prev => prev.filter((_, idx) => idx !== i))}
+            onSelect={selectChat} onDelete={(i) => setChats(prev => prev.filter((_, idx) => idx !== i))}
             onNewChat={newChat} search={search} onSearch={setSearch} userName={userName}
           />
 
@@ -1024,25 +1105,21 @@ export default function ChatPage() {
               </div>
             ) : (
               <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
-                <div style={{ maxWidth: 760, margin: '0 auto', padding: '32px 28px 24px', display: 'flex', flexDirection: 'column', gap: 26 }}>
+                <div style={{ padding: '32px 28px 24px', display: 'flex', flexDirection: 'column', gap: 26 }}>
                   {messages.map(m => (
-                    <MessageBubble
-                      key={m.id} msg={m}
-                      onToggleTrace={toggleTrace}
-                      onToggleAngles={toggleAngles}
-                      onPick={(i) => pickAngle(m.id, i)}
-                      onExpandAngle={(i) => expandAngle(m.id, i)}
-                      onNoneFit={() => noneFit(m.id)}
-                      onApprove={() => approve(m.id)}
-                      onDecline={() => decline(m.id)}
-                      onOpenModify={() => openModify(m.id)}
-                      onModifyTextChange={modifyTextChange}
-                      onCancelModify={cancelModify}
-                      onSendModify={sendModify}
-                      onCopy={() => copyMsg(m.id)}
-                      onOpenWorkspace={openWorkspace}
-                      onRegenerate={() => regenerate(m.id)}
-                    />
+                    <div key={m.id} style={{ width: '100%', maxWidth: m.kind === 'angles' ? 'none' : 760, margin: '0 auto' }}>
+                      <MessageBubble
+                        msg={m}
+                        onToggleTrace={toggleTrace}
+                        onToggleAngles={toggleAngles}
+                        onPick={(i) => pickAngle(m.id, i)}
+                        onExpandAngle={(i) => expandAngle(m.id, i)}
+                        onNoneFit={() => noneFit(m.id)}
+                        onCopy={() => copyMsg(m.id)}
+                        onOpenWorkspace={openWorkspace}
+                        onRegenerate={() => regenerate(m.id)}
+                      />
+                    </div>
                   ))}
                 </div>
               </div>

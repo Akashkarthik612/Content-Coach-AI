@@ -26,6 +26,10 @@ class ThreadRegistry(Base):
         nullable=False,
         index=True,
     )
+    # Groups multiple thread_ids into one frontend "chat" — nullable since
+    # every thread created before this column existed has none, and a thread
+    # can still be created without one (defensive fallback in ThreadSessionService).
+    session_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     status = Column(Text, nullable=False, default="active", server_default="active")
     created_at = Column(
         DateTime(timezone=True), nullable=False, default=_utcnow, server_default="now()"

@@ -68,5 +68,6 @@ def save_draft_to_vault(user_id: str, draft: str, query: str) -> tuple[str, str]
         )
         db.add(version)
         db.commit()
+        post_id = str(post.id)
 
-    return str(post.id), title
+    return post_id, title

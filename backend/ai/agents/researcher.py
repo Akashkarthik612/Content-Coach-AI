@@ -143,6 +143,17 @@ class AngleResponseParser:
         return angles
 
     @staticmethod
+    def parse_summary(raw_text: str) -> str:
+        """Extracts the personalized SUMMARY: block the prompt asks for, which
+        precedes the first angle block. Deliberately not part of
+        parse_angles()'s strict-count validation — if the model skips it (or
+        mangles the label), this just returns "" and the UI omits the intro
+        text; the 5-angle contract is the only hard requirement."""
+        first_match = AngleResponseParser.ANGLE_BLOCK_RE.search(raw_text)
+        preamble = raw_text[:first_match.start()] if first_match else raw_text
+        return re.sub(r"(?i)^\s*summary\s*:\s*", "", preamble.strip()).strip()
+
+    @staticmethod
     def collect_web_search_context(messages: list) -> str:
         """Concatenates every web_search ToolMessage's content — the raw
         evidence pool 'Expand' reuses later without a fresh Tavily call.
@@ -205,7 +216,13 @@ vulnerability · anything a generic chatbot would say first.
 Search results are raw evidence, not a brief. Mine them for the specific number, name, or
 scenario that makes an angle concrete. Never summarize them.
 
-Think silently. Return exactly 5 angles, nothing else, no preamble:
+Think silently. First return a short personalized summary, then exactly 5 angles — nothing else:
+
+SUMMARY:
+{2-4 sentences, written directly to the user ("you"), explaining what you're about to propose
+and why — grounded in their role/industry/audience from USER CONTEXT below when it was
+provided (e.g. "Since you're a cloud/DevOps engineer, I focused on angles that..."). If no
+USER CONTEXT was given, keep this general — never invent a profession.}
 
 **{Title — a claim, never a topic}**
 {One sentence: the argument this post makes.}
@@ -359,6 +376,7 @@ async def researcher_linkedin(state: ResearcherState, profile_context: dict | No
 
     raw = AngleResponseParser.extract_text(response.content)
     angles = AngleResponseParser.parse_angles(raw)
+    summary = AngleResponseParser.parse_summary(raw)
     emit_activity(BUILDING_ANGLES_ID, BUILDING_ANGLES_TITLE, "completed", parent_id="researching")
     logger.info("researcher_linkedin: TOTAL %.2fs — produced %d angles for user_id=%s",
                 time.monotonic() - t_start, len(angles), user_id)
@@ -366,6 +384,7 @@ async def researcher_linkedin(state: ResearcherState, profile_context: dict | No
     return {
         "research_topics": [a.model_dump() for a in angles],
         "research_search_context": AngleResponseParser.collect_web_search_context(messages),
+        "research_summary": summary,
     }
 
 
@@ -398,7 +417,7 @@ async def expand_research_angle(angle: dict, search_context: str) -> str:
 async def researcher_node(state: ResearcherState) -> dict:
     """Graph entry point — Send-dispatched from supervisor_node with a minimal
     {user_id, query} state slice. Wraps researcher_linkedin: fetches profile
-    context, runs the research, and reshapes its two-key return into the
+    context, runs the research, and reshapes its three-key return into the
     single research_result state field
     that angle_review_node and map_chosen_angle_node read downstream."""
     user_id = state["user_id"]
@@ -412,5 +431,6 @@ async def researcher_node(state: ResearcherState) -> dict:
         "research_result": {
             "angles": result["research_topics"],
             "search_context": result["research_search_context"],
+            "summary": result["research_summary"],
         },
     }

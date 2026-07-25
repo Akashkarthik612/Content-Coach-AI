@@ -11,6 +11,7 @@ from backend.auth.router import router as auth_router
 from backend.vault.router import router as vault_router
 from backend.ai.router import router as ai_router
 from backend.ai.graph import build_assistant
+from backend.ai.assistant_registry import set_assistant
 from backend.ai.checkpointing.factory import create_checkpointer
 from backend.linkedin.router import router as linkedin_router
 from backend.profile.router import router as profile_router
@@ -24,6 +25,7 @@ async def lifespan(app: FastAPI):
     async with create_checkpointer(settings.DATABASE_URL) as checkpointer:
         await checkpointer.setup()  # idempotent — creates checkpoints/checkpoint_blobs/checkpoint_writes
         app.state.assistant = build_assistant(checkpointer)
+        set_assistant(app.state.assistant)  # lets tools.py's get_session_context call aget_state() without a circular import
         logger.info("LangGraph assistant compiled with AsyncPostgresSaver checkpointer")
         yield
 

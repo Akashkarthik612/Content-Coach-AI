@@ -14,12 +14,19 @@ from backend.ai.agents.angle_review_node      import angle_review_node, map_chos
 from backend.ai.agents.tools import (
     search_vault_posts,
     get_topic_inventory,
+    get_style_memory,
+    get_session_context,
 )
 
 logger = logging.getLogger(__name__)
 
-# Tool node — only used for supervisor's direct/analytics tool calls
-_all_tools = [search_vault_posts, get_topic_inventory]
+# Tool node — the actual executor of supervisor_node's tool-calling loop, so
+# this list must stay in sync with whatever supervisor.py binds via
+# bind_tools() (see supervisor.py's _all_tools) — an LLM-requested tool call
+# for anything missing here fails at execution time. get_style_memory was
+# previously missing despite being bound on the supervisor's LLM; added here
+# alongside get_session_context while fixing this same list.
+_all_tools = [search_vault_posts, get_topic_inventory, get_style_memory, get_session_context]
 tool_node  = ToolNode(_all_tools)
 
 
