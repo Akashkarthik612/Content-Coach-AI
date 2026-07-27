@@ -1,12 +1,8 @@
 import axios from 'axios';
+import { attachAuthHeader } from './attachAuthHeader';
 
 const api = axios.create({ baseURL: '/api/ai' });
-
-api.interceptors.request.use(config => {
-  const uid = localStorage.getItem('user_id');
-  if (uid) config.headers['X-User-Id'] = uid;
-  return config;
-});
+attachAuthHeader(api);
 
 export const queryAI = (prompt, sessionId = null) =>
   api.post('/query', { prompt, session_id: sessionId }).then(r => r.data);

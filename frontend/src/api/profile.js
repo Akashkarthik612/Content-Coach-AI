@@ -1,13 +1,8 @@
 import axios from 'axios'
+import { attachAuthHeader } from './attachAuthHeader'
 
 const client = axios.create({ baseURL: '/api/profile' })
-
-// Same X-User-Id interceptor pattern as vault.js/linkedin.js — scopes every request to the logged-in user
-client.interceptors.request.use(config => {
-  const userId = localStorage.getItem('user_id')
-  if (userId) config.headers['X-User-Id'] = userId
-  return config
-})
+attachAuthHeader(client)
 
 /**
  * Upsert the user's profile from onboarding answers. Get-or-create + partial

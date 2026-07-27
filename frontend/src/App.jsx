@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import LandingPage from './pages/landing/LandingPage';
@@ -8,9 +9,19 @@ import MyWorkPage from './pages/MyWorkPage';
 import ChatPage from './pages/ChatPage';
 import AgentsPage from './pages/AgentsPage';
 import { ReviewQueueProvider } from './context/ReviewQueueContext';
+import { supabase } from './lib/supabaseClient';
 
 function RequireAuth({ children }) {
-  return localStorage.getItem('user_id') ? children : <Navigate to="/" replace />;
+  const [status, setStatus] = useState('checking'); // checking | authed | anon
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setStatus(data.session ? 'authed' : 'anon');
+    });
+  }, []);
+
+  if (status === 'checking') return null;
+  return status === 'authed' ? children : <Navigate to="/" replace />;
 }
 
 export default function App() {

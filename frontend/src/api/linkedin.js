@@ -1,13 +1,8 @@
 import axios from 'axios'
+import { attachAuthHeader } from './attachAuthHeader'
 
 const client = axios.create({ baseURL: '/api/linkedin' })
-
-// Same X-User-Id interceptor pattern as vault.js — scopes every request to the logged-in user
-client.interceptors.request.use(config => {
-  const userId = localStorage.getItem('user_id')
-  if (userId) config.headers['X-User-Id'] = userId
-  return config
-})
+attachAuthHeader(client)
 
 /** {connected, display_name, profile_image_url, expires_at} */
 export const getLinkedInStatus = () =>

@@ -1,14 +1,10 @@
 import axios from 'axios';
+import { attachAuthHeader } from './attachAuthHeader';
 
 const BASE = '/api/vault';
 
 const api = axios.create({ baseURL: BASE });
-
-api.interceptors.request.use(config => {
-  const userId = localStorage.getItem('user_id');
-  if (userId) config.headers['X-User-Id'] = userId;
-  return config;
-});
+attachAuthHeader(api);
 
 // ── Folders ──────────────────────────────────────────────────
 export const getFolders = () =>

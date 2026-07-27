@@ -26,7 +26,7 @@ export const AUTH_COPY = {
   login: {
     heading: 'Welcome back',
     sub: 'Log in to pick up where your voice left off.',
-    usernamePlaceholder: 'your username',
+    emailPlaceholder: 'you@example.com',
     passwordPlaceholder: '••••••••',
     submit: 'Log in',
     submitting: 'Logging in…',

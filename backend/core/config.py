@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     APP_NAME: str = "LinkedIn Coach"
     ENV: str = "development"
 
+    # Supabase Auth — verifies the JWT issued by supabase-js on the frontend via
+    # Supabase's public JWKS endpoint (SUPABASE_URL + "/auth/v1/.well-known/jwks.json")
+    SUPABASE_URL: str = ""
+
     # LinkedIn OAuth
     LINKEDIN_CLIENT_ID: str = ""
     LINKEDIN_CLIENT_SECRET: str = ""

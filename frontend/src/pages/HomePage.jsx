@@ -95,6 +95,7 @@ export default function HomePage({ initialMode = 'login' }) {
   const [loading, setLoading]   = useState(false);
   const [googleMsg, setGoogleMsg] = useState('');
   const [forgotMsg, setForgotMsg] = useState('');
+  const [confirmMsg, setConfirmMsg] = useState('');
   const [submitHov, setSubmitHov] = useState(false);
   const [googleHov, setGoogleHov] = useState(false);
 
@@ -104,7 +105,7 @@ export default function HomePage({ initialMode = 'login' }) {
   function field(key) { return e => setForm(f => ({ ...f, [key]: e.target.value })); }
 
   function switchMode(next) {
-    setError(''); setGoogleMsg(''); setForgotMsg('');
+    setError(''); setGoogleMsg(''); setForgotMsg(''); setConfirmMsg('');
     setForm({ name: '', username: '', email: '', password: '' });
     setMode(next);
   }
@@ -113,9 +114,7 @@ export default function HomePage({ initialMode = 'login' }) {
     e.preventDefault();
     setError(''); setLoading(true);
     try {
-      const data = await login(form.username, form.password);
-      localStorage.setItem('user_id', data.user_id);
-      localStorage.setItem('username', data.username);
+      await login(form.email, form.password);
       navigate('/dashboard');
     } catch (err) {
       setError(err.message);
@@ -132,18 +131,24 @@ export default function HomePage({ initialMode = 'login' }) {
     setLoading(true);
     try {
       const data = await register(form.username, form.email, form.password);
-      localStorage.setItem('user_id', data.user_id);
-      localStorage.setItem('username', data.username);
       if (form.name) localStorage.setItem('display_name', form.name);
-      navigate('/onboarding');
+      if (data.needsEmailConfirmation) {
+        setConfirmMsg(`Check ${data.email} for a confirmation link, then log in.`);
+      } else {
+        navigate('/onboarding');
+      }
     } catch (err) {
       setError(err.message);
     } finally { setLoading(false); }
   }
 
   async function handleGoogle() {
-    const result = await googleSignIn();
-    if (!result) setGoogleMsg('Google sign-in coming soon — stay tuned!');
+    setGoogleMsg('');
+    try {
+      await googleSignIn();
+    } catch (err) {
+      setGoogleMsg(err.message);
+    }
   }
 
   function handleForgot(e) {
@@ -212,8 +217,8 @@ export default function HomePage({ initialMode = 'login' }) {
             ) : (
               <>
                 <label style={st.field}>
-                  <span style={st.label}>Username</span>
-                  <input style={st.input} type="text" placeholder={copy.usernamePlaceholder} autoComplete="username" value={form.username} onChange={field('username')} autoFocus {...focusable} />
+                  <span style={st.label}>Email</span>
+                  <input style={st.input} type="email" placeholder={copy.emailPlaceholder} autoComplete="email" value={form.email} onChange={field('email')} autoFocus {...focusable} />
                 </label>
                 <label style={st.field}>
                   <div style={st.labelRow}>
@@ -243,6 +248,11 @@ export default function HomePage({ initialMode = 'login' }) {
             {!error && forgotMsg && (
               <p style={{ fontSize: 12.5, opacity: 0.6, textAlign: 'center', margin: '4px 0 0' }}>
                 {forgotMsg}
+              </p>
+            )}
+            {!error && confirmMsg && (
+              <p style={{ fontSize: 13, color: C.ink, background: C.cream, borderRadius: 6, padding: '9px 12px', margin: '4px 0 0', textAlign: 'center', fontFamily: SANS }}>
+                {confirmMsg}
               </p>
             )}
           </form>

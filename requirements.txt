@@ -13,6 +13,7 @@ pgvector
 psycopg2-binary
 psycopg[binary,pool]
 pydantic-settings
+pyjwt
 python-dotenv
 redis
 sqlalchemy

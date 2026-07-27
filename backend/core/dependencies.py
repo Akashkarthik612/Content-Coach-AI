@@ -1,5 +1,4 @@
 from typing import Generator
-from uuid import UUID
 
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
@@ -16,17 +15,18 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def get_current_user(
-    x_user_id: str = Header(alias="X-User-Id"),
+    authorization: str = Header(alias="Authorization"),
     db: Session = Depends(get_db),
 ):
-    from backend.auth.models import User  # local import avoids circular dependency
+    from backend.auth.service import SupabaseAuth, UserSyncService  # local import avoids circular dependency
+
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    token = authorization.removeprefix("Bearer ")
 
     try:
-        user_id = UUID(x_user_id)
+        identity = SupabaseAuth.verify_token(token)
     except ValueError:
-        raise HTTPException(status_code=401, detail="Invalid X-User-Id header")
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    user = db.get(User, user_id)
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found")
-    return user
+    return UserSyncService.get_or_create(db, identity)

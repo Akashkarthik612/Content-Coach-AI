@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, Text
@@ -12,17 +11,13 @@ def _utcnow() -> datetime:
 
 
 class User(Base):
+    """Shadow row mirroring a Supabase identity, keyed on the same UUID Supabase issues."""
+
     __tablename__ = "users"
 
-    id = Column(
-        UUID(as_uuid=True),
-        primary_key=True,
-        default=uuid.uuid4,
-        server_default="gen_random_uuid()",
-    )
-    username = Column(Text, nullable=False, unique=True)
+    id = Column(UUID(as_uuid=True), primary_key=True)
+    username = Column(Text, nullable=True, unique=True)
     email = Column(Text, nullable=True, unique=True)
-    password_hash = Column(Text, nullable=False)
     created_at = Column(
         DateTime(timezone=True), nullable=False, default=_utcnow, server_default="now()"
     )
