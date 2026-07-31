@@ -16,7 +16,6 @@ export const AUTH_COPY = {
     heading: 'Create your account',
     sub: 'Start turning raw thoughts into content that sounds unmistakably like you.',
     namePlaceholder: 'Jane Doe',
-    usernamePlaceholder: 'e.g. jane_writes',
     emailPlaceholder: 'you@example.com',
     passwordPlaceholder: 'At least 6 characters',
     submit: 'Create account',

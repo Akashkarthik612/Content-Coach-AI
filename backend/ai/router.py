@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from backend.ai._log_setup import setup_ai_file_logging
 from backend.ai.checkpointing.service import ThreadRegistryService, ThreadSessionService
+from backend.ai.checkpointing.session_memory_store import SessionMemoryService
 from backend.ai.schemas.research import ResearchTopic, topic_to_flat
 from backend.ai.thread_state import shape_thread_state
 from backend.auth.models import User
@@ -30,6 +31,13 @@ def get_assistant(request: Request):
     return request.app.state.assistant
 
 
+def get_store(request: Request):
+    """Resolves the AsyncPostgresStore opened at startup (see backend/main.py) —
+    long-term, cross-session memory (chat_sessions namespace), distinct from the
+    per-turn checkpointer resolved by get_assistant()."""
+    return request.app.state.store
+
+
 # ── Request / Response schemas ────────────────────────────────────────────────
 
 class QueryRequest(BaseModel):
@@ -46,8 +54,8 @@ class QueryResponse(BaseModel):
     angles:            list = []         # awaiting_angle_selection only
     actions:           list = []         # awaiting_angle_selection only
     summary:           str = ""          # awaiting_angle_selection only — personalized 2-4 line intro
-    expanded_angle_id: int | None = None # set after an "expand" resume
-    expanded_summary:  str = ""          # set after an "expand" resume
+    expanded_angle_id: int | None = None # set after an "expand" or "modify" resume
+    expanded_sections: list = []         # set after an "expand" or "modify" resume — [{heading, body}]
     error:             str = ""          # set on an invalid pick/expand angle_id
     post_id:           str = ""          # set once human_approval_node saves a draft (approved/edited)
 
@@ -67,11 +75,23 @@ class ThreadStateResponse(BaseModel):
     actions:         list = []
     summary:         str = ""
     approval_status: str = ""  # "" | "approved" | "edited" | "rejected" — only meaningful when status=="complete"
+    expanded_angle_id: int | None = None  # last expand/modify result, if any — only latest revision, no history
+    expanded_sections: list = []          # [{heading, body}]
 
 
 class SessionThreadsResponse(BaseModel):
     session_id: str
     threads:    list[ThreadStateResponse] = []
+
+
+class SessionSummary(BaseModel):
+    session_id:     str
+    title:          str
+    last_active_at: str  # ISO 8601
+
+
+class SessionListResponse(BaseModel):
+    sessions: list[SessionSummary] = []
 
 
 class ResumeRequest(BaseModel):
@@ -134,6 +154,7 @@ def _build_initial_state(prompt: str, user_id: str, session_id: str) -> dict:
 async def stream_query(
     body: QueryRequest,
     assistant = Depends(get_assistant),
+    store = Depends(get_store),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -171,8 +192,8 @@ async def stream_query(
     if not body.prompt.strip():
         raise HTTPException(status_code=422, detail="Prompt cannot be empty.")
 
-    session = ThreadSessionService(ThreadRegistryService(db))
-    thread_id, session_id, config = session.start(str(user.id), body.session_id)
+    session = ThreadSessionService(ThreadRegistryService(db), SessionMemoryService(store))
+    thread_id, session_id, config = await session.start(str(user.id), body.session_id, first_prompt=body.prompt)
     initial_state = _build_initial_state(body.prompt, str(user.id), session_id)
 
     async def generate():
@@ -278,14 +299,15 @@ async def stream_query(
 async def query(
     body: QueryRequest,
     assistant = Depends(get_assistant),
+    store = Depends(get_store),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     if not body.prompt.strip():
         raise HTTPException(status_code=422, detail="Prompt cannot be empty.")
 
-    session = ThreadSessionService(ThreadRegistryService(db))
-    thread_id, session_id, config = session.start(str(user.id), body.session_id)
+    session = ThreadSessionService(ThreadRegistryService(db), SessionMemoryService(store))
+    thread_id, session_id, config = await session.start(str(user.id), body.session_id, first_prompt=body.prompt)
     initial_state = _build_initial_state(body.prompt, str(user.id), session_id)
 
     state = await assistant.ainvoke(initial_state, config=config)
@@ -323,6 +345,7 @@ async def query(
 async def draft_from_topic(
     body: DraftFromTopicRequest,
     assistant = Depends(get_assistant),
+    store = Depends(get_store),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -337,8 +360,10 @@ async def draft_from_topic(
     flat_brief = topic_to_flat(ResearchTopic(**body.topic.model_dump())).model_dump()
     user_prompt = f"Write a LinkedIn post about: {body.topic.title}"
 
-    session = ThreadSessionService(ThreadRegistryService(db))
-    thread_id, session_id, config = session.start(str(user.id), body.session_id)
+    session = ThreadSessionService(ThreadRegistryService(db), SessionMemoryService(store))
+    thread_id, session_id, config = await session.start(
+        str(user.id), body.session_id, first_prompt=body.topic.title
+    )
     initial_state = {
         "query":           body.topic.title,
         "user_id":         str(user.id),
@@ -378,12 +403,13 @@ async def draft_from_topic(
 async def resume(
     body: ResumeRequest,
     assistant = Depends(get_assistant),
+    store = Depends(get_store),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    session = ThreadSessionService(ThreadRegistryService(db))
+    session = ThreadSessionService(ThreadRegistryService(db), SessionMemoryService(store))
     try:
-        config = session.resume_config(body.thread_id, str(user.id))
+        config = await session.resume_config(body.thread_id, str(user.id))
     except PermissionError:
         raise HTTPException(status_code=403, detail="Forbidden")
 
@@ -407,16 +433,16 @@ async def resume(
         )
 
     if shaped["status"] == "awaiting_angle_selection":
-        # angle_review_node re-interrupted — bad pick, an "expand" result, or
-        # the "modify"/invalid-angle_id error note re-surfacing the same angles.
-        # expanded_angle_id/expanded_summary/error are resume-action-specific,
+        # angle_review_node re-interrupted — bad pick, an "expand"/"modify"
+        # result, or an error note re-surfacing the same angles.
+        # expanded_angle_id/expanded_sections/error are resume-action-specific,
         # not part of the general thread shape, so they're read separately here.
         interrupt_value = final_state.interrupts[0].value
         return QueryResponse(
             answer="", thread_id=body.thread_id, status="awaiting_angle_selection",
             angles=shaped["angles"], actions=shaped["actions"], summary=shaped["summary"],
             expanded_angle_id=interrupt_value.get("expanded_angle_id"),
-            expanded_summary=interrupt_value.get("expanded_summary", ""),
+            expanded_sections=interrupt_value.get("expanded_sections", []),
             error=interrupt_value.get("error", ""),
         )
 
@@ -444,6 +470,22 @@ async def get_thread(
         raise HTTPException(status_code=403, detail="Forbidden")
     state = await assistant.aget_state({"configurable": {"thread_id": thread_id}})
     return ThreadStateResponse(**shape_thread_state(thread_id, state))
+
+
+@router.get("/sessions", response_model=SessionListResponse)
+async def list_sessions(
+    store = Depends(get_store),
+    user: User = Depends(get_current_user),
+):
+    """All of the current user's live (not-yet-expired) chat sessions, most
+    recently active first — powers ChatPage.jsx's sidebar. Backed by the
+    chat_sessions Store namespace (7-day TTL), not thread_registry — see
+    backend/ai/checkpointing/session_memory_store.py."""
+    pairs = await SessionMemoryService(store).list_active(str(user.id))
+    return SessionListResponse(sessions=[
+        SessionSummary(session_id=sid, title=record.title, last_active_at=record.last_active_at.isoformat())
+        for sid, record in pairs
+    ])
 
 
 @router.get("/sessions/{session_id}/threads", response_model=SessionThreadsResponse)

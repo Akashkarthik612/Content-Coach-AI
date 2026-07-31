@@ -11,7 +11,7 @@ from backend.vault.router import router as vault_router
 from backend.ai.router import router as ai_router
 from backend.ai.graph import build_assistant
 from backend.ai.assistant_registry import set_assistant
-from backend.ai.checkpointing.factory import create_checkpointer
+from backend.ai.checkpointing.factory import create_checkpointer, create_store
 from backend.linkedin.router import router as linkedin_router
 from backend.profile.router import router as profile_router
 from backend.core.config import settings
@@ -21,12 +21,20 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with create_checkpointer(settings.DATABASE_URL) as checkpointer:
+    async with create_checkpointer(settings.DATABASE_URL) as checkpointer, \
+               create_store(settings.DATABASE_URL) as store:
         await checkpointer.setup()  # idempotent — creates checkpoints/checkpoint_blobs/checkpoint_writes
-        app.state.assistant = build_assistant(checkpointer)
+        await store.setup()  # idempotent — creates store/store_migrations + vector tables (chat_sessions.title index)
+        await store.start_ttl_sweeper()  # sweeps expired chat_sessions rows (7-day TTL) every 60 min
+
+        app.state.assistant = build_assistant(checkpointer, store)
+        app.state.store = store
         set_assistant(app.state.assistant)  # lets tools.py's get_session_context call aget_state() without a circular import
-        logger.info("LangGraph assistant compiled with AsyncPostgresSaver checkpointer")
-        yield
+        logger.info("LangGraph assistant compiled with AsyncPostgresSaver checkpointer + AsyncPostgresStore")
+        try:
+            yield
+        finally:
+            await store.stop_ttl_sweeper()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -47,6 +55,14 @@ app.include_router(vault_router)
 app.include_router(ai_router)
 app.include_router(linkedin_router, prefix="/api/linkedin")
 app.include_router(profile_router)
+
+if settings.AUTH_PROVIDER == "local":
+    # Dev-only password auth (bcrypt + X-User-Id) — see backend/auth_local/. Never
+    # mounted unless AUTH_PROVIDER=local is explicitly set (default is "supabase").
+    from backend.auth_local.router import router as local_auth_router
+
+    app.include_router(local_auth_router)
+    logger.warning("AUTH_PROVIDER=local — mounting dev-only password auth endpoints")
 
 
 @app.get("/health")

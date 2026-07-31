@@ -2,6 +2,7 @@ import logging
 
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.store.base import BaseStore
 from langgraph.prebuilt import ToolNode
 from langgraph.types import Send
 
@@ -16,6 +17,7 @@ from backend.ai.agents.tools import (
     get_topic_inventory,
     get_style_memory,
     get_session_context,
+    recall_past_sessions,
 )
 
 logger = logging.getLogger(__name__)
@@ -25,8 +27,16 @@ logger = logging.getLogger(__name__)
 # bind_tools() (see supervisor.py's _all_tools) — an LLM-requested tool call
 # for anything missing here fails at execution time. get_style_memory was
 # previously missing despite being bound on the supervisor's LLM; added here
-# alongside get_session_context while fixing this same list.
-_all_tools = [search_vault_posts, get_topic_inventory, get_style_memory, get_session_context]
+# alongside get_session_context while fixing this same list. recall_past_sessions
+# (cross-session semantic recall via the Store, see checkpointing/session_memory_store.py)
+# added the same way — keep both lists in sync when touching either.
+_all_tools = [
+    search_vault_posts,
+    get_topic_inventory,
+    get_style_memory,
+    get_session_context,
+    recall_past_sessions,
+]
 tool_node  = ToolNode(_all_tools)
 
 
@@ -148,13 +158,13 @@ _graph.add_conditional_edges("angle_review_node", _angle_review_router, {
 _graph.add_edge("map_chosen_angle_node", "writer_node")
 
 
-def build_assistant(checkpointer: BaseCheckpointSaver):
+def build_assistant(checkpointer: BaseCheckpointSaver, store: BaseStore | None = None):
     """
-    Compile the graph against a caller-supplied checkpointer.
+    Compile the graph against a caller-supplied checkpointer (per-turn/per-thread
+    state) and store (cross-thread/cross-session long-term memory — the
+    chat_sessions namespace, see checkpointing/session_memory_store.py).
 
-    backend/main.py passes a plain in-memory MemorySaver at import time — no
-    persisted chat history or thread reuse across process restarts. This
-    factory stays generic over any BaseCheckpointSaver so a durable one can be
-    swapped in later without touching this module.
+    store is optional so this stays compileable in isolation (e.g. a future
+    test) without a Postgres-backed store; backend/main.py always passes one.
     """
-    return _graph.compile(checkpointer=checkpointer)
+    return _graph.compile(checkpointer=checkpointer, store=store)

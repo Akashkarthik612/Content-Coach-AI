@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     # Supabase's public JWKS endpoint (SUPABASE_URL + "/auth/v1/.well-known/jwks.json")
     SUPABASE_URL: str = ""
 
+    # Auth provider switch — "supabase" (default, used in prod) or "local" (dev-only
+    # bcrypt + X-User-Id auth, see backend/auth_local/). Never set to "local" outside
+    # a local dev environment.
+    AUTH_PROVIDER: str = "supabase"
+
     # LinkedIn OAuth
     LINKEDIN_CLIENT_ID: str = ""
     LINKEDIN_CLIENT_SECRET: str = ""

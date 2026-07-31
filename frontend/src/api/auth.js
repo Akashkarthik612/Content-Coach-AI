@@ -1,4 +1,9 @@
 import { supabase } from '../lib/supabaseClient';
+import { localLogin, localRegister } from './localAuth';
+
+// Dev-only switch — see AUTH_PROVIDER on the backend (backend/auth_local/).
+// Defaults to Supabase; never set VITE_AUTH_MODE=local outside local dev.
+const IS_LOCAL_AUTH = import.meta.env.VITE_AUTH_MODE === 'local';
 
 // ── Error classifier ──────────────────────────────────────────────────────────
 // Single place that maps Supabase errors to user messages + machine codes.
@@ -14,6 +19,8 @@ function _classify(err) {
 }
 
 export const login = async (email, password) => {
+  if (IS_LOCAL_AUTH) return localLogin(email, password); // local auth logs in by username
+
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw _classify(error);
   return {
@@ -24,6 +31,8 @@ export const login = async (email, password) => {
 };
 
 export const register = async (username, email, password) => {
+  if (IS_LOCAL_AUTH) return localRegister(username, email, password);
+
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -42,7 +51,7 @@ export const register = async (username, email, password) => {
 export const googleSignIn = async () => {
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: `${window.location.origin}/dashboard` },
+    options: { redirectTo: `${window.location.origin}/chat` },
   });
   if (error) throw _classify(error);
   // Browser redirects away on success — nothing more to do here.

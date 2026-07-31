@@ -1,92 +1,48 @@
-2026-07-22 15:41:57,680 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=db48a826-655e-470e-b7fd-a0bb81ebe367
-2026-07-22 15:42:00,125 DEBUG    backend.ai.agents.supervisor — supervisor: 1 tool call(s) requested
-2026-07-22 15:42:00,128 DEBUG    backend.ai.agents.tools — search_vault_posts: user_id=db48a826-655e-470e-b7fd-a0bb81ebe367 query_len=45
-2026-07-22 15:42:13,717 DEBUG    backend.ai.agents.tools — search_vault_posts: 0 vector results for user_id=db48a826-655e-470e-b7fd-a0bb81ebe367
-2026-07-22 15:42:17,775 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=db48a826-655e-470e-b7fd-a0bb81ebe367
-2026-07-22 15:42:18,982 INFO     backend.ai.agents.supervisor — supervisor: route=research steps_taken=2
-2026-07-22 15:42:18,984 DEBUG    backend.ai.graph — supervisor_router: Send → researcher_node
-2026-07-22 15:42:18,990 DEBUG    backend.ai.agents.researcher — researcher_linkedin invoked: user_id=db48a826-655e-470e-b7fd-a0bb81ebe367 query_len=111
-2026-07-22 15:42:18,991 INFO     backend.ai.agents.researcher — researcher_linkedin: round=0 calling Gemini (2 messages in history)...
-2026-07-22 15:42:33,653 INFO     backend.ai.agents.researcher — researcher_linkedin: round=0 Gemini responded in 14.67s, tool_calls=1
-2026-07-22 15:42:33,653 INFO     backend.ai.agents.researcher — researcher_linkedin: round=0 executing tool=search_vault_posts args={'query': 'HonneAI agentic AI solo developer SaaS', 'user_id': 'default_user'}
-2026-07-22 15:42:33,654 DEBUG    backend.ai.agents.tools — search_vault_posts: user_id=db48a826-655e-470e-b7fd-a0bb81ebe367 query_len=38
-2026-07-22 15:42:46,940 DEBUG    backend.ai.agents.tools — search_vault_posts: 0 vector results for user_id=db48a826-655e-470e-b7fd-a0bb81ebe367
-2026-07-22 15:42:50,982 INFO     backend.ai.agents.researcher — researcher: tool=search_vault_posts took 17.33s
-2026-07-22 15:42:50,983 INFO     backend.ai.agents.researcher — researcher_linkedin: round=1 calling Gemini (4 messages in history)...
-2026-07-22 15:43:14,374 INFO     backend.ai.agents.researcher — researcher_linkedin: round=1 Gemini responded in 23.39s, tool_calls=0
-2026-07-22 15:43:14,375 INFO     backend.ai.agents.researcher — researcher_linkedin: TOTAL 55.39s — produced 5 angles for user_id=db48a826-655e-470e-b7fd-a0bb81ebe367
-2026-07-22 15:46:05,644 INFO     backend.ai.agents.researcher — expand_research_angle: took 5.67s
-2026-07-22 15:46:38,526 INFO     backend.ai.agents.researcher — expand_research_angle: took 5.33s
-2026-07-22 15:46:38,536 DEBUG    backend.ai.agents.style_agent — style_retriever_node invoked: user_id=db48a826-655e-470e-b7fd-a0bb81ebe367
-2026-07-22 15:46:46,629 DEBUG    backend.ai.style_memory — Style memory Redis miss, reading from DB: user_id=db48a826-655e-470e-b7fd-a0bb81ebe367
-2026-07-22 15:46:46,642 DEBUG    backend.ai.style_memory — No style memory found in DB: user_id=db48a826-655e-470e-b7fd-a0bb81ebe367
-2026-07-22 15:46:46,642 INFO     backend.ai.agents.style_agent — style_retriever_node: no style memory — running on-demand analysis
-2026-07-22 15:46:46,746 INFO     backend.ai.agents.style_agent — style_retriever_node: no published posts yet — cold-start
-2026-07-22 15:46:46,756 DEBUG    backend.ai.agents.style_agent — style_retriever_node cold-start user=db48a826-655e-470e-b7fd-a0bb81ebe367 — style_json keys=EMPTY
-2026-07-22 15:46:46,758 DEBUG    backend.ai.agents.writer_node — writer_node invoked: user_id=db48a826-655e-470e-b7fd-a0bb81ebe367
-2026-07-22 15:46:46,758 INFO     backend.ai.agents.writer_node — writer_node: no style_json — using cold-start defaults
-2026-07-22 15:48:27,421 DEBUG    backend.ai.agents.writer_node — writer_node invoked: user_id=db48a826-655e-470e-b7fd-a0bb81ebe367
-2026-07-22 15:48:27,421 INFO     backend.ai.agents.writer_node — writer_node: no style_json — using cold-start defaults
-2026-07-23 16:25:08,144 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=00000000-0000-0000-0000-000000000099
-2026-07-23 16:25:08,673 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=00000000-0000-0000-0000-000000000099
-2026-07-23 16:25:08,723 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=00000000-0000-0000-0000-000000000099
-2026-07-23 16:26:04,001 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=00000000-0000-0000-0000-000000000099
-2026-07-23 16:26:04,035 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=00000000-0000-0000-0000-000000000099
-2026-07-23 16:26:04,070 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=00000000-0000-0000-0000-000000000099
-2026-07-23 16:36:42,762 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-07-23 16:36:43,800 INFO     backend.ai.agents.supervisor — supervisor: route=research steps_taken=1
-2026-07-23 16:36:43,817 DEBUG    backend.ai.graph — supervisor_router: Send → researcher_node
-2026-07-23 16:36:43,836 DEBUG    backend.ai.agents.researcher — researcher_linkedin invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 query_len=225
-2026-07-23 16:36:43,836 INFO     backend.ai.agents.researcher — researcher_linkedin: round=0 calling Gemini (2 messages in history)...
-2026-07-23 16:37:02,081 INFO     backend.ai.agents.researcher — researcher_linkedin: round=0 Gemini responded in 18.25s, tool_calls=0
-2026-07-23 16:37:02,081 INFO     backend.ai.agents.researcher — researcher_linkedin: TOTAL 18.25s — produced 5 angles for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-07-23 16:39:32,743 DEBUG    backend.ai.agents.writer_node — writer_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-07-23 16:39:40,904 DEBUG    backend.ai.style_memory — Style memory Redis miss, reading from DB: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-07-23 16:39:49,025 DEBUG    backend.ai.style_memory — Repopulated Redis style cache: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-07-23 16:43:07,846 DEBUG    backend.ai.agents.writer_node — writer_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-07-23 16:43:15,942 DEBUG    backend.ai.style_memory — Style memory Redis miss, reading from DB: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-07-23 16:43:24,076 DEBUG    backend.ai.style_memory — Repopulated Redis style cache: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-07-23 16:43:26,743 INFO     backend.ai.agents.writer_node — writer_node: draft generated, char_count=1118
-2026-07-23 16:46:47,280 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-07-23 16:46:47,998 INFO     backend.ai.agents.supervisor — supervisor: route=research steps_taken=1
-2026-07-23 16:46:47,998 DEBUG    backend.ai.graph — supervisor_router: Send → researcher_node
-2026-07-23 16:46:48,153 DEBUG    backend.ai.agents.researcher — researcher_linkedin invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 query_len=55
-2026-07-23 16:46:48,153 INFO     backend.ai.agents.researcher — researcher_linkedin: round=0 calling Gemini (2 messages in history)...
-2026-07-23 16:46:50,666 INFO     backend.ai.agents.researcher — researcher_linkedin: round=0 Gemini responded in 2.52s, tool_calls=1
-2026-07-23 16:46:50,666 INFO     backend.ai.agents.researcher — researcher_linkedin: round=0 executing tool=web_search args={'query': 'newly launched claude llm anthropic 2025'}
-2026-07-23 16:46:50,670 DEBUG    backend.ai.agents.tools — web_search: query_len=40
-2026-07-23 16:47:00,942 INFO     backend.ai.agents.researcher — researcher: tool=web_search took 10.28s
-2026-07-23 16:47:00,946 INFO     backend.ai.agents.researcher — researcher_linkedin: round=1 calling Gemini (4 messages in history)...
-2026-07-23 16:47:02,341 INFO     backend.ai.agents.researcher — researcher_linkedin: round=1 Gemini responded in 1.39s, tool_calls=1
-2026-07-23 16:47:02,341 INFO     backend.ai.agents.researcher — researcher_linkedin: round=1 executing tool=search_vault_posts args={'user_id': 'default_user', 'query': 'expertise role founder engineer product marketing'}
-2026-07-23 16:47:02,343 DEBUG    backend.ai.agents.tools — search_vault_posts: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 query_len=49
-2026-07-23 16:47:17,163 DEBUG    backend.ai.agents.tools — search_vault_posts: 6 vector results for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-07-23 16:47:21,207 INFO     backend.ai.agents.researcher — researcher: tool=search_vault_posts took 18.88s
-2026-07-23 16:47:21,207 INFO     backend.ai.agents.researcher — researcher_linkedin: round=2 calling Gemini (6 messages in history)...
-2026-07-23 16:47:33,778 INFO     backend.ai.agents.researcher — researcher_linkedin: round=2 Gemini responded in 12.56s, tool_calls=0
-2026-07-23 16:47:33,778 INFO     backend.ai.agents.researcher — researcher_linkedin: TOTAL 45.62s — produced 5 angles for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-07-23 16:48:30,926 INFO     backend.ai.agents.researcher — expand_research_angle: took 28.91s
-2026-07-23 16:48:51,980 INFO     backend.ai.agents.researcher — expand_research_angle: took 15.02s
-2026-07-23 16:49:00,203 INFO     backend.ai.agents.researcher — expand_research_angle: took 8.23s
-2026-07-23 16:49:01,944 INFO     backend.ai.agents.researcher — expand_research_angle: took 18.19s
-2026-07-23 16:49:01,955 DEBUG    backend.ai.agents.writer_node — writer_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-07-23 16:49:10,118 DEBUG    backend.ai.style_memory — Style memory Redis miss, reading from DB: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-07-23 16:49:18,251 DEBUG    backend.ai.style_memory — Repopulated Redis style cache: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-07-23 16:49:21,086 INFO     backend.ai.agents.writer_node — writer_node: draft generated, char_count=1155
-2026-07-23 20:30:36,540 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-07-23 20:30:38,324 DEBUG    backend.ai.agents.supervisor — supervisor: 1 tool call(s) requested
-2026-07-23 20:30:38,380 DEBUG    backend.ai.agents.tools — search_vault_posts: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 query_len=32
-2026-07-23 20:30:52,293 DEBUG    backend.ai.agents.tools — search_vault_posts: 6 vector results for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-07-23 20:30:56,400 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-07-23 20:30:57,138 INFO     backend.ai.agents.supervisor — supervisor: route=research steps_taken=2
-2026-07-23 20:30:57,150 DEBUG    backend.ai.graph — supervisor_router: Send → researcher_node
-2026-07-23 20:30:57,188 DEBUG    backend.ai.agents.researcher — researcher_linkedin invoked: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 query_len=130
-2026-07-23 20:30:57,190 INFO     backend.ai.agents.researcher — researcher_linkedin: round=0 calling Gemini (2 messages in history)...
-2026-07-23 20:31:00,047 INFO     backend.ai.agents.researcher — researcher_linkedin: round=0 Gemini responded in 2.86s, tool_calls=1
-2026-07-23 20:31:00,047 INFO     backend.ai.agents.researcher — researcher_linkedin: round=0 executing tool=search_vault_posts args={'user_id': 'me', 'query': 'tech AI entrepreneurship layoffs'}
-2026-07-23 20:31:00,052 DEBUG    backend.ai.agents.tools — search_vault_posts: user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811 query_len=32
-2026-07-23 20:31:13,226 DEBUG    backend.ai.agents.tools — search_vault_posts: 6 vector results for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
-2026-07-23 20:31:17,314 INFO     backend.ai.agents.researcher — researcher: tool=search_vault_posts took 17.26s
-2026-07-23 20:31:17,314 INFO     backend.ai.agents.researcher — researcher_linkedin: round=1 calling Gemini (4 messages in history)...
-2026-07-23 20:31:33,831 INFO     backend.ai.agents.researcher — researcher_linkedin: round=1 Gemini responded in 16.52s, tool_calls=0
-2026-07-23 20:31:33,832 INFO     backend.ai.agents.researcher — researcher_linkedin: TOTAL 36.64s — produced 5 angles for user_id=f0644cff-04d6-4c1e-a7fb-19a4459d0811
+2026-07-30 19:47:31,533 DEBUG    backend.ai.checkpointing.session_memory_store — SessionMemoryService: created session_id=86d93bc8-68e4-48e1-a420-4b81237ef691 user_id=d1bdaa11-3591-42c7-b8e9-867f20a76dbf title='Hi Honne tell me about you'
+2026-07-30 19:47:56,490 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=d1bdaa11-3591-42c7-b8e9-867f20a76dbf
+2026-07-30 19:47:58,330 DEBUG    backend.ai.agents.supervisor — supervisor: 1 tool call(s) requested
+2026-07-30 19:47:58,390 DEBUG    backend.ai.agents.tools — get_style_memory: user_id=d1bdaa11-3591-42c7-b8e9-867f20a76dbf
+2026-07-30 19:48:06,600 DEBUG    backend.ai.style_memory — Style memory Redis miss, reading from DB: user_id=d1bdaa11-3591-42c7-b8e9-867f20a76dbf
+2026-07-30 19:48:06,639 DEBUG    backend.ai.style_memory — No style memory found in DB: user_id=d1bdaa11-3591-42c7-b8e9-867f20a76dbf
+2026-07-30 19:48:06,664 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=d1bdaa11-3591-42c7-b8e9-867f20a76dbf
+2026-07-30 19:48:07,715 INFO     backend.ai.agents.supervisor — supervisor: route=direct steps_taken=2
+2026-07-30 19:52:59,398 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=d1bdaa11-3591-42c7-b8e9-867f20a76dbf
+2026-07-30 19:53:00,554 INFO     backend.ai.agents.supervisor — supervisor: route=research steps_taken=1
+2026-07-30 19:53:00,557 DEBUG    backend.ai.graph — supervisor_router: Send → researcher_node
+2026-07-30 19:53:00,575 DEBUG    backend.ai.agents.researcher — researcher_linkedin invoked: user_id=d1bdaa11-3591-42c7-b8e9-867f20a76dbf query_len=728
+2026-07-30 19:53:00,576 INFO     backend.ai.agents.researcher — researcher_linkedin: round=0 calling Gemini (2 messages in history)...
+2026-07-30 19:53:45,313 INFO     backend.ai.agents.researcher — researcher_linkedin: round=0 Gemini responded in 44.75s, tool_calls=1
+2026-07-30 19:53:45,313 INFO     backend.ai.agents.researcher — researcher_linkedin: round=0 executing tool=web_search args={'query': 'LangGraph FastAPI agentic AI brand voice LinkedIn content'}
+2026-07-30 19:53:45,327 DEBUG    backend.ai.agents.tools — web_search: query_len=57
+2026-07-30 19:53:56,950 INFO     backend.ai.agents.researcher — researcher: tool=web_search took 11.62s
+2026-07-30 19:53:56,951 INFO     backend.ai.agents.researcher — researcher_linkedin: round=1 calling Gemini (4 messages in history)...
+2026-07-30 19:54:25,025 INFO     backend.ai.agents.researcher — researcher_linkedin: round=1 Gemini responded in 28.08s, tool_calls=0
+2026-07-30 19:54:25,079 INFO     backend.ai.agents.researcher — researcher_linkedin: TOTAL 84.52s — produced 5 angles for user_id=d1bdaa11-3591-42c7-b8e9-867f20a76dbf
+2026-07-30 19:57:37,521 DEBUG    backend.ai.agents.writer_node — writer_node invoked: user_id=d1bdaa11-3591-42c7-b8e9-867f20a76dbf
+2026-07-30 19:57:45,641 DEBUG    backend.ai.style_memory — Style memory Redis miss, reading from DB: user_id=d1bdaa11-3591-42c7-b8e9-867f20a76dbf
+2026-07-30 19:57:45,648 DEBUG    backend.ai.style_memory — No style memory found in DB: user_id=d1bdaa11-3591-42c7-b8e9-867f20a76dbf
+2026-07-30 19:57:45,981 INFO     backend.ai.agents.writer_node — writer_node: no style_json, using onboarding profile fallback
+2026-07-30 19:57:53,303 INFO     backend.ai.agents.writer_node — writer_node: draft generated, char_count=1386
+2026-07-31 17:20:51,990 DEBUG    backend.ai.checkpointing.session_memory_store — SessionMemoryService: created session_id=cd81039e-58c4-41d9-b211-f816a3f73eb7 user_id=ca0baf57-d4d2-44ab-911d-ee7248f83ca5 title='Write a LinkedIn post about why remote work debates miss the…'
+2026-07-31 17:20:56,591 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=ca0baf57-d4d2-44ab-911d-ee7248f83ca5
+2026-07-31 17:20:57,374 DEBUG    backend.ai.agents.supervisor — supervisor: 1 tool call(s) requested
+2026-07-31 17:20:57,374 DEBUG    backend.ai.agents.tools — search_vault_posts: user_id=ca0baf57-d4d2-44ab-911d-ee7248f83ca5 query_len=11
+2026-07-31 17:21:09,957 DEBUG    backend.ai.agents.tools — search_vault_posts: 0 vector results for user_id=ca0baf57-d4d2-44ab-911d-ee7248f83ca5
+2026-07-31 17:21:14,042 DEBUG    backend.ai.agents.supervisor — supervisor_node invoked: user_id=ca0baf57-d4d2-44ab-911d-ee7248f83ca5
+2026-07-31 17:21:14,623 INFO     backend.ai.agents.supervisor — supervisor: route=research steps_taken=2
+2026-07-31 17:21:14,623 DEBUG    backend.ai.graph — supervisor_router: Send → researcher_node
+2026-07-31 17:21:14,640 DEBUG    backend.ai.agents.researcher — researcher_linkedin invoked: user_id=ca0baf57-d4d2-44ab-911d-ee7248f83ca5 query_len=71
+2026-07-31 17:21:14,640 INFO     backend.ai.agents.researcher — researcher_linkedin: round=0 calling Gemini (2 messages in history)...
+2026-07-31 17:21:17,681 INFO     backend.ai.agents.researcher — researcher_linkedin: round=0 Gemini responded in 3.03s, tool_calls=1
+2026-07-31 17:21:17,681 INFO     backend.ai.agents.researcher — researcher_linkedin: round=0 executing tool=web_search args={'query': 'remote work debate RTO productivity management trust async work statistics 2024 2025'}
+2026-07-31 17:21:17,682 DEBUG    backend.ai.agents.tools — web_search: query_len=84
+2026-07-31 17:21:28,308 INFO     backend.ai.agents.researcher — researcher: tool=web_search took 10.64s
+2026-07-31 17:21:28,308 INFO     backend.ai.agents.researcher — researcher_linkedin: round=1 calling Gemini (4 messages in history)...
+2026-07-31 17:22:02,753 INFO     backend.ai.agents.researcher — researcher_linkedin: round=1 Gemini responded in 34.44s, tool_calls=0
+2026-07-31 17:22:02,753 INFO     backend.ai.agents.researcher — researcher_linkedin: TOTAL 48.11s — produced 5 angles for user_id=ca0baf57-d4d2-44ab-911d-ee7248f83ca5
+2026-07-31 17:22:02,898 INFO     backend.ai.router — query: state after invoke — draft='' answer='' route='research'
+2026-07-31 17:22:13,402 DEBUG    backend.ai.agents.writer_node — writer_node invoked: user_id=ca0baf57-d4d2-44ab-911d-ee7248f83ca5
+2026-07-31 17:22:21,525 DEBUG    backend.ai.style_memory — Style memory Redis miss, reading from DB: user_id=ca0baf57-d4d2-44ab-911d-ee7248f83ca5
+2026-07-31 17:22:21,554 DEBUG    backend.ai.style_memory — No style memory found in DB: user_id=ca0baf57-d4d2-44ab-911d-ee7248f83ca5
+2026-07-31 17:22:21,569 INFO     backend.ai.agents.writer_node — writer_node: no style_json, no profile — using cold-start defaults
+2026-07-31 17:22:24,252 INFO     backend.ai.agents.writer_node — writer_node: draft generated, char_count=1377

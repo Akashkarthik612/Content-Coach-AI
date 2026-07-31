@@ -3,18 +3,25 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import LandingPage from './pages/landing/LandingPage';
 import OnboardingPage from './pages/OnboardingPage';
-import DashboardPage from './pages/DashboardPage';
-import AnalyticsPage from './pages/AnalyticsPage';
 import MyWorkPage from './pages/MyWorkPage';
 import ChatPage from './pages/ChatPage';
+import SchedulePage from './pages/SchedulePage';
 import AgentsPage from './pages/AgentsPage';
 import { ReviewQueueProvider } from './context/ReviewQueueContext';
 import { supabase } from './lib/supabaseClient';
+
+// Dev-only switch — see AUTH_PROVIDER on the backend (backend/auth_local/).
+// Defaults to Supabase; never set VITE_AUTH_MODE=local outside local dev.
+const IS_LOCAL_AUTH = import.meta.env.VITE_AUTH_MODE === 'local';
 
 function RequireAuth({ children }) {
   const [status, setStatus] = useState('checking'); // checking | authed | anon
 
   useEffect(() => {
+    if (IS_LOCAL_AUTH) {
+      setStatus(localStorage.getItem('user_id') ? 'authed' : 'anon');
+      return;
+    }
     supabase.auth.getSession().then(({ data }) => {
       setStatus(data.session ? 'authed' : 'anon');
     });
@@ -32,11 +39,10 @@ export default function App() {
         <Route path="/login"    element={<HomePage initialMode="login" />} />
         <Route path="/register" element={<HomePage initialMode="register" />} />
         <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
-        <Route path="/dashboard"  element={<RequireAuth><DashboardPage /></RequireAuth>} />
-        <Route path="/analytics"  element={<RequireAuth><AnalyticsPage /></RequireAuth>} />
         <Route path="/my-work"    element={<RequireAuth><MyWorkPage /></RequireAuth>} />
         <Route path="/vault"      element={<RequireAuth><MyWorkPage /></RequireAuth>} />
         <Route path="/chat"       element={<RequireAuth><ChatPage /></RequireAuth>} />
+        <Route path="/schedule"   element={<RequireAuth><SchedulePage /></RequireAuth>} />
         <Route path="/agents"     element={<RequireAuth><AgentsPage /></RequireAuth>} />
         <Route path="*"          element={<Navigate to="/" replace />} />
       </Routes>

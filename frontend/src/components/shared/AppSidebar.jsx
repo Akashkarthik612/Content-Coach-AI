@@ -1,6 +1,7 @@
-// Shared app-shell sidebar — used by DashboardPage and MyWorkPage so navigation
-// between pages is consistent. Extracted from DashboardPage.jsx's original inline
-// Sidebar (kept pixel-identical) so both pages render the same component.
+// Shared app-shell sidebar — used by MyWorkPage and AgentsPage so navigation
+// between pages is consistent. Originally extracted from the now-deleted
+// DashboardPage.jsx's inline Sidebar (2026-07-29: Dashboard/Templates/Analytics
+// nav entries removed along with that page — Chat is the app's home page now).
 
 const INK    = '#111827'
 const BODY   = '#4B5563'
@@ -17,23 +18,17 @@ const SERIF  = "'Newsreader',Georgia,serif"
 const MONO   = "'JetBrains Mono','Fira Code',monospace"
 
 export const NAV_ITEMS = [
-  { key: 'dashboard',    label: 'Dashboard',     path: '/dashboard',
-    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" width="17" height="17"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg> },
   { key: 'content',     label: 'Start Writing',  path: '/my-work?new=1',
     icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" width="17" height="17"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> },
   { key: 'agents',      label: 'Agents',         path: '/agents',
     icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" width="17" height="17"><rect x="4" y="7" width="16" height="13" rx="2"/><path d="M8 7V5a2 2 0 014 0v2M12 7V5a2 2 0 014 0v2M9 14h.01M15 14h.01"/></svg> },
   { key: 'vault',       label: 'Content Vault',  path: '/vault',
     icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" width="17" height="17"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg> },
-  { key: 'analytics',   label: 'Analytics',      path: '/analytics',
-    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" width="17" height="17"><path d="M8 6v12M12 12v6M16 9v9M20 3v18"/></svg> },
   { key: 'chat',        label: 'Chat',           path: '/chat',
     icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" width="17" height="17"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg> },
-  { key: 'templates',   label: 'Templates',      path: '/dashboard',
-    icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" width="17" height="17"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><path d="M8 6h8M6 8v8M18 8v4M14 18h4M18 14v4"/></svg> },
 ]
 
-export function AppSidebar({ navigate, activeKey = 'dashboard', collapsed, onToggle, onCalendarOpen = () => {} }) {
+export function AppSidebar({ navigate, activeKey = 'content', collapsed, onToggle, onCalendarOpen = () => {} }) {
   const displayName = localStorage.getItem('display_name') ?? localStorage.getItem('username') ?? 'User'
   const initial = displayName[0]?.toUpperCase() ?? 'U'
 

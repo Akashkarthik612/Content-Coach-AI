@@ -96,9 +96,21 @@ def create_post(db: Session, user_id: UUID, folder_id: UUID, data: PostCreate) -
     return post
 
 
+def _attach_preview(post: Post) -> Post:
+    """Derive a flattened preview + word count from the latest version's content.
+    Attached as plain instance attributes (not mapped columns) so PostListResponse's
+    from_attributes validation can read them like any other field."""
+    latest = max(post.versions, key=lambda v: v.version_number, default=None)
+    flat = " ".join((latest.content if latest else "").split())
+    post.preview = flat[:220]
+    post.word_count = len(flat.split()) if flat else 0
+    return post
+
+
 def list_posts(db: Session, user_id: UUID, folder_id: UUID) -> list[Post]:
     _own_folder(db, user_id, folder_id)
-    return db.query(Post).filter(Post.folder_id == folder_id, Post.user_id == user_id).all()
+    posts = db.query(Post).filter(Post.folder_id == folder_id, Post.user_id == user_id).all()
+    return [_attach_preview(p) for p in posts]
 
 
 def get_post(db: Session, user_id: UUID, post_id: UUID) -> Post:
@@ -306,13 +318,14 @@ def get_analytics_summary(db: Session, user_id: UUID) -> dict:
 
 
 def get_recent_posts(db: Session, user_id: UUID, limit: int = 3) -> list[Post]:
-    return (
+    posts = (
         db.query(Post)
         .filter(Post.user_id == user_id)
         .order_by(Post.updated_at.desc())
         .limit(limit)
         .all()
     )
+    return [_attach_preview(p) for p in posts]
 
 
 # ── Search ────────────────────────────────────────────────────────────────────

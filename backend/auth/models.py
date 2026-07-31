@@ -18,6 +18,9 @@ class User(Base):
     id = Column(UUID(as_uuid=True), primary_key=True)
     username = Column(Text, nullable=True, unique=True)
     email = Column(Text, nullable=True, unique=True)
+    # Only populated for rows created via backend/auth_local (AUTH_PROVIDER=local dev
+    # path) — always NULL for Supabase-issued rows, which own credential validation.
+    password_hash = Column(Text, nullable=True)
     created_at = Column(
         DateTime(timezone=True), nullable=False, default=_utcnow, server_default="now()"
     )

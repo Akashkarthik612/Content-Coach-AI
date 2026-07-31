@@ -39,9 +39,10 @@
   background: var(--danger-hover);
 }
 
-/* Dashboard skin — used by the redesigned DocEditor (version ⋯ menu, save-toolbar
-   right-click menu). The legacy vars above aren't defined globally, so this variant
-   carries its own concrete colors matching DashboardPage.jsx's token set. */
+/* "Dashboard" skin (legacy name — the Dashboard page itself was removed 2026-07-29;
+   this variant lives on as MyWorkPage's DocEditor menu skin) — used by the redesigned
+   DocEditor (version ⋯ menu, save-toolbar right-click menu). The legacy vars above
+   aren't defined globally, so this variant carries its own concrete colors. */
 .menuDashboard {
   background: #FFFFFF;
   border: 1px solid rgba(17, 24, 39, 0.08);

@@ -2,8 +2,9 @@
 Researcher agent — LinkedIn content-strategy research node.
 
 Given a topic query from the supervisor, this agent searches the web (and the
-user's own vault, to avoid repeating past coverage) and returns exactly 5
-distinct strategic angles a LinkedIn post could be written from. It does not
+user's own vault, to avoid repeating past coverage) and returns up to 5
+distinct strategic angles a LinkedIn post could be written from — fewer when
+the topic doesn't genuinely support 5 distinct lenses, never zero. It does not
 write posts itself — that's writer_node's job once one angle is picked.
 
 Not yet wired into graph.py / routed from supervisor.py — this is a standalone,
@@ -31,6 +32,7 @@ from typing import Literal
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langgraph.func import task
 from pydantic import BaseModel, ValidationError
 
 from backend.ai.activity import (
@@ -51,8 +53,8 @@ logger = logging.getLogger(__name__)
 
 class ResearcherDecisionError(Exception):
     """Raised when the tool-calling loop overruns its round limit or the final
-    response can't be parsed into exactly 5 angles. Never swallowed into a
-    fabricated fallback — matches supervisor.py's SupervisorDecisionError."""
+    response can't be parsed into at least 1 angle (max 5). Never swallowed
+    into a fabricated fallback — matches supervisor.py's SupervisorDecisionError."""
 
 
 class ResearchAngle(BaseModel):
@@ -62,10 +64,47 @@ class ResearchAngle(BaseModel):
     slips past AngleResponseParser.normalize_provokes()/parse_angles()'s own
     regex-level checks (e.g. a field ending up the wrong type)."""
     title: str
-    argument: str
+    argument: str  # short, one-line claim — kept for map_chosen_angle_node's
+                    # recommended_angle/talking-points so that brief doesn't
+                    # inherit the much longer glimpse text below unless the
+                    # user actually expanded/modified this angle.
+    glimpse: str  # 500+ char paragraph — the actual glimpse rendered on the
+                  # angle card, giving the user enough to judge the angle by
+                  # before expanding.
     audience: str
     provokes_type: Literal["comment", "long-dwell", "share"]
     provokes_reason: str
+    source_url: str = ""  # asserted by the LLM; AngleResponseParser.parse_angles()
+                          # blanks this out unless it matches a URL this round's
+                          # web_search calls actually returned — never a fabricated link.
+
+
+class ExpandedAngleSection(BaseModel):
+    heading: str
+    body: str
+
+
+class ExpandedAngleSummary(BaseModel):
+    """Structured-output contract for both expand_research_angle() and
+    modify_angle_summary() — same shape as SupervisorClassification's
+    convention (supervisor.py): the LLM is asked for raw JSON, parsed via
+    model_validate_json(), never string-matched or trusted un-parsed."""
+    sections: list[ExpandedAngleSection]
+
+
+def _extract_json_text(raw: str | list) -> str:
+    """Normalizes an LLM response into a bare JSON string (same normalization
+    used in supervisor.py/writer_node.py — duplicated here per this file's own
+    established convention of not sharing small normalization helpers across
+    agent files)."""
+    text = "".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in raw) if isinstance(raw, list) else raw
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+        text = text.strip()
+    return text
 
 
 class AngleResponseParser:
@@ -73,12 +112,19 @@ class AngleResponseParser:
     response into ResearchAngle objects. Grouped as staticmethods purely for
     namespacing — there is no instance state."""
 
+    # DOTALL added (alongside MULTILINE) so `glimpse` can be a genuine
+    # multi-sentence paragraph — `.` now matches newlines, but the group stays
+    # non-greedy, so it still only ever captures the minimal text up to the
+    # next literal marker line, whether that's on the same line or several
+    # lines down.
     ANGLE_BLOCK_RE = re.compile(
         r"\*\*(?P<title>.+?)\*\*\s*\n"
         r"(?P<argument>.+?)\n"
+        r"(?P<glimpse>.+?)\n"
         r"·\s*Audience:\s*(?P<audience>.+?)\n"
-        r"·\s*Provokes:\s*(?P<provokes>.+?)\s*(?:\n|$)",
-        re.MULTILINE,
+        r"·\s*Provokes:\s*(?P<provokes>.+?)\s*\n?"
+        r"(?:·\s*Source:\s*(?P<source_url>\S+)\s*)?(?:\n|$)",
+        re.MULTILINE | re.DOTALL,
     )
 
     PROVOKES_ALIASES = {
@@ -118,28 +164,43 @@ class AngleResponseParser:
         return provokes_type, reason
 
     @staticmethod
-    def parse_angles(raw_text: str) -> list[ResearchAngle]:
+    def parse_angles(raw_text: str, valid_source_urls: set[str] | None = None) -> list[ResearchAngle]:
+        """valid_source_urls, when given, is the set of URLs this round's
+        web_search calls actually returned (see extract_sources below) — any
+        angle's asserted source_url that isn't in this set is blanked out
+        rather than trusted, so a fabricated/hallucinated citation never
+        reaches the frontend."""
+        valid_source_urls = valid_source_urls or set()
         angles: list[ResearchAngle] = []
         for match in AngleResponseParser.ANGLE_BLOCK_RE.finditer(raw_text):
             try:
                 provokes_type, provokes_reason = AngleResponseParser.normalize_provokes(
                     match.group("provokes")
                 )
+                source_url = (match.group("source_url") or "").strip()
+                if source_url and source_url not in valid_source_urls:
+                    logger.warning("researcher: dropping unverifiable source_url=%r (not in this round's results)", source_url)
+                    source_url = ""
                 angles.append(ResearchAngle(
                     title=match.group("title").strip(),
                     argument=match.group("argument").strip(),
+                    glimpse=match.group("glimpse").strip(),
                     audience=match.group("audience").strip(),
                     provokes_type=provokes_type,
                     provokes_reason=provokes_reason,
+                    source_url=source_url,
                 ))
             except (ValueError, ValidationError) as exc:
                 logger.warning("researcher: skipping unparseable angle block — %s", exc)
 
-        if len(angles) != 5:
-            logger.error("researcher: expected 5 angles, parsed %d — raw=%r", len(angles), raw_text)
+        if not angles:
+            logger.error("researcher: expected at least 1 angle, parsed 0 — raw=%r", raw_text)
             raise ResearcherDecisionError(
-                f"researcher_linkedin: expected exactly 5 angles, parsed {len(angles)}"
+                "researcher_linkedin: expected at least 1 angle, parsed 0"
             )
+        if len(angles) > 5:
+            logger.warning("researcher: parsed %d angles, capping to 5", len(angles))
+            angles = angles[:5]
         return angles
 
     @staticmethod
@@ -163,6 +224,21 @@ class AngleResponseParser:
             m.content for m in messages
             if isinstance(m, ToolMessage) and m.name == "web_search"
         )
+
+    _SOURCE_URL_RE = re.compile(r"^(https?://\S+)$", re.MULTILINE)
+
+    @staticmethod
+    def extract_sources(messages: list) -> set[str]:
+        """The set of URLs this round's web_search tool calls actually
+        returned — used by parse_angles() to validate (never trust blindly)
+        whatever source_url an angle asserts. Relies on web_search's own
+        output format (tools.py): each result is `### {title}\\n{url}\\n{content}`,
+        so a bare URL on its own line is unambiguous here."""
+        urls: set[str] = set()
+        for m in messages:
+            if isinstance(m, ToolMessage) and m.name == "web_search":
+                urls.update(AngleResponseParser._SOURCE_URL_RE.findall(m.content))
+        return urls
 
 
 class ResearchPromptBuilder:
@@ -226,18 +302,50 @@ USER CONTEXT was given, keep this general — never invent a profession.}
 
 **{Title — a claim, never a topic}**
 {One sentence: the argument this post makes.}
+{A 500+ character paragraph, several sentences: unpack the argument — why it's true,
+what specific evidence supports it, what makes it non-obvious. This is what the user
+actually reads to decide whether to write about it, so give them enough to judge —
+never just restate the one-sentence argument in slightly different words.}
 · Audience: {specific role}
 · Provokes: {comment | long-dwell | share} — {why they react}
+· Source: {the single URL from the search results above that most directly grounds
+this angle — copy it exactly as it appeared. Omit this entire line if nothing in the
+search results specifically supports this angle. Never invent a URL.}
 """
 
     EXPAND_SYSTEM = """\
 You already researched a topic and proposed several strategic angles for a LinkedIn
 post. The user wants more detail on ONE specific angle before deciding to write it up.
 
-Using ONLY the search context provided below (do not invent new facts), write a short,
-dense summary (3-5 sentences) that gives the user enough grounding on this angle's
-topic to decide whether to proceed. No preamble, no "here is a summary" framing —
-just the summary text.
+Using ONLY the search context provided below (do not invent new facts), produce a
+structured summary as raw JSON matching this exact shape — nothing else, no markdown
+fences, no preamble:
+
+{"sections": [{"heading": "...", "body": "..."}, ...]}
+
+2 to 4 sections. Each heading is short (3-6 words, e.g. "What's happening", "Why it
+matters to you", "The angle to take"). Each body is 2-4 dense sentences grounded only
+in the provided search context.
+"""
+
+    MODIFY_SYSTEM = """\
+You previously wrote a structured summary (sections with headings) for one strategic
+LinkedIn content angle. The user is now giving you a free-text instruction to revise
+that summary — e.g. "cut the part about X", "add something about Y", "make it punchier".
+
+Apply the instruction to produce a revised summary. Keep whatever the instruction
+doesn't ask you to change. You may restructure or rename sections if the edit calls
+for it, but stay within 2-4 sections total.
+
+Ground any NEW factual claim only in the search context provided below — if the
+instruction asks you to add something specific (a stat, a name, a number) that isn't
+actually in that search context, do not invent it; instead phrase the addition
+generically, or note in the body that this would need a source.
+
+Return raw JSON matching this exact shape — nothing else, no markdown fences, no
+preamble:
+
+{"sections": [{"heading": "...", "body": "..."}, ...]}
 """
 
     @staticmethod
@@ -332,8 +440,9 @@ _expand_llm = ChatGoogleGenerativeAI(
 
 async def researcher_linkedin(state: ResearcherState, profile_context: dict | None = None) -> dict:
     """LinkedIn research agent — core logic. Searches the web (and the user's
-    vault) for the given topic query and produces exactly 5 distinct strategic
-    angles. profile_context ({role, industry, target_audience}) is optional —
+    vault) for the given topic query and produces up to 5 distinct strategic
+    angles (fewer when the topic doesn't support that many, never zero).
+    profile_context ({role, industry, target_audience}) is optional —
     researcher_node fetches it; direct callers (e.g. the smoke script) can omit
     it and get the base domain-fit judgment with no user grounding."""
     user_id = state["user_id"]
@@ -375,7 +484,8 @@ async def researcher_linkedin(state: ResearcherState, profile_context: dict | No
         raise ResearcherDecisionError("researcher_linkedin: tool-calling loop exceeded round limit")
 
     raw = AngleResponseParser.extract_text(response.content)
-    angles = AngleResponseParser.parse_angles(raw)
+    valid_source_urls = AngleResponseParser.extract_sources(messages)
+    angles = AngleResponseParser.parse_angles(raw, valid_source_urls=valid_source_urls)
     summary = AngleResponseParser.parse_summary(raw)
     emit_activity(BUILDING_ANGLES_ID, BUILDING_ANGLES_TITLE, "completed", parent_id="researching")
     logger.info("researcher_linkedin: TOTAL %.2fs — produced %d angles for user_id=%s",
@@ -388,10 +498,41 @@ async def researcher_linkedin(state: ResearcherState, profile_context: dict | No
     }
 
 
-async def expand_research_angle(angle: dict, search_context: str) -> str:
-    """'Expand' action — a short summary of one angle's topic, grounded only in
-    the search context researcher_linkedin already gathered. Never searches
-    again: _expand_llm has no tools bound."""
+def _parse_expanded_summary(response, caller: str) -> list[dict]:
+    """Shared parse/validation step for both expand and modify — raises on
+    empty/malformed JSON so the caller (angle_review_node) can turn that into
+    an inline "error" for the interrupt payload rather than silently showing
+    a blank/broken card."""
+    raw = _extract_json_text(response.content)
+    if not raw:
+        logger.error(
+            "%s: LLM returned empty content — finish_reason=%r usage=%r",
+            caller,
+            response.response_metadata.get("finish_reason"),
+            response.response_metadata.get("usage_metadata"),
+        )
+        raise ResearcherDecisionError(f"{caller}: LLM returned empty content")
+    try:
+        parsed = ExpandedAngleSummary.model_validate_json(raw)
+    except (ValidationError, ValueError) as exc:
+        logger.error("%s: invalid JSON — %s | raw=%r", caller, exc, raw)
+        raise ResearcherDecisionError(f"{caller}: could not parse a valid summary") from exc
+    return [s.model_dump() for s in parsed.sections]
+
+
+@task
+async def expand_research_angle(angle: dict, search_context: str) -> list[dict]:
+    """'Expand' action — a structured, sectioned summary of one angle's topic,
+    grounded only in the search context researcher_linkedin already gathered.
+    Never searches again: _expand_llm has no tools bound.
+
+    Decorated with @task: angle_review_node's interrupt loop re-runs its whole
+    function body from the top on every resume (only the *next* unresolved
+    interrupt() actually pauses again — every earlier one just replays its
+    recorded answer instantly). Without @task, every previous expand/modify
+    call in a thread's history would be re-invoked for real (re-billed) on
+    each later resume; @task caches a call's result in the checkpoint so a
+    replay reuses it instead of calling Gemini again."""
     t0 = time.monotonic()
     human = (
         f"Angle: {angle['title']}\n"
@@ -402,16 +543,37 @@ async def expand_research_angle(angle: dict, search_context: str) -> str:
         SystemMessage(content=ResearchPromptBuilder.EXPAND_SYSTEM),
         HumanMessage(content=human),
     ])
-    content = AngleResponseParser.extract_text(response.content)
-    logger.info("expand_research_angle: took %.2fs", time.monotonic() - t0)
-    if not content:
-        logger.error(
-            "expand_research_angle: LLM returned empty content — finish_reason=%r usage=%r raw=%r",
-            response.response_metadata.get("finish_reason"),
-            response.response_metadata.get("usage_metadata"),
-            response.content,
-        )
-    return content
+    sections = _parse_expanded_summary(response, "expand_research_angle")
+    logger.info("expand_research_angle: took %.2fs, sections=%d", time.monotonic() - t0, len(sections))
+    return sections
+
+
+@task
+async def modify_angle_summary(angle: dict, current_sections: list[dict], instruction: str, search_context: str) -> list[dict]:
+    """'Modify' action — revises the CURRENT sections for one angle (whatever
+    the user is looking at right now, whether that came from expand or a
+    previous modify round) per the user's free-text instruction. Only this
+    one angle's data is sent — never the other 4 angles, never prior modify
+    rounds' text beyond "whatever the current sections say right now".
+    Same @task memoization rationale as expand_research_angle above — each
+    modify round in a thread's history must not be silently re-run on a
+    later resume."""
+    t0 = time.monotonic()
+    current_sections_text = "\n".join(f"## {s['heading']}\n{s['body']}" for s in current_sections) or "(nothing yet — treat this as a fresh summary)"
+    human = (
+        f"Angle: {angle['title']}\n"
+        f"Argument: {angle['argument']}\n\n"
+        f"Current summary:\n{current_sections_text}\n\n"
+        f"User's instruction: {instruction}\n\n"
+        f"Search context:\n{search_context or '(no search context available)'}"
+    )
+    response = await invoke_with_retry(_expand_llm, [
+        SystemMessage(content=ResearchPromptBuilder.MODIFY_SYSTEM),
+        HumanMessage(content=human),
+    ])
+    sections = _parse_expanded_summary(response, "modify_angle_summary")
+    logger.info("modify_angle_summary: took %.2fs, sections=%d", time.monotonic() - t0, len(sections))
+    return sections
 
 
 async def researcher_node(state: ResearcherState) -> dict:

@@ -53,6 +53,12 @@ class PostListResponse(BaseModel):
     is_pinned: bool
     current_version: int
     updated_at: datetime
+    # Derived from the latest PostVersion — attached by service._attach_preview()
+    # rather than a real column, so the Vault grid can show a card preview/word
+    # count without an extra per-post round trip (versions are already eager-
+    # loaded via the Post.versions selectin relationship).
+    preview: str = ""
+    word_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 

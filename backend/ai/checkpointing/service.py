@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from backend.ai.checkpointing.models import ThreadRegistry
+from backend.ai.checkpointing.session_memory_store import SessionMemoryService
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +48,12 @@ class ThreadRegistryService:
             .all()
         )
 
-    def touch(self, thread_id: str) -> None:
+    def touch(self, thread_id: str) -> ThreadRegistry | None:
         row = self.db.get(ThreadRegistry, uuid.UUID(thread_id))
         if row:
             row.updated_at = _utcnow()
             self.db.commit()
+        return row
 
     def mark_completed(self, thread_id: str) -> None:
         row = self.db.get(ThreadRegistry, uuid.UUID(thread_id))
@@ -62,28 +64,39 @@ class ThreadRegistryService:
 
 
 class ThreadSessionService:
-    """Facade: router endpoints depend on this only — never the registry or a
-    raw checkpointer config dict directly."""
+    """Facade: router endpoints depend on this only — never the registry, the
+    session-memory store, or a raw checkpointer config dict directly."""
 
-    def __init__(self, registry: ThreadRegistryService):
+    def __init__(self, registry: ThreadRegistryService, session_memory: SessionMemoryService):
         self._registry = registry
+        self._session_memory = session_memory
 
-    def start(self, user_id: str, session_id: str | None = None) -> tuple[str, str, dict]:
+    async def start(
+        self, user_id: str, session_id: str | None = None, first_prompt: str = ""
+    ) -> tuple[str, str, dict]:
         """Mint a new thread_id, register ownership under session_id (grouping
         key for the frontend's "chat" — minted here as a defensive fallback if
-        the caller doesn't supply one), return (thread_id, session_id, config)."""
+        the caller doesn't supply one), upsert the chat_sessions Store record
+        (creates it on a brand-new session, or appends this thread_id + bumps
+        last_active_at on an existing one — resets the 7-day TTL either way),
+        return (thread_id, session_id, config)."""
         thread_id = str(uuid.uuid4())
         session_id = session_id or str(uuid.uuid4())
         self._registry.register(thread_id, user_id, session_id)
+        await self._session_memory.start_or_touch(user_id, session_id, thread_id, first_prompt)
         return thread_id, session_id, {"configurable": {"thread_id": thread_id}}
 
-    def resume_config(self, thread_id: str, user_id: str) -> dict:
-        """Verify ownership, touch last-active timestamp, return config for
-        Command(resume=...). Raises PermissionError if user_id isn't the owner."""
+    async def resume_config(self, thread_id: str, user_id: str) -> dict:
+        """Verify ownership, touch last-active timestamp (both the thread_registry
+        row and its parent chat_sessions Store record, resetting the 7-day TTL),
+        return config for Command(resume=...). Raises PermissionError if
+        user_id isn't the owner."""
         if not self._registry.is_owner(thread_id, user_id):
             logger.warning("resume denied: user_id=%s does not own thread_id=%s", user_id, thread_id)
             raise PermissionError(f"user_id={user_id} does not own thread_id={thread_id}")
-        self._registry.touch(thread_id)
+        row = self._registry.touch(thread_id)
+        if row and row.session_id:
+            await self._session_memory.touch_existing(user_id, str(row.session_id))
         return {"configurable": {"thread_id": thread_id}}
 
     def complete(self, thread_id: str) -> None:

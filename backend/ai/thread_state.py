@@ -49,14 +49,20 @@ def shape_thread_state(thread_id: str, state, created_at: datetime | None = None
 
         return {
             **base,
-            "status":          "awaiting_angle_selection",
-            "draft":           "",
-            "answer":          "",
-            "post_id":         "",
-            "angles":          interrupt_value.get("angles", []),
-            "actions":         interrupt_value.get("actions", []),
-            "summary":         interrupt_value.get("summary", ""),
-            "approval_status": "",
+            "status":            "awaiting_angle_selection",
+            "draft":             "",
+            "answer":            "",
+            "post_id":           "",
+            "angles":            interrupt_value.get("angles", []),
+            "actions":           interrupt_value.get("actions", []),
+            "summary":           interrupt_value.get("summary", ""),
+            "approval_status":   "",
+            # Surfaced so a page reload mid-expand/modify shows the latest
+            # revision instead of silently losing it — only the latest
+            # revision survives, not the full edit history (same as
+            # human_approval_node's draft editing having no version history).
+            "expanded_angle_id": interrupt_value.get("expanded_angle_id"),
+            "expanded_sections": interrupt_value.get("expanded_sections", []),
         }
 
     return {

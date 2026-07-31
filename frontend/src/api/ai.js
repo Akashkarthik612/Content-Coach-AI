@@ -7,6 +7,18 @@ attachAuthHeader(api);
 export const queryAI = (prompt, sessionId = null) =>
   api.post('/query', { prompt, session_id: sessionId }).then(r => r.data);
 
+/**
+ * Resumes a paused thread's interrupt (human_approval_node or angle_review_node).
+ *
+ * @param {string} thread_id
+ * @param {string} action    - "approved" | "edited" | "rejected" (human_approval_node) |
+ *                             "pick" | "expand" | "modify" | "none_fit" (angle_review_node)
+ * @param {string} [content] - free text: edited draft body ("edited"), modify instruction
+ *                             ("modify"), or fresh guidance ("none_fit")
+ * @param {number|null} [angle_id] - required for "pick" / "expand" / "modify"
+ * @returns {Promise<{status?, answer?, draft?, angles?, actions?, summary?,
+ *                     expanded_angle_id?, expanded_sections?, error?, post_id?}>}
+ */
 export const resumeAI = (thread_id, action, content = '', angle_id = null) =>
   api.post('/resume', { thread_id, action, content, angle_id }).then(r => r.data);
 
@@ -36,6 +48,15 @@ export const draftFromTopic = (topic, platform = 'linkedin', sessionId = null) =
  */
 export const getSessionThreads = (sessionId) =>
   api.get(`/sessions/${sessionId}/threads`).then(r => r.data);
+
+/**
+ * List the current user's live (not-yet-expired, 7-day TTL) chat sessions,
+ * most recently active first. Powers the sidebar's persisted chat history.
+ *
+ * @returns {Promise<{sessions: Array<{session_id, title, last_active_at}>}>}
+ */
+export const getSessions = () =>
+  api.get('/sessions').then(r => r.data);
 
 /**
  * SSE streaming query. Calls /stream and fires callbacks as events arrive.

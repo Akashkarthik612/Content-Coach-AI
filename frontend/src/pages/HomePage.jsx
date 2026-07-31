@@ -3,75 +3,82 @@ import { useNavigate } from 'react-router-dom';
 import { login, register, googleSignIn } from '../api/auth';
 import { AUTH_COPY } from './authContent';
 
-// ── Design tokens (Honne palette — distinct from every other page's tokens) ──
+// ── Design tokens (Honne Auth — green/cream palette, matches ChatPage's Honne branding) ──
 const C = {
-  paper:   '#F9F8F3',
-  ink:     '#1A1A1A',
-  accent:  '#B4402A',
-  card:    '#FFFFFF',
-  cream:   '#F4F0E6',
-  hair:    'rgba(26,26,26,0.12)',
-  errText: '#B91C1C',
-  errBg:   '#FEF2F2',
+  paper:       '#F4F2EA',
+  ink:         '#1B1C14',
+  accent:      '#14663B',
+  accentHover: '#0F4C2C',
+  card:        '#FFFFFF',
+  hair:        'rgba(27,28,20,0.12)',
+  glow:        'rgba(205,235,214,.22)',
+  cream:       '#EAF3EC',
+  mint:        '#CDEBD6',
+  muted:       '#7A7C6C',
+  faint:       '#9A9C8C',
+  faint2:      '#A6A895',
+  errText:     '#B91C1C',
+  errBg:       '#FEF2F2',
 };
-const SERIF = "'EB Garamond', serif";
-const SANS  = "'Hanken Grotesk', system-ui, sans-serif";
+const GEIST = "'Geist', system-ui, sans-serif";
 const MONO  = "'JetBrains Mono', monospace";
-const mono  = { fontFamily: MONO, letterSpacing: '.18em', textTransform: 'uppercase' };
+const mono  = { fontFamily: MONO, letterSpacing: '.15em', textTransform: 'uppercase' };
 
 // ── Style tables (module-level — mirrors the Honne Auth design's `st` object) ─
 const st = {
-  page: { minHeight: '100vh', display: 'flex', background: C.paper, color: C.ink, fontFamily: SANS },
+  page: { minHeight: '100vh', display: 'grid', gridTemplateColumns: '1fr 1fr', background: C.paper, color: C.ink, fontFamily: GEIST },
 
-  brandPanel: { position: 'relative', flex: 1, minWidth: 380, background: C.ink, color: C.cream, padding: '52px 56px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' },
-  brand: { fontFamily: SERIF, fontWeight: 600, fontSize: 32, letterSpacing: '-0.01em' },
-  brandTagline: { ...mono, fontSize: 10.5, opacity: 0.5, marginTop: 10 },
-  brandQuoteWrap: { maxWidth: 420 },
-  brandMark: { fontFamily: SERIF, color: C.accent, fontSize: 46, lineHeight: 1, marginBottom: 18 },
-  brandQuote: { fontFamily: SERIF, fontStyle: 'italic', fontSize: 27, lineHeight: 1.4 },
-  brandFoot: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 28 },
-  brandFootMark: { fontFamily: SERIF, color: C.accent, fontWeight: 700, fontSize: 16 },
-  brandFootLabel: { ...mono, fontSize: 9.5, opacity: 0.45 },
-  brandNote: { ...mono, fontSize: 9.5, opacity: 0.4 },
+  brandPanel: { position: 'relative', background: C.accent, color: C.cream, padding: '56px 60px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', overflow: 'hidden' },
+  brandGlow: { position: 'absolute', top: '-20%', right: '-25%', width: '70%', height: '70%', borderRadius: 999, background: `radial-gradient(circle, ${C.glow}, rgba(205,235,214,0) 70%)`, pointerEvents: 'none', zIndex: 1 },
+  brandTop: { position: 'relative', zIndex: 2 },
+  brand: { fontFamily: GEIST, fontWeight: 600, fontSize: 30, letterSpacing: '-0.01em', color: C.paper },
+  brandTagline: { ...mono, fontSize: 10.5, color: C.mint, opacity: 0.85, marginTop: 12 },
+  brandQuoteWrap: { position: 'relative', zIndex: 2, maxWidth: 440 },
+  brandMark: { fontFamily: 'Georgia, serif', color: C.mint, opacity: 0.5, fontSize: 54, lineHeight: 1, marginBottom: 16 },
+  brandQuote: { fontFamily: GEIST, fontWeight: 500, fontSize: 26, lineHeight: 1.42, letterSpacing: '-0.01em', color: C.paper },
+  brandFoot: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 30 },
+  brandFootMark: { fontFamily: 'Georgia, serif', color: C.mint, fontWeight: 700, fontSize: 15 },
+  brandFootLabel: { ...mono, fontSize: 9.5, color: C.mint, opacity: 0.7 },
+  brandNote: { position: 'relative', zIndex: 2, ...mono, fontSize: 9.5, color: C.mint, opacity: 0.55 },
 
-  formPanel: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48, position: 'relative' },
-  backLink: { position: 'absolute', top: 28, left: 36, color: 'rgba(26,26,26,.5)', fontFamily: SANS, fontSize: 13 },
+  formPanel: { display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48, position: 'relative' },
+  backLink: { position: 'absolute', top: 28, left: 36, color: C.muted, fontFamily: GEIST, fontSize: 13 },
   formInner: { width: '100%', maxWidth: 400 },
 
-  tabs: { display: 'inline-flex', gap: 2, background: 'rgba(26,26,26,0.06)', padding: 3, marginBottom: 34 },
-  h1: { fontFamily: SERIF, fontWeight: 500, textTransform: 'uppercase', fontSize: 34, lineHeight: 1, letterSpacing: '-0.02em', margin: '0 0 12px' },
-  sub: { fontSize: 14, lineHeight: 1.6, opacity: 0.62, margin: '0 0 30px' },
+  tabs: { display: 'inline-flex', gap: 3, background: 'rgba(27,28,20,0.055)', padding: 3, borderRadius: 999, marginBottom: 32 },
+  h1: { fontFamily: GEIST, fontWeight: 600, fontSize: 32, lineHeight: 1.1, letterSpacing: '-0.02em', margin: '0 0 10px' },
+  sub: { fontFamily: GEIST, fontSize: 15, lineHeight: 1.55, color: C.muted, margin: '0 0 30px' },
 
   form: { display: 'flex', flexDirection: 'column', gap: 16 },
   field: { display: 'flex', flexDirection: 'column', gap: 8 },
   labelRow: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
-  label: { ...mono, fontSize: 10, opacity: 0.6 },
+  label: { ...mono, fontSize: 10, color: C.faint },
   forgot: { fontFamily: MONO, fontSize: 10, letterSpacing: '.06em', textTransform: 'uppercase', color: C.accent, cursor: 'pointer', background: 'none', border: 'none', padding: 0 },
-  input: { fontFamily: SANS, fontSize: 15, color: C.ink, background: C.card, border: `1px solid ${C.hair}`, padding: '14px 16px', width: '100%', outline: 'none', transition: 'border-color .2s ease, box-shadow .2s ease' },
+  input: { fontFamily: GEIST, fontSize: 15, color: C.ink, background: C.card, border: `1px solid ${C.hair}`, borderRadius: 11, padding: '13px 15px', width: '100%', boxShadow: '0 1px 2px rgba(27,28,20,.03)', outline: 'none', transition: 'border-color .2s ease, box-shadow .2s ease' },
 
   divider: { display: 'flex', alignItems: 'center', gap: 14, margin: '26px 0 18px' },
   dividerLine: { flex: 1, height: 1, background: C.hair },
-  dividerText: { ...mono, fontSize: 9, opacity: 0.45 },
+  dividerText: { ...mono, fontSize: 9, color: C.faint2 },
 
-  switchLine: { marginTop: 26, textAlign: 'center', fontSize: 13.5, opacity: 0.72 },
-  switchLink: { color: C.accent, fontWeight: 600, cursor: 'pointer', background: 'none', border: 'none', fontFamily: SANS, fontSize: 13.5, padding: 0 },
-  legal: { marginTop: 22, textAlign: 'center', fontSize: 11.5, lineHeight: 1.6, opacity: 0.42 },
-  legalLink: { color: C.ink, textDecoration: 'underline', textUnderlineOffset: '2px' },
+  switchLine: { marginTop: 26, textAlign: 'center', fontFamily: GEIST, fontSize: 13.5, color: C.muted },
+  switchLink: { color: C.accent, fontWeight: 600, cursor: 'pointer', background: 'none', border: 'none', fontFamily: GEIST, fontSize: 13.5, padding: 0 },
+  legal: { marginTop: 22, textAlign: 'center', fontFamily: GEIST, fontSize: 11.5, lineHeight: 1.6, color: C.faint2 },
+  legalLink: { color: C.muted, textDecoration: 'underline', textUnderlineOffset: '2px' },
 };
 
-const tabBase = { ...mono, fontSize: 10.5, padding: '9px 18px', border: 'none', cursor: 'pointer', transition: 'background-color .22s ease, color .22s ease' };
-const tabOn  = { ...tabBase, background: C.ink, color: C.cream };
-const tabOff = { ...tabBase, background: 'transparent', color: C.ink, opacity: 0.55 };
+const tabBase = { fontFamily: GEIST, fontWeight: 600, fontSize: 13, letterSpacing: '-.005em', padding: '8px 20px', borderRadius: 999, border: 'none', cursor: 'pointer', transition: 'background-color .22s cubic-bezier(.22,1,.36,1), color .22s ease' };
+const tabOn  = { ...tabBase, background: C.card, color: C.accent, boxShadow: '0 1px 2px rgba(27,28,20,.06)' };
+const tabOff = { ...tabBase, background: 'transparent', color: C.faint };
 
-const submitBase = { ...mono, fontSize: 12, width: '100%', padding: 16, marginTop: 6, color: C.cream, background: C.accent, border: `1px solid ${C.accent}`, cursor: 'pointer', transition: 'transform .2s cubic-bezier(.22,1,.36,1), opacity .2s ease' };
-const submitHover = { transform: 'translateY(-1px)', opacity: 0.94 };
+const submitBase = { fontFamily: GEIST, fontWeight: 600, fontSize: 15, letterSpacing: '-.005em', width: '100%', padding: 15, marginTop: 6, color: C.paper, background: C.accent, border: 'none', borderRadius: 12, cursor: 'pointer', boxShadow: '0 12px 30px -14px rgba(20,102,59,.7)', transition: 'transform .2s cubic-bezier(.22,1,.36,1), background-color .2s ease' };
+const submitHover = { transform: 'translateY(-1px)', background: C.accentHover };
 
-const googleBase = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 11, width: '100%', padding: 14, fontFamily: SANS, fontSize: 14, fontWeight: 600, color: C.ink, background: C.card, border: `1px solid ${C.hair}`, cursor: 'pointer', transition: 'background-color .2s ease, border-color .2s ease' };
-const googleHover = { background: 'rgba(26,26,26,0.03)', borderColor: 'rgba(26,26,26,0.24)' };
+const googleBase = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 11, width: '100%', padding: 13, fontFamily: GEIST, fontSize: 14, fontWeight: 600, color: C.ink, background: C.card, border: `1px solid ${C.hair}`, borderRadius: 12, cursor: 'pointer', boxShadow: '0 1px 2px rgba(27,28,20,.03)', transition: 'border-color .2s ease, transform .2s cubic-bezier(.22,1,.36,1)' };
+const googleHover = { borderColor: 'rgba(20,102,59,.4)', transform: 'translateY(-1px)' };
 
 const focusable = {
-  onFocus: e => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(180,64,42,0.12)'; },
-  onBlur:  e => { e.currentTarget.style.borderColor = C.hair; e.currentTarget.style.boxShadow = 'none'; },
+  onFocus: e => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.boxShadow = '0 0 0 3px rgba(20,102,59,0.12)'; },
+  onBlur:  e => { e.currentTarget.style.borderColor = C.hair; e.currentTarget.style.boxShadow = '0 1px 2px rgba(27,28,20,.03)'; },
 };
 
 // ── SVG icons ─────────────────────────────────────────────────────────────────
@@ -90,7 +97,7 @@ function GoogleSVG() {
 export default function HomePage({ initialMode = 'login' }) {
   const navigate = useNavigate();
   const [mode, setMode]         = useState(initialMode === 'register' ? 'signup' : 'login');
-  const [form, setForm]         = useState({ name: '', username: '', email: '', password: '' });
+  const [form, setForm]         = useState({ name: '', email: '', password: '' });
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
   const [googleMsg, setGoogleMsg] = useState('');
@@ -106,7 +113,7 @@ export default function HomePage({ initialMode = 'login' }) {
 
   function switchMode(next) {
     setError(''); setGoogleMsg(''); setForgotMsg(''); setConfirmMsg('');
-    setForm({ name: '', username: '', email: '', password: '' });
+    setForm({ name: '', email: '', password: '' });
     setMode(next);
   }
 
@@ -115,7 +122,7 @@ export default function HomePage({ initialMode = 'login' }) {
     setError(''); setLoading(true);
     try {
       await login(form.email, form.password);
-      navigate('/dashboard');
+      navigate('/chat');
     } catch (err) {
       setError(err.message);
     } finally { setLoading(false); }
@@ -124,14 +131,14 @@ export default function HomePage({ initialMode = 'login' }) {
   async function handleRegister(e) {
     e.preventDefault();
     setError('');
-    if (!form.username || !form.email || !form.password) {
-      setError('Username, email, and password are required');
+    if (!form.name || !form.email || !form.password) {
+      setError('Name, email, and password are required');
       return;
     }
     setLoading(true);
     try {
-      const data = await register(form.username, form.email, form.password);
-      if (form.name) localStorage.setItem('display_name', form.name);
+      const data = await register(form.name, form.email, form.password);
+      localStorage.setItem('display_name', form.name);
       if (data.needsEmailConfirmation) {
         setConfirmMsg(`Check ${data.email} for a confirmation link, then log in.`);
       } else {
@@ -159,13 +166,17 @@ export default function HomePage({ initialMode = 'login' }) {
   return (
     <div style={st.page} className="honne-auth">
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
         @keyframes authFade { from { opacity: 0; } to { opacity: 1; } }
-        .honne-auth input::placeholder { color: rgba(26,26,26,.34); }
+        .honne-auth input::placeholder { color: rgba(27,28,20,.34); }
+        .honne-auth ::selection { background: #CDEBD6; color: #1B1C14; }
+        @media (max-width: 767px) { .honne-auth { grid-template-columns: 1fr !important; } }
       `}</style>
 
       {/* LEFT: brand panel */}
       <aside className="lp-hide-phone" style={st.brandPanel}>
-        <div>
+        <div style={st.brandGlow} />
+        <div style={st.brandTop}>
           <div style={st.brand}>{AUTH_COPY.brand}</div>
           <div style={st.brandTagline}>{AUTH_COPY.brandTagline}</div>
         </div>
@@ -200,10 +211,6 @@ export default function HomePage({ initialMode = 'login' }) {
                 <label style={st.field}>
                   <span style={st.label}>Full name</span>
                   <input style={st.input} type="text" placeholder={copy.namePlaceholder} autoComplete="name" value={form.name} onChange={field('name')} autoFocus {...focusable} />
-                </label>
-                <label style={st.field}>
-                  <span style={st.label}>Username</span>
-                  <input style={st.input} type="text" placeholder={copy.usernamePlaceholder} autoComplete="username" value={form.username} onChange={field('username')} {...focusable} />
                 </label>
                 <label style={st.field}>
                   <span style={st.label}>Email</span>
@@ -241,17 +248,17 @@ export default function HomePage({ initialMode = 'login' }) {
             </button>
 
             {error && (
-              <p style={{ fontSize: 13, color: C.errText, background: C.errBg, borderRadius: 6, padding: '9px 12px', margin: '4px 0 0', textAlign: 'center', fontFamily: SANS }}>
+              <p style={{ fontSize: 13, color: C.errText, background: C.errBg, borderRadius: 10, padding: '9px 12px', margin: '4px 0 0', textAlign: 'center', fontFamily: GEIST }}>
                 {error}
               </p>
             )}
             {!error && forgotMsg && (
-              <p style={{ fontSize: 12.5, opacity: 0.6, textAlign: 'center', margin: '4px 0 0' }}>
+              <p style={{ fontSize: 12.5, color: C.muted, textAlign: 'center', margin: '4px 0 0' }}>
                 {forgotMsg}
               </p>
             )}
             {!error && confirmMsg && (
-              <p style={{ fontSize: 13, color: C.ink, background: C.cream, borderRadius: 6, padding: '9px 12px', margin: '4px 0 0', textAlign: 'center', fontFamily: SANS }}>
+              <p style={{ fontSize: 13, color: C.ink, background: C.cream, borderRadius: 10, padding: '9px 12px', margin: '4px 0 0', textAlign: 'center', fontFamily: GEIST }}>
                 {confirmMsg}
               </p>
             )}
@@ -274,7 +281,7 @@ export default function HomePage({ initialMode = 'login' }) {
             <span>{AUTH_COPY.google.label}</span>
           </button>
           {googleMsg && (
-            <p style={{ textAlign: 'center', fontSize: 13, opacity: 0.6, marginTop: 10, fontFamily: SANS }}>
+            <p style={{ textAlign: 'center', fontSize: 13, color: C.muted, marginTop: 10, fontFamily: GEIST }}>
               {googleMsg}
             </p>
           )}

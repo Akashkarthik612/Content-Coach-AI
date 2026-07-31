@@ -1,43 +1,44 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Plus, Search, Trash2, Settings, ChevronDown, Check, Copy, RotateCcw,
-  ArrowLeft, Clock, Send, X, ThumbsUp, MessageCircle, Repeat2, PanelLeft, Maximize2,
+  Plus, ChevronDown, Check, Copy, RotateCcw,
+  ArrowLeft, Clock, Send, X, ThumbsUp, MessageCircle, Repeat2, PanelLeft, ExternalLink,
 } from 'lucide-react';
-import { streamQuery, resumeAI, refineAI, getSessionThreads } from '../api/ai';
-import { publishToLinkedIn } from '../api/linkedin';
+import { streamQuery, resumeAI, refineAI, getSessionThreads, getSessions } from '../api/ai';
+import { publishToLinkedIn, getLinkedInStatus, getLinkedInAuthUrl } from '../api/linkedin';
 import { getVersions } from '../api/vault';
 import { getProfile } from '../api/profile';
+import HonneSidebar, { iconBtn } from '../components/shared/HonneSidebar';
 
 /* ────────────────────────────────────────────────────────────────────────
-   Design tokens — ported from the "Honne Chat v3" design (Claude Design
-   project ff122375-c3bc-4438-aece-706b0bd557b0). Colors/fonts/radii match
-   the source .dc.html exactly; the trace/steps mechanism there was driven
-   by a fake timer and raw agent/tool names — here it's driven by the real
-   `activity` SSE events from backend/ai/activity.py, which already carry
-   only user-facing semantic labels (never a node or tool name).
+   Design tokens — ported 1:1 from the "Honne Chat v3" design (Claude Design
+   project ff122375-c3bc-4438-aece-706b0bd557b0, `Honne Chat v3.dc.html`).
+   Colors/fonts/sizes/radii match the source file's own inline styles; the
+   trace/steps mechanism there was driven by a fake timer and raw agent/tool
+   names — here it's driven by the real `activity` SSE events from
+   backend/ai/activity.py, which already carry only user-facing semantic
+   labels (never a node or tool name, never a URL).
    ──────────────────────────────────────────────────────────────────────── */
 const BG        = '#F4F2EA';
 const SIDEBAR_BG = '#EFEDE3';
 const INK       = '#1B1C14';
 const ACCENT    = '#14663B';
-const ACCENT_TINT = 'rgba(20,102,59,.09)';
 const MUTED     = '#6C7064';
 const MUTED_2   = '#8A8C7C';
 const MUTED_3   = '#A6A895';
 const HAIRLINE  = 'rgba(27,28,20,.09)';
 const DANGER    = '#B42318';
-const SERIF  = "'EB Garamond', serif";
-const SANS   = "'Hanken Grotesk', system-ui, sans-serif";
+const LI_BLUE   = '#0A66C2';
+const FONT   = "'Geist', system-ui, sans-serif";
+const SANS   = FONT;
 const MONO   = "'JetBrains Mono', monospace";
 
 const KEYFRAMES = `
-@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..600;1,400..500&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
 @keyframes ccRise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes ccFade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes ccBreathe { 0%,100% { opacity: .55; transform: scale(.82); } 50% { opacity: 1; transform: scale(1); } }
 @keyframes ccCaret { 50% { opacity: 0; } }
-@keyframes ccShimmer { 0% { transform: translateX(-120%) skewX(-18deg); } 100% { transform: translateX(320%) skewX(-18deg); } }
 @media (prefers-reduced-motion: reduce) { *{ animation-duration: .001ms !important; } }
 `;
 
@@ -68,6 +69,17 @@ function humanizeProvokes(type) {
 let _seq = 1;
 const nextId = () => _seq++;
 
+function relativeTimeAgo(dateStr) {
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 /* ────────────────────────────────────────────────────────────────────────
    Rehydration — maps one backend ThreadStateResponse (GET /sessions/{id}/threads)
    back into the [userMsg, aiMsg] pair MessageBubble already knows how to
@@ -80,14 +92,20 @@ function threadToMessages(t) {
   const aiId = nextId();
   const base = {
     id: aiId, role: 'ai', phase: 'done', text: '', activities: [], traceOpen: false,
-    angles: [], summary: '', expandingIndex: -1, pickingIndex: -1, expandedSummaries: {},
+    angles: [], summary: '', expandingIndex: -1, pickingIndex: -1, modifyingIndex: -1, expandedSections: {},
     decision: null, postId: t.post_id || '', threadId: t.thread_id,
     copied: false, error: '', userPrompt: t.user_prompt,
     answerNote: '',
   };
 
   if (t.status === 'awaiting_angle_selection') {
-    return [userMsg, { ...base, kind: 'angles', angles: t.angles || [], summary: t.summary || '' }];
+    // Only the LATEST expand/modify revision survives a reload (thread_state.py
+    // surfaces the current interrupt payload, not a full edit history) — same
+    // limitation as human_approval_node's draft editing having no version history.
+    const expandedSections = t.expanded_angle_id != null && t.expanded_sections?.length
+      ? { [t.expanded_angle_id]: t.expanded_sections }
+      : {};
+    return [userMsg, { ...base, kind: 'angles', angles: t.angles || [], summary: t.summary || '', expandedSections }];
   }
   if (t.status === 'awaiting_approval') {
     return [userMsg, { ...base, kind: 'draft', text: t.draft || '' }];
@@ -129,7 +147,7 @@ function ActivityRow({ activity, nested }) {
         {failed && <X size={13} color={DANGER} strokeWidth={2.4} />}
         {!running && !done && !failed && <span style={{ width: 8, height: 8, borderRadius: 999, background: 'rgba(27,28,20,.15)' }} />}
       </div>
-      <div style={{ flex: 1, minWidth: 0, paddingBottom: 10 }}>
+      <div style={{ flex: 1, minWidth: 0, paddingBottom: 14 }}>
         <span style={{ fontSize: 13, fontWeight: nested ? 500 : 600, color: INK, letterSpacing: '-.005em' }}>{activity.title}</span>
         {activity.description && (
           <div style={{ fontSize: 12, color: MUTED_2, marginTop: 2 }}>{activity.description}</div>
@@ -144,13 +162,15 @@ function ActivityTimeline({ activities, expanded, onToggle, phaseDone }) {
   const roots = activities.filter(a => !a.parentId);
   const childrenOf = (id) => activities.filter(a => a.parentId === id);
   const anyRunning = activities.some(a => a.status === 'running');
+  const doneCount = roots.filter(a => a.status === 'completed').length;
   const title = phaseDone
     ? `Done · ${roots.length} step${roots.length === 1 ? '' : 's'}`
     : 'Working';
+  const hint = phaseDone ? '' : `step ${Math.min(doneCount + 1, roots.length || 1)}/${roots.length || 1}`;
 
   return (
-    <div style={{ background: anyRunning ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.32)', border: `1px solid ${HAIRLINE}`, borderRadius: 14, overflow: 'hidden', marginBottom: expanded ? 18 : 0, transition: 'background .4s ease, margin-bottom .4s ease' }}>
-      <button onClick={onToggle} style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', padding: '12px 15px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left' }}>
+    <div style={{ background: anyRunning ? 'rgba(255,255,255,.5)' : 'rgba(255,255,255,.32)', border: '1px solid rgba(27,28,20,.08)', borderRadius: 14, overflow: 'hidden', marginBottom: expanded ? 18 : 0, transition: 'background .4s ease, margin-bottom .4s ease' }}>
+      <button onClick={onToggle} style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', padding: '13px 15px', border: 'none', background: 'none', cursor: 'pointer', textAlign: 'left' }}>
         {anyRunning ? (
           <span style={{ position: 'relative', width: 8, height: 8, flex: '0 0 8px' }}>
             <span style={{ position: 'absolute', inset: 0, borderRadius: 999, background: ACCENT, animation: 'ccBreathe 1.4s ease-in-out infinite' }} />
@@ -159,10 +179,11 @@ function ActivityTimeline({ activities, expanded, onToggle, phaseDone }) {
           <span style={{ width: 8, height: 8, flex: '0 0 8px', borderRadius: 999, background: '#2FA35B' }} />
         )}
         <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: '#3A3C30', letterSpacing: '-.005em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
-        <ChevronDown size={14} color={MUTED_3} style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform .3s cubic-bezier(.22,1,.36,1)' }} />
+        {hint && <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '.06em', color: MUTED_3 }}>{hint}</span>}
+        <ChevronDown size={14} color={MUTED_3} style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform .32s cubic-bezier(.22,1,.36,1)' }} />
       </button>
       {expanded && (
-        <div style={{ padding: '0 15px 12px' }}>
+        <div style={{ padding: '0 15px 6px' }}>
           {roots.map(r => (
             <div key={r.id}>
               <ActivityRow activity={r} nested={false} />
@@ -178,65 +199,124 @@ function ActivityTimeline({ activities, expanded, onToggle, phaseDone }) {
 /* ────────────────────────────────────────────────────────────────────────
    Angle cards
    ──────────────────────────────────────────────────────────────────────── */
-function AngleCard({ angle, index, onPick, onExpand, expanding, picking, expandedSummary }) {
+function AngleCard({ angle, index, onPick, onExpand, onModify, expanding, picking, modifying, expandedSections }) {
   const [hover, setHover] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [instruction, setInstruction] = useState('');
+  const hasSections = !!expandedSections && expandedSections.length > 0;
+  const showLong = open && hasSections;
+
+  const toggleExpand = () => {
+    if (!hasSections) { onExpand(index); setOpen(true); return; }
+    setOpen(o => !o);
+  };
+
+  const submitModify = () => {
+    const text = instruction.trim();
+    if (!text || modifying) return;
+    onModify(index, text);
+    setInstruction('');
+  };
+
   return (
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
         position: 'relative', background: '#fff', border: `1px solid ${HAIRLINE}`, borderRadius: 16,
-        padding: '22px 22px 20px', boxShadow: hover ? '0 22px 48px -26px rgba(20,60,30,.4)' : '0 1px 3px rgba(27,28,20,.05)',
-        transform: hover ? 'translateY(-3px)' : 'translateY(0)', transition: 'box-shadow .28s cubic-bezier(.22,1,.36,1), transform .28s cubic-bezier(.22,1,.36,1)',
+        padding: '19px 22px 17px', boxShadow: hover ? '0 22px 48px -26px rgba(20,60,30,.4)' : '0 1px 3px rgba(27,28,20,.05)',
+        transform: hover ? 'translateY(-2px)' : 'translateY(0)', transition: 'box-shadow .28s cubic-bezier(.22,1,.36,1), transform .28s cubic-bezier(.22,1,.36,1)',
         overflow: 'hidden',
       }}
     >
-      <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '.11em', textTransform: 'uppercase', color: '#B0B2A2' }}>
-        {humanizeProvokes(angle.provokes_type)}
-      </span>
-      <div style={{ fontFamily: SERIF, fontSize: 22, fontWeight: 500, letterSpacing: '-.015em', color: INK, margin: '9px 0 8px', lineHeight: 1.14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 7 }}>
+        <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '.11em', textTransform: 'uppercase', color: '#B0B2A2' }}>
+          {humanizeProvokes(angle.provokes_type)}
+        </span>
+      </div>
+      <div style={{ fontFamily: FONT, fontSize: 18, fontWeight: 600, letterSpacing: '-.01em', color: INK, margin: '0 0 7px', lineHeight: 1.44 }}>
         {angle.title}
       </div>
-      <div style={{ fontSize: 13, lineHeight: 1.6, color: '#7A7C6C', marginBottom: 14 }}>{angle.argument}</div>
-      <div style={{ fontSize: 11.5, color: '#B0B2A2', marginBottom: 18 }}>For: {angle.audience}</div>
+      <div style={{ fontSize: 15, lineHeight: 1.5, color: INK, fontWeight: 600, marginBottom: 6 }}>{angle.argument}</div>
+      {angle.glimpse && (
+        <div style={{ fontSize: 14.5, lineHeight: 1.68, color: '#5C5E50', fontWeight: 400 }}>{angle.glimpse}</div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '.08em', textTransform: 'uppercase', color: '#B0B2A2' }}>
+          For: {angle.audience}
+        </span>
+        {angle.source_url && (
+          <a
+            href={angle.source_url} target="_blank" rel="noopener noreferrer"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: ACCENT, textDecoration: 'none' }}
+          >
+            <ExternalLink size={11} /> Source
+          </a>
+        )}
+      </div>
 
-      {expandedSummary && (
-        <div style={{ fontSize: 12.5, lineHeight: 1.6, color: '#3A3C30', background: '#FAF9F3', border: `1px solid ${HAIRLINE}`, borderRadius: 10, padding: 10, marginBottom: 14, animation: 'ccFade .4s ease both' }}>
-          {expandedSummary}
+      {showLong && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px dashed rgba(27,28,20,.12)', animation: 'ccFade .4s ease both' }}>
+          {expandedSections.map((s, si) => (
+            <div key={si} style={{ marginBottom: si < expandedSections.length - 1 ? 12 : 0 }}>
+              <div style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: '#8A8C7C', marginBottom: 4 }}>
+                {s.heading}
+              </div>
+              <div style={{ fontSize: 14.5, lineHeight: 1.68, color: '#5C5E50', fontWeight: 400, whiteSpace: 'pre-wrap' }}>{s.body}</div>
+            </div>
+          ))}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14 }}>
+            <input
+              value={instruction}
+              onChange={(e) => setInstruction(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitModify(); } }}
+              placeholder="Refine this angle — e.g. &quot;cut the part about X, add Y&quot;"
+              disabled={modifying}
+              style={{
+                flex: 1, height: 32, padding: '0 11px', border: `1px solid ${HAIRLINE}`, borderRadius: 8,
+                fontSize: 12.5, fontFamily: SANS, color: INK, background: '#FAF9F3', outline: 'none',
+              }}
+            />
+            <button
+              onClick={submitModify} disabled={modifying || !instruction.trim()}
+              style={{
+                flex: '0 0 auto', height: 32, padding: '0 12px', border: 'none', borderRadius: 8,
+                background: instruction.trim() && !modifying ? INK : '#E4E2D6',
+                color: instruction.trim() && !modifying ? BG : '#B0B2A2',
+                fontFamily: SANS, fontSize: 12, fontWeight: 600, cursor: instruction.trim() && !modifying ? 'pointer' : 'default',
+              }}
+            >
+              {modifying ? 'Refining…' : 'Refine'}
+            </button>
+          </div>
         </div>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16 }}>
         <button
           onClick={() => onPick(index)} disabled={picking}
           style={{
-            position: 'relative', overflow: 'hidden', flex: 1, display: 'inline-flex', alignItems: 'center',
-            justifyContent: 'center', gap: 9, height: 44, padding: '0 16px', border: 'none', borderRadius: 11,
-            background: INK, color: BG, fontFamily: SANS, fontSize: 13.5, fontWeight: 600, letterSpacing: '-.005em',
+            flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+            height: 34, padding: '0 14px', border: 'none', borderRadius: 9,
+            background: INK, color: BG, fontFamily: FONT, fontSize: 12.5, fontWeight: 600, letterSpacing: '-.005em',
             cursor: picking ? 'default' : 'pointer', boxShadow: '0 1px 2px rgba(27,28,20,.18)',
           }}
         >
-          <LinkedInGlyph size={16} />
-          <span style={{ position: 'relative', zIndex: 2 }}>{picking ? 'Drafting…' : 'Draft for LinkedIn'}</span>
-          {!picking && (
-            <span style={{
-              position: 'absolute', top: 0, bottom: 0, left: 0, width: '45%', zIndex: 1,
-              background: 'linear-gradient(100deg, transparent, rgba(255,255,255,.32), transparent)',
-              animation: 'ccShimmer 2.8s ease-in-out infinite', pointerEvents: 'none',
-            }} />
-          )}
+          <LinkedInGlyph size={14} />
+          <span>{picking ? 'Drafting…' : 'Draft for LinkedIn'}</span>
         </button>
         <button
-          onClick={() => onExpand(index)} disabled={expanding} title="Expand for more context"
+          onClick={toggleExpand} disabled={expanding} title="Show more about this angle"
           style={{
-            flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-            height: 44, padding: '0 15px', border: `1px solid ${HAIRLINE}`, borderRadius: 11, background: '#fff',
-            color: '#3A3C30', fontFamily: SANS, fontSize: 13, fontWeight: 600, letterSpacing: '-.005em',
+            flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+            height: 34, padding: '0 13px', border: '1px solid rgba(27,28,20,.14)', borderRadius: 9, background: '#fff',
+            color: '#3A3C30', fontFamily: FONT, fontSize: 12.5, fontWeight: 600, letterSpacing: '-.005em',
             cursor: expanding ? 'default' : 'pointer',
           }}
         >
-          <Maximize2 size={14} />
-          <span>{expanding ? 'Expanding…' : 'Expand'}</span>
+          <span>{expanding ? 'Expanding…' : (showLong ? 'Collapse' : 'Expand')}</span>
+          <ChevronDown size={14} style={{ transform: showLong ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform .32s cubic-bezier(.22,1,.36,1)' }} />
         </button>
       </div>
     </div>
@@ -246,7 +326,7 @@ function AngleCard({ angle, index, onPick, onExpand, expanding, picking, expande
 /* ────────────────────────────────────────────────────────────────────────
    One AI / user message
    ──────────────────────────────────────────────────────────────────────── */
-function MessageBubble({ msg, onToggleTrace, onToggleAngles, onPick, onExpandAngle, onNoneFit, onCopy, onOpenWorkspace, onRegenerate }) {
+function MessageBubble({ msg, onToggleTrace, onToggleAngles, onPick, onExpandAngle, onModifyAngle, onCopy, onOpenWorkspace, onRegenerate }) {
   if (msg.role === 'user') {
     return (
       <div style={{ display: 'flex', justifyContent: 'flex-end', animation: 'ccRise .5s cubic-bezier(.22,1,.36,1) both' }}>
@@ -263,7 +343,7 @@ function MessageBubble({ msg, onToggleTrace, onToggleAngles, onPick, onExpandAng
   return (
     <div style={{ display: 'flex', gap: 13, animation: 'ccFade .5s ease both' }}>
       <div style={{ width: 30, height: 30, borderRadius: 9, background: '#fff', border: `1px solid ${HAIRLINE}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 30px', marginTop: 1, boxShadow: '0 1px 3px rgba(27,28,20,.05)' }}>
-        <span style={{ fontFamily: SERIF, fontSize: 17, color: ACCENT, fontStyle: 'italic', fontWeight: 500 }}>H</span>
+        <span style={{ fontFamily: FONT, fontSize: 17, color: ACCENT, fontWeight: 500 }}>H</span>
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         {msg.activities.length > 0 && (
@@ -275,10 +355,10 @@ function MessageBubble({ msg, onToggleTrace, onToggleAngles, onPick, onExpandAng
         )}
 
         {(msg.phase === 'streaming' || (phaseDone && msg.text)) && (
-          <div style={{ fontFamily: SERIF, fontSize: 17.5, lineHeight: 1.72, color: '#26281C', whiteSpace: 'pre-wrap', letterSpacing: '.003em', animation: 'ccFade .5s ease both' }}>
+          <div style={{ fontFamily: FONT, fontSize: 16, lineHeight: 1.75, color: '#26281C', whiteSpace: 'pre-wrap', letterSpacing: '-.005em', animation: 'ccFade .5s ease both' }}>
             {msg.text}
             {msg.phase === 'streaming' && (
-              <span style={{ display: 'inline-block', width: 2.5, height: 18, marginLeft: 2, borderRadius: 2, background: ACCENT, verticalAlign: -3, animation: 'ccCaret .9s step-end infinite' }} />
+              <span style={{ display: 'inline-block', width: 2, height: 15, marginLeft: 2, borderRadius: 2, background: ACCENT, verticalAlign: -2, animation: 'ccCaret .9s step-end infinite' }} />
             )}
           </div>
         )}
@@ -286,7 +366,7 @@ function MessageBubble({ msg, onToggleTrace, onToggleAngles, onPick, onExpandAng
         {msg.kind === 'angles' && phaseDone && (
           <div style={{ marginTop: 20, animation: 'ccFade .5s ease both' }}>
             {msg.summary && (
-              <div style={{ fontFamily: SERIF, fontSize: 16, lineHeight: 1.65, color: '#3A3C30', marginBottom: 16 }}>
+              <div style={{ fontFamily: FONT, fontSize: 16, lineHeight: 1.75, letterSpacing: '-.005em', color: '#26281C', marginBottom: 16 }}>
                 {msg.summary}
               </div>
             )}
@@ -294,7 +374,7 @@ function MessageBubble({ msg, onToggleTrace, onToggleAngles, onPick, onExpandAng
               onClick={() => onToggleAngles(msg.id)}
               style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', border: 'none', background: 'none', padding: 0, cursor: 'pointer', marginBottom: 16 }}
             >
-              <span style={{ fontFamily: SERIF, fontSize: 22, fontWeight: 500, letterSpacing: '-.015em', color: INK }}>
+              <span style={{ fontFamily: FONT, fontSize: 22, fontWeight: 600, letterSpacing: '-.015em', color: INK }}>
                 {msg.angles.length} possible angle{msg.angles.length === 1 ? '' : 's'}
               </span>
               <span style={{ fontSize: 12.5, color: MUTED_3, fontWeight: 500 }}>
@@ -310,9 +390,10 @@ function MessageBubble({ msg, onToggleTrace, onToggleAngles, onPick, onExpandAng
                   <AngleCard
                     key={i}
                     angle={a} index={i}
-                    onPick={onPick} onExpand={onExpandAngle}
+                    onPick={onPick} onExpand={onExpandAngle} onModify={onModifyAngle}
                     expanding={msg.expandingIndex === i} picking={msg.pickingIndex === i}
-                    expandedSummary={msg.expandedSummaries?.[i]}
+                    modifying={msg.modifyingIndex === i}
+                    expandedSections={msg.expandedSections?.[i]}
                   />
                 ))}
               </div>
@@ -333,7 +414,7 @@ function MessageBubble({ msg, onToggleTrace, onToggleAngles, onPick, onExpandAng
                 ))}
               </div>
             )}
-            <button onClick={onNoneFit} style={{ ...linkBtn, marginTop: 14, color: MUTED_2 }}>None of these fit — let me describe it</button>
+            <div style={{ fontSize: 12, color: MUTED_3, marginTop: 14 }}>None of these fit? Just type what you'd rather see below.</div>
           </div>
         )}
 
@@ -374,8 +455,6 @@ function MessageBubble({ msg, onToggleTrace, onToggleAngles, onPick, onExpandAng
   );
 }
 
-const linkBtn = { border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: 12.5, fontWeight: 600, color: '#3A3C30', letterSpacing: '-.005em' };
-
 function pillBtn(bg, color) {
   return {
     display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 12px', border: 'none',
@@ -407,7 +486,7 @@ function Composer({ draft, onDraft, onSend, disabled, taRef }) {
 
   return (
     <div style={{ flex: '0 0 auto', padding: '6px 28px 22px', background: `linear-gradient(to top, ${BG} 62%, rgba(244,242,234,0))` }}>
-      <div style={{ maxWidth: 720, margin: '0 auto' }}>
+      <div style={{ maxWidth: 840, margin: '0 auto' }}>
         <div style={{
           background: '#fff', border: `1px solid ${focused ? 'rgba(20,102,59,.5)' : 'rgba(27,28,20,.12)'}`, borderRadius: 18,
           boxShadow: focused ? '0 0 0 4px rgba(20,102,59,.08), 0 18px 42px -28px rgba(20,60,30,.5)' : '0 12px 30px -24px rgba(20,60,30,.4)',
@@ -422,7 +501,7 @@ function Composer({ draft, onDraft, onSend, disabled, taRef }) {
             onBlur={() => setFocused(false)}
             rows={1}
             placeholder="Drop a thought, or ask to research and write…"
-            style={{ display: 'block', width: '100%', border: 'none', background: 'none', fontSize: 15, lineHeight: 1.6, color: INK, letterSpacing: '-.005em', padding: '15px 18px 4px', resize: 'none', maxHeight: 172, overflowY: 'auto', fontFamily: SANS }}
+            style={{ display: 'block', width: '100%', border: 'none', outline: 'none', background: 'none', fontSize: 15, lineHeight: 1.6, color: INK, letterSpacing: '-.005em', padding: '15px 18px 4px', resize: 'none', maxHeight: 172, overflowY: 'auto', fontFamily: SANS }}
           />
           <div style={{ display: 'flex', alignItems: 'center', padding: '7px 10px 10px 16px' }}>
             <span style={{ flex: 1 }} />
@@ -449,91 +528,9 @@ function Composer({ draft, onDraft, onSend, disabled, taRef }) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────
-   Sidebar
-   ──────────────────────────────────────────────────────────────────────── */
-function Sidebar({ open, onToggle, chats, activeIndex, onSelect, onDelete, onNewChat, search, onSearch, userName }) {
-  const filtered = chats.filter(c => c.title.toLowerCase().includes(search.toLowerCase()));
-  return (
-    <aside style={{
-      flex: `0 0 ${open ? '256px' : '58px'}`, minWidth: open ? 256 : 58, width: open ? 256 : 58,
-      display: 'flex', flexDirection: 'column', background: SIDEBAR_BG, borderRight: `1px solid ${HAIRLINE}`, overflow: 'hidden',
-      transition: 'flex-basis .36s cubic-bezier(.22,1,.36,1), min-width .36s cubic-bezier(.22,1,.36,1), width .36s cubic-bezier(.22,1,.36,1)',
-    }}>
-      <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 4, padding: '14px 12px 12px', justifyContent: open ? 'flex-start' : 'center' }}>
-        <button onClick={onToggle} title={open ? 'Collapse sidebar' : 'Expand sidebar'} style={iconBtn}>
-          <PanelLeft size={16} strokeWidth={1.9} />
-        </button>
-        {open && (
-          <>
-            <span style={{ flex: 1, fontFamily: MONO, fontSize: 10, letterSpacing: '.15em', textTransform: 'uppercase', color: MUTED_3, fontWeight: 500 }}>Recent</span>
-            <button onClick={onNewChat} title="New conversation" style={iconBtn}><Plus size={15} /></button>
-          </>
-        )}
-      </div>
-
-      {open && (
-        <div style={{ flex: '0 0 auto', padding: '0 9px 8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#F6F1E8', borderRadius: 10, padding: '7px 10px' }}>
-            <Search size={13} color={MUTED_3} />
-            <input value={search} onChange={(e) => onSearch(e.target.value)} placeholder="Search"
-              style={{ border: 'none', background: 'none', fontSize: 12.5, flex: 1, color: INK, fontFamily: SANS }} />
-          </div>
-        </div>
-      )}
-
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '0 9px 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {open && filtered.map((c, i) => {
-          const active = i === activeIndex;
-          return (
-            <div key={c.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <button
-                onClick={() => onSelect(i)}
-                style={{
-                  display: 'flex', flexDirection: 'column', width: '100%', textAlign: 'left', padding: '9px 11px', border: 'none',
-                  borderRadius: 10, cursor: 'pointer', background: active ? ACCENT_TINT : 'transparent',
-                }}
-              >
-                <span style={{ fontSize: 13, fontWeight: active ? 600 : 500, color: active ? ACCENT : '#3A3C30', lineHeight: 1.35, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {c.title}
-                </span>
-                <span style={{ fontSize: 11, color: MUTED_3, marginTop: 2 }}>{c.time}</span>
-              </button>
-              <button onClick={() => onDelete(i)} title="Delete" style={{ position: 'absolute', right: 6, border: 'none', background: 'none', color: MUTED_3, cursor: 'pointer', padding: 4 }}>
-                <Trash2 size={13} />
-              </button>
-            </div>
-          );
-        })}
-      </div>
-
-      <div style={{ flex: '0 0 auto', borderTop: `1px solid ${HAIRLINE}`, padding: 10, display: 'flex', justifyContent: open ? 'stretch' : 'center' }}>
-        {open ? (
-          <button title="Settings" style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', padding: 8, border: 'none', background: 'none', borderRadius: 11, cursor: 'pointer' }}>
-            <span style={{ width: 32, height: 32, flex: '0 0 32px', borderRadius: 9, background: ACCENT, color: BG, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: SERIF, fontSize: 16, fontWeight: 600 }}>
-              {userName.charAt(0).toUpperCase()}
-            </span>
-            <div style={{ textAlign: 'left', minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: INK, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{userName}</div>
-              <div style={{ fontSize: 11, color: '#9A9C8C' }}>Settings</div>
-            </div>
-            <Settings size={15} color={MUTED_3} />
-          </button>
-        ) : (
-          <button title={`${userName} · Settings`} style={{ width: 32, height: 32, flex: '0 0 32px', borderRadius: 9, background: ACCENT, color: BG, border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: SERIF, fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>
-            {userName.charAt(0).toUpperCase()}
-          </button>
-        )}
-      </div>
-    </aside>
-  );
-}
-
-const iconBtn = { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, flex: '0 0 26px', border: 'none', background: 'none', borderRadius: 8, color: MUTED_2, cursor: 'pointer' };
-
-/* ────────────────────────────────────────────────────────────────────────
    Workspace view — post-approval redraft/publish surface
    ──────────────────────────────────────────────────────────────────────── */
-function WorkspaceView({ ws, onBack, onModeChange, onDocChange, onCmdInput, onCmdKey, onSubmitCmd, onChip, onCopy, onPublish, onHistory, onToggleCmd, onApprove, onDecline, publishing, publishResult, versions, showVersions, userName, professionLine }) {
+function WorkspaceView({ ws, onBack, onModeChange, onDocChange, onCmdInput, onCmdKey, onSubmitCmd, onChip, onCopy, onPublish, onConnectLinkedIn, onHistory, onToggleCmd, onApprove, onDecline, publishing, connecting, publishResult, linkedinConnected, versions, showVersions, userName, professionLine }) {
   const words = ws.docText.trim() ? ws.docText.trim().split(/\s+/).length : 0;
   const readTime = Math.max(1, Math.ceil(words / 200)) + ' min read';
   const isEdit = ws.mode === 'edit';
@@ -549,7 +546,7 @@ function WorkspaceView({ ws, onBack, onModeChange, onDocChange, onCmdInput, onCm
             <ArrowLeft size={15} /> Chat
           </button>
           <span style={{ width: 1, height: 18, background: HAIRLINE }} />
-          <div style={{ fontFamily: SERIF, fontSize: 18, fontWeight: 500, color: INK, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ws.title}</div>
+          <div style={{ fontFamily: FONT, fontSize: 18, fontWeight: 500, color: INK, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ws.title}</div>
           <span style={pillTag('rgba(27,28,20,.05)', '#7A7C6C')}>LinkedIn Post</span>
           <span style={pillTag('rgba(27,28,20,.05)', '#7A7C6C')}>{readTime}</span>
           <span style={pillTag('rgba(27,28,20,.05)', '#7A7C6C')}>{words} words</span>
@@ -566,7 +563,15 @@ function WorkspaceView({ ws, onBack, onModeChange, onDocChange, onCmdInput, onCm
           {ws.decision === 'edited' && <span style={pillTag('#DCFCE7', '#15803D')}>Saved with your edits</span>}
           <button onClick={onCopy} style={pillBtn('transparent', MUTED_2)}><Copy size={13} /> {ws.copied ? 'Copied' : 'Copy'}</button>
           <button onClick={onHistory} style={pillBtn('transparent', MUTED_2)}><Clock size={13} /> History</button>
-          <button onClick={onPublish} disabled={publishing} style={pillBtn(ACCENT, '#fff')}>{publishing ? 'Publishing…' : 'Publish'}</button>
+          {linkedinConnected ? (
+            <button onClick={onPublish} disabled={publishing} style={pillBtn(LI_BLUE, '#fff')}>
+              <LinkedInGlyph size={13} color="#fff" /> {publishing ? 'Publishing…' : 'Publish to LinkedIn'}
+            </button>
+          ) : (
+            <button onClick={onConnectLinkedIn} disabled={connecting} style={pillBtn(LI_BLUE, '#fff')}>
+              <LinkedInGlyph size={13} color="#fff" /> {connecting ? 'Connecting…' : 'Connect LinkedIn'}
+            </button>
+          )}
         </div>
       </header>
 
@@ -661,7 +666,7 @@ function WorkspaceView({ ws, onBack, onModeChange, onDocChange, onCmdInput, onCm
             <div style={{ minHeight: '100%', display: 'flex', justifyContent: 'center', padding: isEdit ? '36px 28px 72px' : '44px 28px 64px', background: 'radial-gradient(120% 90% at 50% 0%, rgba(20,102,59,.05), transparent 60%)' }}>
               <div style={{ width: '100%', maxWidth: 540, height: 'fit-content', background: '#fff', border: `1px solid ${HAIRLINE}`, borderRadius: 16, boxShadow: isEdit ? '0 30px 70px -46px rgba(20,60,30,.45), 0 6px 20px -14px rgba(27,28,20,.18)' : '0 40px 90px -50px rgba(20,60,30,.5), 0 8px 24px -16px rgba(27,28,20,.2)', overflow: 'hidden', animation: 'ccRise .4s cubic-bezier(.22,1,.36,1) both' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '18px 20px 12px' }}>
-                  <span style={{ width: 44, height: 44, flex: '0 0 44px', borderRadius: 999, background: ACCENT, color: BG, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: SERIF, fontSize: 20, fontWeight: 600 }}>
+                  <span style={{ width: 44, height: 44, flex: '0 0 44px', borderRadius: 999, background: ACCENT, color: BG, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT, fontSize: 20, fontWeight: 600 }}>
                     {userInitial}
                   </span>
                   <div style={{ minWidth: 0 }}>
@@ -727,6 +732,8 @@ export default function ChatPage() {
   const [showVersions, setShowVersions] = useState(false);
   const [versions, setVersions] = useState([]);
   const [profile, setProfile] = useState(null);
+  const [linkedinConnected, setLinkedinConnected] = useState(false);
+  const [connectingLinkedIn, setConnectingLinkedIn] = useState(false);
 
   const taRef = useRef(null);
   const scrollRef = useRef(null);
@@ -742,18 +749,54 @@ export default function ChatPage() {
   }, []);
   const professionLine = profile?.profession || profile?.role || 'Creator on Honne';
 
-  // Restore the most recent chat on a fresh page load — the same read path
+  // Real LinkedIn connection state — drives the workspace header's
+  // Connect LinkedIn / Publish to LinkedIn button (matches the "Honne Chat
+  // v3" design's LinkedIn-branded CTA, previously missing from this page).
+  useEffect(() => {
+    let cancelled = false;
+    getLinkedInStatus().then(s => { if (!cancelled) setLinkedinConnected(!!s?.connected); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const connectLinkedIn = async () => {
+    setConnectingLinkedIn(true);
+    try {
+      const { auth_url } = await getLinkedInAuthUrl();
+      window.location.href = auth_url;
+    } catch {
+      setPublishResult({ ok: false, message: 'Could not start LinkedIn connection. Please try again.' });
+      setConnectingLinkedIn(false);
+    }
+  };
+
+  // Populate the sidebar from the user's persisted (7-day TTL) chat history,
+  // then restore whichever chat was last open — same read path
   // (GET /sessions/{id}/threads) selectChat() below uses for sidebar switching.
   useEffect(() => {
-    const lastSessionId = localStorage.getItem('lastSessionId');
-    if (!lastSessionId) return;
-    setCurrentSessionId(lastSessionId);
-    getSessionThreads(lastSessionId)
-      .then(data => {
-        const rehydrated = (data.threads || []).flatMap(threadToMessages);
-        if (rehydrated.length > 0) setMessages(rehydrated);
+    getSessions()
+      .then(({ sessions = [] }) => {
+        const fetchedChats = sessions.map(s => ({
+          id: nextId(),
+          sessionId: s.session_id,
+          title: s.title,
+          time: relativeTimeAgo(s.last_active_at),
+        }));
+        setChats(fetchedChats);
+
+        const lastSessionId = localStorage.getItem('lastSessionId');
+        const idx = fetchedChats.findIndex(c => c.sessionId === lastSessionId);
+        if (idx === -1) return; // expired or first visit — start fresh, empty chat
+
+        setActiveChat(idx);
+        setCurrentSessionId(lastSessionId);
+        getSessionThreads(lastSessionId)
+          .then(data => {
+            const rehydrated = (data.threads || []).flatMap(threadToMessages);
+            if (rehydrated.length > 0) setMessages(rehydrated);
+          })
+          .catch(() => { /* thread read-back failed — leave chat empty */ });
       })
-      .catch(() => { /* no prior session, or it's since expired — start fresh */ });
+      .catch(() => { /* sidebar history unavailable — start fresh */ });
   }, []);
 
   useEffect(() => {
@@ -802,16 +845,58 @@ export default function ChatPage() {
     }
   };
 
+  // While the most recent AI turn is still an open angle-selection (cards
+  // showing, nothing picked yet), plain chat text resumes that SAME paused
+  // thread instead of starting a brand-new one — same checkpoint, same
+  // mechanism the "none_fit" resume action already is. This is what lets
+  // "none of these work, try other sources" just be typed normally: the
+  // resume loops back through supervisor_node for a fresh classification
+  // (see angle_review_node.py), which already knows how to route
+  // "research" (fresh angles) vs "direct" (answer something else instead).
+  const sendAsAngleGuidance = async (priorMsg, text) => {
+    const userMsg = { id: nextId(), role: 'user', text };
+    const aiId = nextId();
+    const aiMsg = {
+      id: aiId, role: 'ai', phase: 'working', kind: '', text: '',
+      activities: [], traceOpen: null, angles: [], summary: '', expandingIndex: -1, pickingIndex: -1, modifyingIndex: -1,
+      expandedSections: {}, decision: null, postId: '', threadId: priorMsg.threadId,
+      copied: false, error: '', userPrompt: text,
+    };
+    setMessages(prev => [...prev, userMsg, aiMsg]);
+    setDraft('');
+    setBusy(true);
+    scrollDown();
+    try {
+      const data = await resumeAI(priorMsg.threadId, 'none_fit', text);
+      if (data.status === 'awaiting_angle_selection') {
+        patchMessage(aiId, { phase: 'done', kind: 'angles', angles: data.angles || [], summary: data.summary || '' });
+      } else {
+        patchMessage(aiId, { phase: 'done', kind: 'direct', text: data.answer || '' });
+      }
+    } catch {
+      patchMessage(aiId, { phase: 'done', error: 'Something went wrong.' });
+    } finally {
+      setBusy(false);
+      scrollDown();
+    }
+  };
+
   const send = (overrideText) => {
     const text = (overrideText ?? draft).trim();
     if (!text || busy) return;
+
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg && lastMsg.role === 'ai' && lastMsg.kind === 'angles' && lastMsg.threadId) {
+      sendAsAngleGuidance(lastMsg, text);
+      return;
+    }
 
     const userMsg = { id: nextId(), role: 'user', text };
     const aiId = nextId();
     const aiMsg = {
       id: aiId, role: 'ai', phase: 'working', kind: '', text: '',
-      activities: [], traceOpen: null, angles: [], summary: '', expandingIndex: -1, pickingIndex: -1,
-      expandedSummaries: {}, decision: null, postId: '', threadId: '',
+      activities: [], traceOpen: null, angles: [], summary: '', expandingIndex: -1, pickingIndex: -1, modifyingIndex: -1,
+      expandedSections: {}, decision: null, postId: '', threadId: '',
       copied: false, error: '', userPrompt: text,
     };
     setMessages(prev => [...prev, userMsg, aiMsg]);
@@ -901,26 +986,33 @@ export default function ChatPage() {
       const data = await resumeAI(msg.threadId, 'expand', '', index);
       patchMessage(aiId, (m) => ({
         expandingIndex: -1,
-        expandedSummaries: { ...m.expandedSummaries, [index]: data.expanded_summary || '' },
+        expandedSections: { ...m.expandedSections, [index]: data.expanded_sections || [] },
+        error: data.error || '',
       }));
     } catch {
-      patchMessage(aiId, { expandingIndex: -1 });
+      patchMessage(aiId, { expandingIndex: -1, error: 'Something went wrong expanding this angle.' });
     }
   };
 
-  const noneFit = async (aiId) => {
+  // Re-invokable as many times as the user wants — each call revises the
+  // SAME angle in place, building on whatever it currently shows (the
+  // backend, not this handler, tracks "current version"; see
+  // angle_review_node.py's working_sections).
+  const modifyAngle = async (aiId, index, instructionText) => {
     const msg = messages.find(m => m.id === aiId);
     if (!msg) return;
+    patchMessage(aiId, { modifyingIndex: index });
     try {
-      const data = await resumeAI(msg.threadId, 'none_fit', '');
-      if (data.status === 'awaiting_angle_selection') {
-        // Re-classified back into another research pass — fresh angle set.
-        patchMessage(aiId, { angles: data.angles || [], summary: data.summary || '', expandedSummaries: {}, error: data.error || '' });
-      } else {
-        patchMessage(aiId, (m) => ({ kind: 'direct', text: data.answer || m.text, angles: [] }));
-      }
+      const data = await resumeAI(msg.threadId, 'modify', instructionText, index);
+      patchMessage(aiId, (m) => ({
+        modifyingIndex: -1,
+        // On failure the backend still echoes back the previous good
+        // sections under expanded_sections — never overwritten with blank.
+        expandedSections: { ...m.expandedSections, [index]: data.expanded_sections || m.expandedSections?.[index] || [] },
+        error: data.error || '',
+      }));
     } catch {
-      /* leave angle grid as-is on failure */
+      patchMessage(aiId, { modifyingIndex: -1, error: "Couldn't apply that edit — try again." });
     }
   };
 
@@ -1052,12 +1144,15 @@ export default function ChatPage() {
           onChip={(label) => submitWsCmd(label)}
           onCopy={wsCopy}
           onPublish={wsPublish}
+          onConnectLinkedIn={connectLinkedIn}
           onHistory={wsHistory}
           onToggleCmd={() => patchWs((w) => ({ cmdOpen: !(w.cmdOpen !== false) }))}
           onApprove={wsApprove}
           onDecline={wsDecline}
           publishing={publishing}
+          connecting={connectingLinkedIn}
           publishResult={publishResult}
+          linkedinConnected={linkedinConnected}
           versions={versions}
           showVersions={showVersions}
           userName={userName}
@@ -1065,22 +1160,23 @@ export default function ChatPage() {
         />
       ) : (
         <div style={{ height: '100%', display: 'flex', animation: 'ccFade .35s ease both' }}>
-          <Sidebar
+          <HonneSidebar
             open={sideOpen} onToggle={() => setSideOpen(o => !o)}
             chats={chats} activeIndex={activeChat}
-            onSelect={selectChat} onDelete={(i) => setChats(prev => prev.filter((_, idx) => idx !== i))}
-            onNewChat={newChat} search={search} onSearch={setSearch} userName={userName}
+            onSelect={selectChat}
+            // Local-list-only: hides the entry from this browser session but does not
+            // delete the backend chat_sessions record — deletion is exclusively the
+            // 7-day TTL sweep (no DELETE /api/ai/sessions/{id} endpoint exists).
+            onDelete={(i) => setChats(prev => prev.filter((_, idx) => idx !== i))}
+            onNewChat={newChat} search={search} onSearch={setSearch} userName={userName} navigate={navigate}
+            activeNav="chat"
           />
 
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <header style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 28px', background: 'rgba(244,242,234,.72)', backdropFilter: 'blur(14px)', borderBottom: `1px solid ${HAIRLINE}` }}>
+            <header style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 28px', background: 'rgba(244,242,234,.72)', backdropFilter: 'saturate(140%) blur(14px)', borderBottom: '1px solid rgba(27,28,20,.06)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <button onClick={() => navigate('/dashboard')} title="Back to dashboard" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 10px', border: `1px solid ${HAIRLINE}`, background: '#fff', borderRadius: 9, fontSize: 12.5, fontWeight: 600, color: '#3A3C30', cursor: 'pointer' }}>
-                  <ArrowLeft size={14} /> Dashboard
-                </button>
-                <span style={{ width: 1, height: 16, background: HAIRLINE }} />
-                <span style={{ fontFamily: SERIF, fontWeight: 600, fontSize: 22, letterSpacing: '-.01em', color: ACCENT }}>Honne</span>
-                <span style={{ width: 1, height: 16, background: HAIRLINE }} />
+                <span style={{ fontFamily: FONT, fontWeight: 600, fontSize: 22, letterSpacing: '-.01em', color: ACCENT }}>Honne</span>
+                <span style={{ width: 1, height: 16, background: 'rgba(27,28,20,.12)' }} />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ position: 'relative', width: 8, height: 8, flex: '0 0 8px' }}>
                     <span style={{ position: 'absolute', inset: 0, borderRadius: 999, background: anyWorking ? ACCENT : '#2FA35B' }} />
@@ -1089,7 +1185,7 @@ export default function ChatPage() {
                   <span style={{ fontSize: 13, color: MUTED, fontWeight: 500 }}>{anyWorking ? 'Working on it…' : (isEmpty ? 'Ready when you are' : 'Ready')}</span>
                 </div>
               </div>
-              <button onClick={newChat} title="New conversation" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 34, padding: '0 14px', border: `1px solid ${HAIRLINE}`, background: '#fff', borderRadius: 10, fontSize: 13, fontWeight: 600, color: '#3A3C30', cursor: 'pointer' }}>
+              <button onClick={newChat} title="New conversation" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 34, padding: '0 14px', border: '1px solid rgba(27,28,20,.12)', background: '#fff', borderRadius: 10, fontSize: 13, fontWeight: 600, color: '#3A3C30', cursor: 'pointer', boxShadow: '0 1px 2px rgba(27,28,20,.04)' }}>
                 <Plus size={14} /> New
               </button>
             </header>
@@ -1097,24 +1193,24 @@ export default function ChatPage() {
             {isEmpty ? (
               <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
                 <div style={{ width: '100%', maxWidth: 600, textAlign: 'center', animation: 'ccRise .6s cubic-bezier(.22,1,.36,1) both' }}>
-                  <h1 style={{ fontFamily: SERIF, fontWeight: 400, fontSize: 46, lineHeight: 1.06, letterSpacing: '-.02em', margin: '0 0 12px', color: INK }}>
+                  <h1 style={{ fontFamily: FONT, fontWeight: 600, fontSize: 36, lineHeight: 1.16, letterSpacing: '-.02em', margin: '0 0 12px', color: INK }}>
                     Good <span style={{ color: '#7A2230' }}>{greetingPeriod()}</span>, {userName}.
                   </h1>
-                  <p style={{ fontFamily: SERIF, fontStyle: 'italic', fontSize: 19, color: '#9A9C8C', margin: 0 }}>What should we work on?</p>
+                  <p style={{ fontFamily: FONT, fontSize: 20, fontWeight: 400, letterSpacing: '-.01em', color: '#9A9C8C', margin: 0 }}>What should we work on?</p>
                 </div>
               </div>
             ) : (
               <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
-                <div style={{ padding: '32px 28px 24px', display: 'flex', flexDirection: 'column', gap: 26 }}>
+                <div style={{ maxWidth: 840, margin: '0 auto', padding: '36px 40px 24px', display: 'flex', flexDirection: 'column', gap: 30 }}>
                   {messages.map(m => (
-                    <div key={m.id} style={{ width: '100%', maxWidth: m.kind === 'angles' ? 'none' : 760, margin: '0 auto' }}>
+                    <div key={m.id}>
                       <MessageBubble
                         msg={m}
                         onToggleTrace={toggleTrace}
                         onToggleAngles={toggleAngles}
                         onPick={(i) => pickAngle(m.id, i)}
                         onExpandAngle={(i) => expandAngle(m.id, i)}
-                        onNoneFit={() => noneFit(m.id)}
+                        onModifyAngle={(i, text) => modifyAngle(m.id, i, text)}
                         onCopy={() => copyMsg(m.id)}
                         onOpenWorkspace={openWorkspace}
                         onRegenerate={() => regenerate(m.id)}

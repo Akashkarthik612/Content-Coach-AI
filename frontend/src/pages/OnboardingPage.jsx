@@ -19,8 +19,7 @@ const C = {
   rowLbl:    '#A6A895',
   rowVal:    '#26281C',
 };
-const SERIF = "'EB Garamond', serif";
-const SANS  = "'Hanken Grotesk', system-ui, sans-serif";
+const GEIST = "'Geist', system-ui, sans-serif";
 const MONO  = "'JetBrains Mono', monospace";
 
 const QUESTIONS = [
@@ -134,7 +133,7 @@ export default function OnboardingPage() {
     } catch { /* localStorage unavailable — non-fatal */ }
 
     // Fire-and-forget: profile grounds researcher_node's prompts, but a slow/failed
-    // save shouldn't block the user from reaching the dashboard.
+    // save shouldn't block the user from reaching chat.
     submitOnboarding({
       profession: answers.profession,
       industry: answers.industry,
@@ -145,7 +144,7 @@ export default function OnboardingPage() {
       topics: answers.topics,
     }).catch(err => console.error('Failed to save onboarding profile:', err));
 
-    navigate('/dashboard');
+    navigate('/chat');
   }
 
   const answered = isAnswered(q);
@@ -154,20 +153,20 @@ export default function OnboardingPage() {
   const summary = SUMMARY_ROWS.map(r => ({ label: r.label, value: fmt(answers[r.key]) })).filter(r => r.value);
 
   const chipBase = {
-    cursor: 'pointer', fontFamily: SANS, fontSize: 14.5, fontWeight: 500, letterSpacing: '-0.005em',
+    cursor: 'pointer', fontFamily: GEIST, fontSize: 14.5, fontWeight: 500, letterSpacing: '-0.005em',
     padding: '11px 18px', borderRadius: 999, transition: 'all .2s cubic-bezier(.22,1,.36,1)',
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: C.bg, color: C.ink, display: 'flex', flexDirection: 'column', fontFamily: SANS }}>
+    <div style={{ minHeight: '100vh', background: C.bg, color: C.ink, display: 'flex', flexDirection: 'column', fontFamily: GEIST }}>
       <style>{`
         @keyframes obRise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
 
       {/* TOP BAR */}
       <header style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 34px' }}>
-        <span style={{ fontFamily: SERIF, fontWeight: 600, fontSize: 22, letterSpacing: '-0.01em', color: C.green }}>
-          ContentCoach
+        <span style={{ fontFamily: GEIST, fontWeight: 600, fontSize: 22, letterSpacing: '-0.01em', color: C.green }}>
+          Honne
         </span>
         {!done && (
           <button
@@ -199,13 +198,13 @@ export default function OnboardingPage() {
               </div>
 
               <div key={`q${step}`} style={{ animation: 'obRise .5s cubic-bezier(.22,1,.36,1) both' }}>
-                <div style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: '.12em', textTransform: 'uppercase', color: C.rust, marginBottom: 14 }}>
+                <div style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: '.12em', textTransform: 'uppercase', color: C.green, marginBottom: 14 }}>
                   {q.eyebrow}
                 </div>
-                <h1 style={{ fontFamily: SERIF, fontWeight: 400, fontSize: 38, lineHeight: 1.12, letterSpacing: '-0.02em', margin: '0 0 8px', color: C.ink }}>
+                <h1 style={{ fontFamily: GEIST, fontWeight: 400, fontSize: 38, lineHeight: 1.12, letterSpacing: '-0.02em', margin: '0 0 8px', color: C.ink }}>
                   {q.title}
                 </h1>
-                <p style={{ fontFamily: SERIF, fontStyle: 'italic', fontSize: 18, color: C.sub, margin: '0 0 30px', fontWeight: 400, letterSpacing: '-0.01em' }}>
+                <p style={{ fontFamily: GEIST, fontSize: 18, color: C.sub, margin: '0 0 30px', fontWeight: 400, letterSpacing: '-0.01em' }}>
                   {q.sub}
                 </p>
 
@@ -241,7 +240,7 @@ export default function OnboardingPage() {
                       style={{
                         width: '100%', resize: 'none', background: '#fff', border: `1px solid ${C.chipBrd}`,
                         borderRadius: 14, padding: '16px 18px', fontSize: 16, lineHeight: 1.6, color: C.ink,
-                        fontFamily: SERIF, boxShadow: '0 1px 2px rgba(27,28,20,.03)', boxSizing: 'border-box',
+                        fontFamily: GEIST, boxShadow: '0 1px 2px rgba(27,28,20,.03)', boxSizing: 'border-box',
                       }}
                     />
                     {q.hint && <div style={{ fontSize: 12.5, color: C.faint, marginTop: 10, fontWeight: 500 }}>{q.hint}</div>}
@@ -268,7 +267,7 @@ export default function OnboardingPage() {
                   style={{
                     height: 48, padding: '0 28px', border: 'none', borderRadius: 13, fontSize: 14.5, fontWeight: 600,
                     letterSpacing: '-0.005em', transition: 'all .2s ease', display: 'inline-flex', alignItems: 'center', gap: 8,
-                    fontFamily: SANS,
+                    fontFamily: GEIST,
                     ...(nextDisabled
                       ? { background: C.track, color: '#B0B2A2', cursor: 'not-allowed' }
                       : { background: C.green, color: C.bg, cursor: 'pointer', boxShadow: '0 12px 30px -14px rgba(20,102,59,.7)' }),
@@ -288,10 +287,10 @@ export default function OnboardingPage() {
                   <path d="M20 6 9 17l-5-5" />
                 </svg>
               </div>
-              <h1 style={{ fontFamily: SERIF, fontWeight: 400, fontSize: 44, lineHeight: 1.08, letterSpacing: '-0.02em', margin: '0 0 12px', color: C.ink }}>
+              <h1 style={{ fontFamily: GEIST, fontWeight: 400, fontSize: 44, lineHeight: 1.08, letterSpacing: '-0.02em', margin: '0 0 12px', color: C.ink }}>
                 You're all set
               </h1>
-              <p style={{ fontFamily: SERIF, fontStyle: 'italic', fontSize: 20, color: C.sub, margin: '0 0 34px', fontWeight: 400, letterSpacing: '-0.01em' }}>
+              <p style={{ fontFamily: GEIST, fontSize: 20, color: C.sub, margin: '0 0 34px', fontWeight: 400, letterSpacing: '-0.01em' }}>
                 Your workspace is tuned to your voice. Let's write something worth reading.
               </p>
 
@@ -312,7 +311,7 @@ export default function OnboardingPage() {
 
               <button
                 onClick={finish}
-                style={{ height: 50, padding: '0 34px', border: 'none', borderRadius: 14, background: C.green, color: C.bg, fontSize: 15, fontWeight: 600, letterSpacing: '-0.005em', cursor: 'pointer', boxShadow: '0 12px 30px -14px rgba(20,102,59,.7)', fontFamily: SANS }}
+                style={{ height: 50, padding: '0 34px', border: 'none', borderRadius: 14, background: C.green, color: C.bg, fontSize: 15, fontWeight: 600, letterSpacing: '-0.005em', cursor: 'pointer', boxShadow: '0 12px 30px -14px rgba(20,102,59,.7)', fontFamily: GEIST }}
                 onMouseEnter={e => { e.currentTarget.style.background = C.greenHov; }}
                 onMouseLeave={e => { e.currentTarget.style.background = C.green; }}
               >

@@ -1,16 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getFolders, getPostsInFolder, createFolder, createPost, movePost as movePostApi } from '../api/vault'
 
-// Rotating tint palette — matches the approved Vault design's 5 folder colors.
-// Real folders have no inherent "platform", so color is assigned by position.
-export const FOLDER_TINTS = [
-  { color: '#2563EB', tint: '#EAF0FF' },
-  { color: '#0EA5E9', tint: '#E6F6FE' },
-  { color: '#6366F1', tint: '#EEF0FF' },
-  { color: '#FF4500', tint: '#FFF1EC' },
-  { color: '#8B5CF6', tint: '#F3EEFF' },
-]
-
 /**
  * Real vault data (folders + posts), shaped for the Content Vault page.
  * TODO: connect content store / import pipeline (§B4 of the Vault prompt).
@@ -46,8 +36,8 @@ export function useVault() {
     return folder
   }
 
-  async function addPost(folderId) {
-    const post = await createPost(folderId, 'Untitled Post')
+  async function addPost(folderId, title = 'Untitled Post') {
+    const post = await createPost(folderId, title)
     setPostsByFolder(prev => ({ ...prev, [folderId]: [post, ...(prev[folderId] || [])] }))
     return post
   }

@@ -27,7 +27,7 @@ class AgentState(TypedDict):
     # Overrunning it forces route="direct" instead of raising.
     steps_taken: int
 
-    # Set by researcher_node: {"angles": [5 ResearchAngle dicts], "search_context": str,
+    # Set by researcher_node: {"angles": [up to 5 ResearchAngle dicts], "search_context": str,
     # "summary": str}. "summary" is a short (2-4 sentence) personalized intro, grounded in
     # the user's profile when available, explaining what's being proposed and why — may be
     # "" if the LLM omitted it, never required. Read by angle_review_node (surfaced in the
@@ -38,6 +38,14 @@ class AgentState(TypedDict):
     # Set by angle_review_node once the user picks an angle (interrupt resume
     # action="pick"). None while nothing has been picked yet, or on "none_fit".
     picked_angle_id: int | None
+
+    # Set by angle_review_node's "pick" branch ONLY when the picked angle was
+    # expanded/modified first — the user's final edited sections
+    # ({heading, body} dicts), read once by map_chosen_angle_node immediately
+    # after and folded into research_brief.talking_points in place of the
+    # angle's raw argument/glimpse. None when the user picked an angle they
+    # never touched (map_chosen_angle_node falls back to the raw angle then).
+    final_angle_sections: list[dict] | None
 
     # Debug/forward-compat marker — records which node most recently produced
     # a state transition worth knowing about on resume (e.g. "angle_review").

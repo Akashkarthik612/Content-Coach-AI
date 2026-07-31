@@ -21,7 +21,8 @@ from uuid import UUID
 
 from langchain_core.tools import tool
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langgraph.prebuilt import InjectedState
+from langgraph.prebuilt import InjectedState, InjectedStore
+from langgraph.store.base import BaseStore
 from sqlalchemy import text
 from tavily import TavilyClient
 
@@ -297,6 +298,31 @@ async def get_session_context(question: str, state: Annotated[dict, InjectedStat
     if not parts:
         return "[NO_SESSION_CONTEXT: nothing usable found from earlier in this session]"
     return "\n\n---\n\n".join(parts)
+
+
+@tool
+async def recall_past_sessions(
+    question: str,
+    state: Annotated[dict, InjectedState],
+    store: Annotated[BaseStore, InjectedStore],
+) -> str:
+    """Search the user's OTHER past chat sessions (up to 7 days back) for one
+    relevant to the current question — use this when the user references
+    something from an earlier conversation that is NOT in this same session
+    (get_session_context only covers the current session). Searches by
+    session topic/title only, not full message content."""
+    user_id = state["user_id"]
+    from backend.ai.checkpointing.session_memory_store import SessionMemoryService
+
+    matches = await SessionMemoryService(store).search(user_id, question, limit=3)
+    if not matches:
+        return "[NO_PAST_SESSIONS_FOUND: no relevant past session found in the last 7 days]"
+
+    parts = [
+        f'Past session "{record.title}" (relevance {score:.2f})'
+        for _, record, score in matches
+    ]
+    return "\n".join(parts)
 
 
 @tool

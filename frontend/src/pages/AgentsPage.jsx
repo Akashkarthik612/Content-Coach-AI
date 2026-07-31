@@ -109,7 +109,7 @@ const AGENTS = [
     statusBg: '#E6F6FE',
     statusColor: SKY,
     dotColor: SKY,
-    status: 'Processing',
+    status: 'Coming soon',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" width="26" height="26">
         <path d="M3 19V9M7 19V6M11 19v-4M15 19V3M19 19v-7"/>
@@ -121,9 +121,9 @@ const AGENTS = [
       'Trend analysis: what topics and formats perform best for you',
       'Natural language Q&A over your full analytics history',
     ],
-    cta: 'View analytics →',
-    ctaPath: '/analytics',
-    ctaDisabled: false,
+    cta: 'Coming soon',
+    ctaPath: null,
+    ctaDisabled: true,
     ctaBg: `linear-gradient(90deg,${SKY},${BLUE})`,
   },
 ];

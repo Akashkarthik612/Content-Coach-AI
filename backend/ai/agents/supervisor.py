@@ -9,6 +9,7 @@ from backend.ai.agents.tools import (
     get_session_context,
     get_style_memory,
     get_topic_inventory,
+    recall_past_sessions,
     search_vault_posts,
 )
 from backend.ai.activity import emit_node_activity
@@ -44,6 +45,7 @@ _all_tools = [
     get_topic_inventory,
     get_style_memory,
     get_session_context,
+    recall_past_sessions,
 ]
 _llm_agent = _llm.bind_tools(_all_tools)
 
@@ -76,6 +78,13 @@ Tools available (always pass user_id="{user_id}"):
                                             (e.g. "that draft", "the audience we discussed",
                                             "the last post") — never for a fresh,
                                             self-contained request.
+  - recall_past_sessions(question)       → search the user's OTHER past chat sessions
+                                            (up to 7 days back). Call this ONLY when the
+                                            user references a DIFFERENT prior conversation,
+                                            not this one (e.g. "did I ever ask about X
+                                            before", "the chat where we talked about Y") —
+                                            try get_session_context first if it's plausibly
+                                            from this same session.
 
 ROUTING RULES
 -------------
