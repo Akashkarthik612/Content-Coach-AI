@@ -3,10 +3,24 @@ from sqlalchemy.orm import Session
 
 from backend.auth.models import User
 from backend.core.dependencies import get_current_user, get_db
-from backend.profile.schemas import OnboardingSubmit, ProfileCreate, ProfileResponse, ProfileUpdate
+from backend.profile.schemas import (
+    AccountSettingsResponse,
+    OnboardingSubmit,
+    ProfileCreate,
+    ProfileResponse,
+    ProfileUpdate,
+)
 from backend.profile.service import ProfileService
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
+
+
+@router.get("/settings", response_model=AccountSettingsResponse)
+def get_account_settings(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return ProfileService(db).get_account_settings(user)
 
 
 @router.post("", response_model=ProfileResponse, status_code=201)

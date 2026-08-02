@@ -36,7 +36,7 @@ export const register = async (username, email, password) => {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { username } },
+    options: { data: { username }, emailRedirectTo: `${window.location.origin}/onboarding` },
   });
   if (error) throw _classify(error);
 

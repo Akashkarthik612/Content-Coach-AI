@@ -5,8 +5,9 @@ from uuid import UUID
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from backend.auth.models import User
 from backend.profile.models import UserProfile
-from backend.profile.schemas import OnboardingSubmit, ProfileCreate, ProfileUpdate
+from backend.profile.schemas import AccountSettingsResponse, OnboardingSubmit, ProfileCreate, ProfileUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,12 @@ class ProfileService:
         return profile
 
     # ── Public API ─────────────────────────────────────────────────────────────
+
+    def get_account_settings(self, user: User) -> AccountSettingsResponse:
+        """Maps the User row already loaded by get_current_user() — no extra
+        query. email/username are synced from Supabase's JWT on every
+        authenticated request (see UserSyncService.get_or_create)."""
+        return AccountSettingsResponse(email=user.email, username=user.username)
 
     def get_profile(self, user_id: UUID) -> UserProfile:
         profile = self.db.query(UserProfile).filter(UserProfile.user_id == user_id).first()

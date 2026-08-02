@@ -138,6 +138,12 @@ class SessionMemoryService:
         results.sort(key=lambda pair: pair[1].last_active_at, reverse=True)
         return results
 
+    async def delete(self, user_id: str, session_id: str) -> None:
+        """Permanently removes the chat_sessions record — called from
+        ThreadSessionService.delete_session() when the user deletes a chat.
+        No-op if the record is already gone (nothing to raise on)."""
+        await self._store.adelete(self._namespace(user_id), session_id)
+
     async def search(
         self, user_id: str, query: str, limit: int = 3
     ) -> list[tuple[str, ChatSessionRecord, float]]:

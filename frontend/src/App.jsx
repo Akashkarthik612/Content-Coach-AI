@@ -6,6 +6,8 @@ import OnboardingPage from './pages/OnboardingPage';
 import MyWorkPage from './pages/MyWorkPage';
 import ChatPage from './pages/ChatPage';
 import SchedulePage from './pages/SchedulePage';
+import SettingsPage from './pages/SettingsPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import AgentsPage from './pages/AgentsPage';
 import { ReviewQueueProvider } from './context/ReviewQueueContext';
 import { supabase } from './lib/supabaseClient';
@@ -38,11 +40,13 @@ export default function App() {
         <Route path="/"         element={<LandingPage />} />
         <Route path="/login"    element={<HomePage initialMode="login" />} />
         <Route path="/register" element={<HomePage initialMode="register" />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
         <Route path="/my-work"    element={<RequireAuth><MyWorkPage /></RequireAuth>} />
         <Route path="/vault"      element={<RequireAuth><MyWorkPage /></RequireAuth>} />
         <Route path="/chat"       element={<RequireAuth><ChatPage /></RequireAuth>} />
         <Route path="/schedule"   element={<RequireAuth><SchedulePage /></RequireAuth>} />
+        <Route path="/settings"   element={<RequireAuth><SettingsPage /></RequireAuth>} />
         <Route path="/agents"     element={<RequireAuth><AgentsPage /></RequireAuth>} />
         <Route path="*"          element={<Navigate to="/" replace />} />
       </Routes>

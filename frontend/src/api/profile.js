@@ -22,3 +22,12 @@ export const getProfile = () =>
     if (err.response?.status === 404) return null
     throw err
   })
+
+/**
+ * Fetch the logged-in user's account identity (email + username) from the
+ * `users` table — distinct from getProfile()'s onboarding data, and never
+ * 404s (a `users` row always exists once authenticated). Backs the Settings
+ * page's Profile card.
+ */
+export const getAccountSettings = () =>
+  client.get('/settings').then(r => r.data)

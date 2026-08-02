@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, X, Plus, MoreHorizontal, ExternalLink, CalendarClock, Trash2 } from 'lucide-react';
-import { getSessions } from '../api/ai';
+import { getSessions, deleteSession } from '../api/ai';
 import HonneSidebar from '../components/shared/HonneSidebar';
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -141,6 +141,19 @@ export default function SchedulePage() {
       })
       .catch(() => { /* sidebar history unavailable — show an empty list */ });
   }, []);
+
+  // Real deletion (DELETE /api/ai/sessions/{id}) — see the same handler's
+  // comment in ChatPage.jsx. Optimistic removal, reverted if the server call fails.
+  const handleDeleteChat = async (i) => {
+    const chat = chats[i];
+    if (!chat) return;
+    setChats(prev => prev.filter((_, idx) => idx !== i));
+    try {
+      await deleteSession(chat.sessionId);
+    } catch {
+      setChats(prev => [...prev.slice(0, i), chat, ...prev.slice(i)]);
+    }
+  };
 
   const goToChat = (sessionId) => {
     if (sessionId) localStorage.setItem('lastSessionId', sessionId);
@@ -320,7 +333,7 @@ export default function SchedulePage() {
         open={sideOpen} onToggle={() => setSideOpen(o => !o)}
         chats={chats} activeIndex={-1}
         onSelect={(i) => goToChat(chats[i]?.sessionId)}
-        onDelete={(i) => setChats(prev => prev.filter((_, idx) => idx !== i))}
+        onDelete={handleDeleteChat}
         onNewChat={() => goToChat(null)}
         search={search} onSearch={setSearch} userName={userName} navigate={navigate}
         activeNav="scheduled"

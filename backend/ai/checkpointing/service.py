@@ -48,6 +48,19 @@ class ThreadRegistryService:
             .all()
         )
 
+    def delete_for_session(self, session_id: str, user_id: str) -> list[str]:
+        """Deletes every thread_registry row grouped under this session, scoped
+        to user_id (same ownership-by-query-scope pattern as list_for_session —
+        an unowned/unknown session_id deletes nothing and returns []). Returns
+        the deleted thread_ids so the caller can also purge their checkpointer
+        state, which this method has no knowledge of."""
+        rows = self.list_for_session(session_id, user_id)
+        thread_ids = [str(row.thread_id) for row in rows]
+        for row in rows:
+            self.db.delete(row)
+        self.db.commit()
+        return thread_ids
+
     def touch(self, thread_id: str) -> ThreadRegistry | None:
         row = self.db.get(ThreadRegistry, uuid.UUID(thread_id))
         if row:
@@ -102,3 +115,17 @@ class ThreadSessionService:
     def complete(self, thread_id: str) -> None:
         """Mark the thread completed once the graph reaches a terminal state."""
         self._registry.mark_completed(thread_id)
+
+    async def delete_session(self, session_id: str, user_id: str, checkpointer) -> list[str]:
+        """Permanently deletes a chat: every thread's checkpoint data (via the
+        checkpointer's own adelete_thread — wipes checkpoints/checkpoint_blobs/
+        checkpoint_writes for that thread_id), the thread_registry rows grouping
+        them, and the chat_sessions Store record itself. Scoped to user_id via
+        ThreadRegistryService.delete_for_session() — deleting an unowned/unknown
+        session_id is a silent no-op (returns []), same as list_for_session's
+        ownership-by-query-scope pattern elsewhere in this facade."""
+        thread_ids = self._registry.delete_for_session(session_id, user_id)
+        for thread_id in thread_ids:
+            await checkpointer.adelete_thread(thread_id)
+        await self._session_memory.delete(user_id, session_id)
+        return thread_ids

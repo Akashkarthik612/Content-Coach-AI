@@ -148,7 +148,14 @@ export default function HonneSidebar({ open, onToggle, chats, activeIndex, onSel
 
       <div style={{ flex: '0 0 auto', borderTop: '1px solid rgba(27,28,20,.07)', padding: 10, display: 'flex', justifyContent: open ? 'stretch' : 'center' }}>
         {open ? (
-          <button title="Settings" style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', padding: 8, border: 'none', background: 'none', borderRadius: 11, cursor: 'pointer' }}>
+          <button
+            title="Settings" onClick={() => navigate('/settings')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 11, width: '100%', padding: 8, border: 'none',
+              background: 'rgba(20,102,59,.10)', borderRadius: 11, cursor: 'pointer',
+              boxShadow: activeNav === 'settings' ? 'inset 0 0 0 1.5px rgba(20,102,59,.4)' : 'none',
+            }}
+          >
             <span style={{ width: 32, height: 32, flex: '0 0 32px', borderRadius: 9, background: ACCENT, color: BG, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT, fontSize: 16, fontWeight: 600 }}>
               {userName.charAt(0).toUpperCase()}
             </span>
@@ -159,7 +166,14 @@ export default function HonneSidebar({ open, onToggle, chats, activeIndex, onSel
             <Settings size={15} color={MUTED_3} />
           </button>
         ) : (
-          <button title={`${userName} · Settings`} style={{ width: 32, height: 32, flex: '0 0 32px', borderRadius: 9, background: ACCENT, color: BG, border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT, fontSize: 16, fontWeight: 600, cursor: 'pointer' }}>
+          <button
+            title={`${userName} · Settings`} onClick={() => navigate('/settings')}
+            style={{
+              width: 32, height: 32, flex: '0 0 32px', borderRadius: 9, background: ACCENT, color: BG, border: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT, fontSize: 16, fontWeight: 600, cursor: 'pointer',
+              boxShadow: activeNav === 'settings' ? '0 0 0 2px rgba(20,102,59,.35)' : 'none',
+            }}
+          >
             {userName.charAt(0).toUpperCase()}
           </button>
         )}

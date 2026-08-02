@@ -57,11 +57,28 @@ class UserSyncService:
     def get_or_create(db: Session, identity: AuthenticatedUser) -> User:
         user_id = UUID(identity.id)
         user = db.get(User, user_id)
-        if user:
+        if user is None:
+            logger.info("Provisioning shadow user row: user_id=%s", user_id)
+            user = User(id=user_id, email=identity.email, username=identity.username)
+            db.add(user)
+            db.commit()
+            db.refresh(user)
             return user
-        logger.info("Provisioning shadow user row: user_id=%s", user_id)
-        user = User(id=user_id, email=identity.email, username=identity.username)
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+
+        # Self-heal: the JWT is the source of truth (e.g. after a user
+        # confirms an email change or updates their username via Supabase),
+        # but this row is only ever written once on first sight otherwise —
+        # re-sync on every call so a change made in Supabase actually shows
+        # up here on the user's next authenticated request.
+        changed = False
+        if identity.email and user.email != identity.email:
+            user.email = identity.email
+            changed = True
+        if identity.username and user.username != identity.username:
+            user.username = identity.username
+            changed = True
+        if changed:
+            logger.info("Synced user row from JWT claims: user_id=%s", user_id)
+            db.commit()
+            db.refresh(user)
         return user

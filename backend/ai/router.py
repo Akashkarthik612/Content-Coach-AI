@@ -488,6 +488,24 @@ async def list_sessions(
     ])
 
 
+@router.delete("/sessions/{session_id}", status_code=204)
+async def delete_session(
+    session_id: str,
+    assistant = Depends(get_assistant),
+    store = Depends(get_store),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Permanently deletes a chat — the chat_sessions Store record, every
+    thread_registry row grouped under it, and each thread's checkpoint data
+    (assistant.checkpointer.adelete_thread()). Scoped to the requesting user
+    by ThreadSessionService.delete_session(); an unowned/unknown session_id is
+    a silent no-op (204), mirroring GET .../threads' ownership-by-scope pattern
+    rather than 403/404ing."""
+    session = ThreadSessionService(ThreadRegistryService(db), SessionMemoryService(store))
+    await session.delete_session(session_id, str(user.id), assistant.checkpointer)
+
+
 @router.get("/sessions/{session_id}/threads", response_model=SessionThreadsResponse)
 async def get_session_threads(
     session_id: str,

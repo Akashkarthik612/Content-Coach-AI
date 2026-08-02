@@ -41,6 +41,17 @@ class OnboardingSubmit(BaseModel):
     topics: Optional[list[str]] = None
 
 
+class AccountSettingsResponse(BaseModel):
+    """Identity fields from the `users` table (synced from Supabase, see
+    UserSyncService) — distinct from ProfileResponse, which is entirely
+    onboarding data (`user_profile` table, may not exist for a given user)."""
+
+    email: Optional[str]
+    username: Optional[str]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ProfileResponse(BaseModel):
     id: UUID
     user_id: UUID

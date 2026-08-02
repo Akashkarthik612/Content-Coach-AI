@@ -59,6 +59,18 @@ export const getSessions = () =>
   api.get('/sessions').then(r => r.data);
 
 /**
+ * Permanently deletes a chat — the chat_sessions Store record, every
+ * thread_registry row grouped under it, and each thread's checkpoint data.
+ * Unlike the old sidebar delete (local React state only), this actually
+ * removes it server-side so it won't reappear on the next getSessions() call.
+ *
+ * @param {string} sessionId
+ * @returns {Promise<void>}
+ */
+export const deleteSession = (sessionId) =>
+  api.delete(`/sessions/${sessionId}`).then(() => {});
+
+/**
  * SSE streaming query. Calls /stream and fires callbacks as events arrive.
  *
  * @param {string}   prompt

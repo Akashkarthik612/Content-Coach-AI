@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Plus, ChevronDown, Check, Copy, RotateCcw,
+  Plus, ChevronDown, ChevronRight, Check, Copy, RotateCcw,
   ArrowLeft, Clock, Send, X, ThumbsUp, MessageCircle, Repeat2, PanelLeft, ExternalLink,
+  Settings, Pencil, LogOut,
 } from 'lucide-react';
-import { streamQuery, resumeAI, refineAI, getSessionThreads, getSessions } from '../api/ai';
+import { streamQuery, resumeAI, refineAI, getSessionThreads, getSessions, deleteSession } from '../api/ai';
 import { publishToLinkedIn, getLinkedInStatus, getLinkedInAuthUrl } from '../api/linkedin';
 import { getVersions } from '../api/vault';
 import { getProfile } from '../api/profile';
@@ -716,8 +717,11 @@ function WorkspaceView({ ws, onBack, onModeChange, onDocChange, onCmdInput, onCm
 export default function ChatPage() {
   const navigate = useNavigate();
   const userName = localStorage.getItem('username') || 'there';
+  const userInitial = userName.charAt(0).toUpperCase();
+  const handleLogout = () => { localStorage.clear(); navigate('/login'); };
 
   const [sideOpen, setSideOpen] = useState(true);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [chats, setChats] = useState([]);          // in-memory session history only
   const [activeChat, setActiveChat] = useState(-1);
@@ -826,6 +830,37 @@ export default function ChatPage() {
     setBusy(false);
     setView('chat');
     setWs(null);
+  };
+
+  // Deletes a chat for real — chat_sessions Store record, thread_registry
+  // rows, and every thread's checkpoint data server-side (DELETE /api/ai/sessions/{id}) —
+  // not just this browser tab's React state, which is all the old handler did
+  // (see deleteSession's docstring in api/ai.js). Optimistic removal, reverted
+  // if the server call fails so a failed delete doesn't silently vanish from
+  // the sidebar while still existing in the DB.
+  const handleDeleteChat = async (i) => {
+    const chat = chats[i];
+    if (!chat) return;
+
+    setChats(prev => prev.filter((_, idx) => idx !== i));
+    if (i === activeChat) {
+      abortRef.current?.();
+      setCurrentSessionId(crypto.randomUUID());
+      setActiveChat(-1);
+      setMessages([]);
+      setDraft('');
+      setBusy(false);
+      setView('chat');
+      setWs(null);
+    } else if (activeChat > i) {
+      setActiveChat(activeChat - 1);
+    }
+
+    try {
+      await deleteSession(chat.sessionId);
+    } catch {
+      setChats(prev => [...prev.slice(0, i), chat, ...prev.slice(i)]);
+    }
   };
 
   const selectChat = async (i) => {
@@ -1164,10 +1199,7 @@ export default function ChatPage() {
             open={sideOpen} onToggle={() => setSideOpen(o => !o)}
             chats={chats} activeIndex={activeChat}
             onSelect={selectChat}
-            // Local-list-only: hides the entry from this browser session but does not
-            // delete the backend chat_sessions record — deletion is exclusively the
-            // 7-day TTL sweep (no DELETE /api/ai/sessions/{id} endpoint exists).
-            onDelete={(i) => setChats(prev => prev.filter((_, idx) => idx !== i))}
+            onDelete={handleDeleteChat}
             onNewChat={newChat} search={search} onSearch={setSearch} userName={userName} navigate={navigate}
             activeNav="chat"
           />
@@ -1185,9 +1217,78 @@ export default function ChatPage() {
                   <span style={{ fontSize: 13, color: MUTED, fontWeight: 500 }}>{anyWorking ? 'Working on it…' : (isEmpty ? 'Ready when you are' : 'Ready')}</span>
                 </div>
               </div>
-              <button onClick={newChat} title="New conversation" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 34, padding: '0 14px', border: '1px solid rgba(27,28,20,.12)', background: '#fff', borderRadius: 10, fontSize: 13, fontWeight: 600, color: '#3A3C30', cursor: 'pointer', boxShadow: '0 1px 2px rgba(27,28,20,.04)' }}>
-                <Plus size={14} /> New
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <button onClick={newChat} title="New conversation" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 34, padding: '0 14px', border: '1px solid rgba(27,28,20,.12)', background: '#fff', borderRadius: 10, fontSize: 13, fontWeight: 600, color: '#3A3C30', cursor: 'pointer', boxShadow: '0 1px 2px rgba(27,28,20,.04)' }}>
+                  <Plus size={14} /> New
+                </button>
+
+                <div style={{ position: 'relative' }}>
+                  <button
+                    onClick={() => setProfileOpen(o => !o)}
+                    title="Account"
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, flex: '0 0 34px',
+                      borderRadius: 999, background: ACCENT, color: BG,
+                      border: `2px solid ${profileOpen ? 'rgba(20,102,59,.4)' : 'rgba(255,255,255,.85)'}`,
+                      fontFamily: FONT, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+                      boxShadow: '0 2px 8px -3px rgba(20,60,30,.5)',
+                    }}
+                  >
+                    {userInitial}
+                  </button>
+
+                  {profileOpen && (
+                    <>
+                      <div onClick={() => setProfileOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 20 }} />
+                      <div style={{
+                        position: 'absolute', top: 44, right: 0, zIndex: 21, width: 268, background: '#fff',
+                        border: `1px solid ${HAIRLINE}`, borderRadius: 14,
+                        boxShadow: '0 24px 56px -24px rgba(20,60,30,.4), 0 4px 14px -6px rgba(27,28,20,.14)',
+                        overflow: 'hidden', animation: 'ccRise .22s cubic-bezier(.22,1,.36,1) both',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 16px 14px', background: '#F7F8F5', borderBottom: `1px solid ${HAIRLINE}` }}>
+                          <span style={{ width: 40, height: 40, flex: '0 0 40px', borderRadius: 999, background: ACCENT, color: BG, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT, fontSize: 16, fontWeight: 600 }}>
+                            {userInitial}
+                          </span>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '.16em', textTransform: 'uppercase', color: '#9FA291', fontWeight: 500, marginBottom: 3 }}>My account</div>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: INK, letterSpacing: '-.005em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{userName}</div>
+                          </div>
+                        </div>
+                        <div style={{ padding: 6 }}>
+                          <button onClick={() => { setProfileOpen(false); navigate('/settings'); }} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', padding: '10px 11px', border: 'none', background: 'none', borderRadius: 10, cursor: 'pointer' }}>
+                            <span style={{ width: 20, height: 20, flex: '0 0 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5A5C4C' }}>
+                              <Settings size={17} strokeWidth={1.8} />
+                            </span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 13.5, fontWeight: 600, color: INK, letterSpacing: '-.005em' }}>Settings</div>
+                              <div style={{ fontSize: 11.5, color: '#9A9C8C', marginTop: 1 }}>Email, password &amp; plan</div>
+                            </div>
+                            <ChevronRight size={15} color="#C0C2B2" />
+                          </button>
+                          <button onClick={() => { setProfileOpen(false); navigate('/onboarding'); }} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', padding: '10px 11px', border: 'none', background: 'none', borderRadius: 10, cursor: 'pointer' }}>
+                            <span style={{ width: 20, height: 20, flex: '0 0 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5A5C4C' }}>
+                              <Pencil size={17} strokeWidth={1.8} />
+                            </span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 13.5, fontWeight: 600, color: INK, letterSpacing: '-.005em' }}>Change details</div>
+                              <div style={{ fontSize: 11.5, color: '#9A9C8C', marginTop: 1 }}>Profession, industry &amp; goals</div>
+                            </div>
+                            <ChevronRight size={15} color="#C0C2B2" />
+                          </button>
+                          <div style={{ height: 1, background: HAIRLINE, margin: '5px 6px' }} />
+                          <button onClick={handleLogout} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', padding: '10px 11px', border: 'none', background: 'none', borderRadius: 10, cursor: 'pointer' }}>
+                            <span style={{ width: 20, height: 20, flex: '0 0 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: DANGER }}>
+                              <LogOut size={17} strokeWidth={1.9} />
+                            </span>
+                            <div style={{ fontSize: 13.5, fontWeight: 600, color: DANGER, letterSpacing: '-.005em' }}>Log out</div>
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
             </header>
 
             {isEmpty ? (
