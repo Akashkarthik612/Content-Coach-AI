@@ -8,6 +8,8 @@ on:
   push:
     branches:
       - main
+      - feature/scheduler-analytics-hook-personalization
+
     paths:
       - 'frontend/**'
       - '.github/workflows/frontend-e2e.yml'
@@ -60,3 +62,21 @@ jobs:
           name: playwright-traces
           path: frontend/test-results/
           retention-days: 14
+
+      - name: Run Tests
+        run: npm test -- -- watchALL=False
+        continue-on-error:  true
+
+      - name: Build Frontend
+        run: npm run build
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Trivy Filesystem Scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: frontend
