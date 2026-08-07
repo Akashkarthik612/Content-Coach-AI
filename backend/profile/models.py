@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, ForeignKey, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from backend.core.database import Base
@@ -36,6 +36,9 @@ class UserProfile(Base):
     formatting_prefs = Column(JSONB, nullable=False, default=dict, server_default="'{}'::jsonb")
     linkedin_headline = Column(Text, nullable=True)
     linkedin_about = Column(Text, nullable=True)
+    # Schedule page's weekly-posts goal (1-7); nullable — the frontend falls
+    # back to a default of 4 when unset, same as it did before this existed.
+    weekly_post_target = Column(Integer, nullable=True)
     created_at = Column(
         DateTime(timezone=True), nullable=False, default=_utcnow, server_default="now()"
     )

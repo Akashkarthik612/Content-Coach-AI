@@ -63,6 +63,12 @@ class FlatResearchBrief(BaseModel):
     avoid_repeating: str = ""
     suggested_length: str = "medium"
     suggested_hook: str = ""
+    # User's own stat/story/detail from the "personalize the hook" modal —
+    # distinct from suggested_hook (a researcher-generated suggestion) since
+    # this is the user's real material and should be opened with verbatim,
+    # not treated as one option among several. See angle_review_node.py's
+    # "pick" branch and map_chosen_angle_node.
+    personal_hook_input: str = ""
 
 
 def topic_to_flat(topic: ResearchTopic) -> FlatResearchBrief:

@@ -1,5 +1,5 @@
 import logging
-from datetime import timedelta
+from datetime import datetime, time, timedelta, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -11,9 +11,11 @@ from sqlalchemy.orm import Session
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from backend.analytics.schemas import ExternalPostLogCreate
 from backend.vault.models import Folder, Post, PostAnalytics, PostPublishLog, PostVersion, _utcnow
 from backend.vault.models import PostStatus
 from backend.vault.schemas import (
+    CalendarPostItem,
     FolderCreate,
     FolderRename,
     PostCreate,
@@ -22,6 +24,7 @@ from backend.vault.schemas import (
     SearchResult,
     VersionRename,
     VersionSave,
+    WeeklyHistoryPoint,
 )
 
 
@@ -136,6 +139,11 @@ def update_post_status(
     post.status = data.status
     if data.status == PostStatus.scheduled:
         post.scheduled_at = data.scheduled_at
+        # A (re)schedule is a fresh attempt — clear any prior failure state,
+        # otherwise a post rescheduled after a failed auto-publish would
+        # immediately re-count toward SCHEDULER_MAX_ATTEMPTS.
+        post.schedule_attempts = 0
+        post.last_schedule_error = None
     elif data.status == PostStatus.published:
         post.scheduled_at = None
     post.updated_at = _utcnow()
@@ -247,7 +255,7 @@ def delete_version(db: Session, user_id: UUID, version_id: UUID) -> None:
 # ── Post Analytics ────────────────────────────────────────────────────────────
 
 def upsert_post_analytics(
-    db: Session, post_id: UUID, user_id: UUID, impressions: int, reactions: int
+    db: Session, post_id: UUID, user_id: UUID, impressions: int, reactions: int, comments: int = 0
 ) -> PostAnalytics:
     _own_post(db, user_id, post_id)
     stmt = (
@@ -257,16 +265,83 @@ def upsert_post_analytics(
             user_id=user_id,
             impressions=impressions,
             reactions=reactions,
+            comments=comments,
             updated_at=_utcnow(),
         )
         .on_conflict_do_update(
             constraint="uq_post_analytics_post_id",
-            set_=dict(impressions=impressions, reactions=reactions, updated_at=_utcnow()),
+            set_=dict(impressions=impressions, reactions=reactions, comments=comments, updated_at=_utcnow()),
         )
     )
     db.execute(stmt)
     db.commit()
     return db.query(PostAnalytics).filter(PostAnalytics.post_id == post_id).one()
+
+
+def create_external_post(db: Session, user_id: UUID, data: ExternalPostLogCreate) -> Post:
+    """Log metrics for a post with no publish history in Honne yet.
+
+    data.post_id is None -> "Published outside Honne": creates a brand-new
+    synthetic Post (empty content — no real text was provided) + PostVersion
+    + PostPublishLog + PostAnalytics.
+
+    data.post_id is set -> backfill: the post already exists in the vault
+    (e.g. pasted in as a draft); attaches a PostPublishLog (using the
+    platform/published_at entered on the form) + PostAnalytics to that
+    EXISTING post instead of creating a duplicate. Its title/content are
+    left untouched.
+
+    The form's "Type" (original/repost) field has no backing column
+    anywhere and is intentionally not accepted here."""
+    if data.post_id is not None:
+        post = _own_post(db, user_id, data.post_id)
+    else:
+        post = Post(user_id=user_id, title=data.title or "Untitled Post", status=PostStatus.published)
+        db.add(post)
+        db.flush()
+        version = PostVersion(post_id=post.id, version_number=1, content="", source="external")
+        db.add(version)
+        post.current_version = 1
+
+    if post.status != PostStatus.published:
+        post.status = PostStatus.published
+        post.updated_at = _utcnow()
+
+    publish_log = PostPublishLog(
+        post_id=post.id, version_id=_latest_version_id(db, post.id),
+        platform=data.platform, published_at=data.published_at,
+    )
+    db.add(publish_log)
+
+    upsert_stmt = (
+        pg_insert(PostAnalytics)
+        .values(
+            post_id=post.id, user_id=user_id,
+            impressions=data.impressions, reactions=data.reactions, comments=data.comments,
+            updated_at=_utcnow(),
+        )
+        .on_conflict_do_update(
+            constraint="uq_post_analytics_post_id",
+            set_=dict(
+                impressions=data.impressions, reactions=data.reactions, comments=data.comments,
+                updated_at=_utcnow(),
+            ),
+        )
+    )
+    db.execute(upsert_stmt)
+    db.commit()
+    db.refresh(post)
+    return post
+
+
+def _latest_version_id(db: Session, post_id: UUID) -> UUID:
+    version = (
+        db.query(PostVersion)
+        .filter(PostVersion.post_id == post_id)
+        .order_by(PostVersion.version_number.desc())
+        .first()
+    )
+    return version.id
 
 
 # ── Analytics Summary ─────────────────────────────────────────────────────────
@@ -326,6 +401,116 @@ def get_recent_posts(db: Session, user_id: UUID, limit: int = 3) -> list[Post]:
         .all()
     )
     return [_attach_preview(p) for p in posts]
+
+
+# ── Calendar (Schedule page) ──────────────────────────────────────────────────
+
+class CalendarService:
+    """Read-only calendar queries over the vault posts table. Static methods
+    only — mirrors LinkedInConnectService's style (backend/linkedin/service.py);
+    no per-instance state to justify anything else."""
+
+    @staticmethod
+    def get_calendar_posts(
+        db: Session, user_id: UUID, start: datetime, end: datetime
+    ) -> list[CalendarPostItem]:
+        """All of this user's posts landing on a calendar day within [start, end]:
+        scheduled/failed posts keyed off scheduled_at, plus one entry per
+        PostPublishLog row keyed off its own published_at (a post published
+        more than once appears on every real day it happened, not deduped)."""
+        scheduled_posts = (
+            db.query(Post)
+            .filter(
+                Post.user_id == user_id,
+                Post.status.in_([PostStatus.scheduled, PostStatus.failed]),
+                Post.scheduled_at.isnot(None),
+                Post.scheduled_at >= start,
+                Post.scheduled_at <= end,
+            )
+            .all()
+        )
+        published_rows = (
+            db.query(PostPublishLog, Post)
+            .join(Post, Post.id == PostPublishLog.post_id)
+            .filter(
+                Post.user_id == user_id,
+                PostPublishLog.published_at >= start,
+                PostPublishLog.published_at <= end,
+            )
+            .all()
+        )
+
+        items = [
+            CalendarPostItem(
+                id=post.id,
+                title=post.title,
+                status=post.status,
+                folder_id=post.folder_id,
+                platform="linkedin",
+                effective_at=post.scheduled_at,
+            )
+            for post in scheduled_posts
+        ]
+        items += [
+            CalendarPostItem(
+                id=post.id,
+                title=post.title,
+                status=PostStatus.published,
+                folder_id=post.folder_id,
+                platform=log.platform,
+                effective_at=log.published_at,
+            )
+            for log, post in published_rows
+        ]
+        return items
+
+    @staticmethod
+    def get_weekly_history(db: Session, user_id: UUID, weeks: int = 12) -> list[WeeklyHistoryPoint]:
+        """One point per week, oldest first, last = the current week. Past
+        (fully elapsed) weeks count only actually-PUBLISHED days (real
+        outcome); the current week additionally counts scheduled/failed days
+        still ahead — matching progressDone's own scheduled-counts-too
+        semantics already used elsewhere on the Schedule page."""
+        today = datetime.now(timezone.utc).date()
+        monday_this_week = today - timedelta(days=today.weekday())
+
+        points = []
+        for i in range(weeks):
+            is_current = i == weeks - 1
+            week_start = monday_this_week - timedelta(weeks=(weeks - 1 - i))
+            week_start_dt = datetime.combine(week_start, time.min, tzinfo=timezone.utc)
+            week_end_dt = datetime.combine(week_start + timedelta(days=4), time.max, tzinfo=timezone.utc)
+
+            published_days = {
+                row.published_at.date()
+                for row in db.query(PostPublishLog.published_at)
+                .join(Post, Post.id == PostPublishLog.post_id)
+                .filter(
+                    Post.user_id == user_id,
+                    PostPublishLog.published_at >= week_start_dt,
+                    PostPublishLog.published_at <= week_end_dt,
+                )
+                .all()
+            }
+            matched_days = published_days
+
+            if is_current:
+                scheduled_days = {
+                    row.scheduled_at.date()
+                    for row in db.query(Post.scheduled_at)
+                    .filter(
+                        Post.user_id == user_id,
+                        Post.status.in_([PostStatus.scheduled, PostStatus.failed]),
+                        Post.scheduled_at.isnot(None),
+                        Post.scheduled_at >= week_start_dt,
+                        Post.scheduled_at <= week_end_dt,
+                    )
+                    .all()
+                }
+                matched_days = published_days | scheduled_days
+
+            points.append(WeeklyHistoryPoint(week_start=week_start, days_with_post=len(matched_days), is_current=is_current))
+        return points
 
 
 # ── Search ────────────────────────────────────────────────────────────────────

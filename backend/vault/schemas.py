@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 from uuid import UUID
 
@@ -38,6 +38,7 @@ class PostResponse(BaseModel):
     status: PostStatus
     is_pinned: bool
     current_version: int
+    scheduled_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -52,6 +53,7 @@ class PostListResponse(BaseModel):
     status: PostStatus
     is_pinned: bool
     current_version: int
+    scheduled_at: Optional[datetime] = None
     updated_at: datetime
     # Derived from the latest PostVersion — attached by service._attach_preview()
     # rather than a real column, so the Vault grid can show a card preview/word
@@ -125,12 +127,14 @@ class VersionRename(BaseModel):
 class PostAnalyticsUpdate(BaseModel):
     impressions: int
     reactions: int
+    comments: int = 0
 
 
 class PostAnalyticsResponse(BaseModel):
     post_id: UUID
     impressions: int
     reactions: int
+    comments: int
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -160,3 +164,29 @@ class SearchResult(BaseModel):
     folder_id: Optional[UUID]
     matched_version_id: Optional[UUID]
     updated_at: datetime
+
+
+# ── Calendar (Schedule page) ──────────────────────────────────────────────────
+
+class CalendarPostItem(BaseModel):
+    """One post's appearance on a given calendar day — either a scheduled/failed
+    post keyed off scheduled_at, or a published post keyed off a single
+    PostPublishLog row's published_at. A post published more than once yields
+    one CalendarPostItem per publish_log row, not a single deduped entry."""
+    id: UUID
+    title: str
+    status: PostStatus
+    folder_id: Optional[UUID]
+    platform: str
+    effective_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WeeklyHistoryPoint(BaseModel):
+    """One bar in the momentum panel's 12-week history — days_with_post counts
+    distinct Mon-Fri weekdays with at least one matching post that week (same
+    metric the frontend's own weekCount() computes), not a raw post count."""
+    week_start: date
+    days_with_post: int
+    is_current: bool

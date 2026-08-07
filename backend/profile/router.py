@@ -9,6 +9,7 @@ from backend.profile.schemas import (
     ProfileCreate,
     ProfileResponse,
     ProfileUpdate,
+    WeeklyTargetUpdate,
 )
 from backend.profile.service import ProfileService
 
@@ -56,3 +57,12 @@ def update_profile(
     user: User = Depends(get_current_user),
 ):
     return ProfileService(db).update_profile(user.id, data)
+
+
+@router.patch("/weekly-target", response_model=ProfileResponse)
+def set_weekly_target(
+    data: WeeklyTargetUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return ProfileService(db).set_weekly_target(user.id, data)

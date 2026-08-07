@@ -64,8 +64,8 @@ export const deleteVersion = (versionId) =>
   api.delete(`/versions/${versionId}`).then(r => r.data);
 
 // ── Analytics (per-post) ─────────────────────────────────────
-export const updatePostAnalytics = (postId, impressions, reactions) =>
-  api.patch(`/posts/${postId}/analytics`, { impressions, reactions }).then(r => r.data);
+export const updatePostAnalytics = (postId, impressions, reactions, comments = 0) =>
+  api.patch(`/posts/${postId}/analytics`, { impressions, reactions, comments }).then(r => r.data);
 
 export const updatePostStatus = (id, status, scheduledAt = null) =>
   api.patch(`/posts/${id}/status`, {
@@ -76,4 +76,11 @@ export const updatePostStatus = (id, status, scheduledAt = null) =>
 // ── Search ────────────────────────────────────────────────────
 export const search = (query) =>
   api.get('/search', { params: { q: query } }).then(r => r.data);
+
+// ── Calendar (Schedule page) ───────────────────────────────────
+export const getCalendarPosts = (start, end) =>
+  api.get('/posts/calendar', { params: { start, end } }).then(r => r.data);
+
+export const getWeeklyHistory = (weeks = 12) =>
+  api.get('/posts/weekly-history', { params: { weeks } }).then(r => r.data);
 

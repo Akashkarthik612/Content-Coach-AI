@@ -1,10 +1,11 @@
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
 
 from backend.auth.models import User
-from backend.core.cache import sync_invalidate_user_tool_cache
+from backend.core.cache import sync_invalidate_user_analytics_cache, sync_invalidate_user_tool_cache
 from backend.core.dependencies import get_current_user, get_db
 from backend.ai.embeddings import embed_and_store_version
 from backend.ai.style_memory import sync_check_and_refresh_style_memory
@@ -12,6 +13,7 @@ from backend.vault import service
 from backend.vault.models import PostStatus
 from backend.vault.schemas import (
     AnalyticsSummaryResponse,
+    CalendarPostItem,
     FolderCreate,
     FolderRename,
     FolderResponse,
@@ -29,6 +31,7 @@ from backend.vault.schemas import (
     VersionRename,
     VersionResponse,
     VersionSave,
+    WeeklyHistoryPoint,
 )
 
 router = APIRouter(prefix="/api/vault", tags=["vault"])
@@ -100,7 +103,7 @@ def list_posts(
     return service.list_posts(db, user_id=user.id, folder_id=folder_id)
 
 
-# ── Recent posts (cross-folder) — must come BEFORE /posts/{post_id} ──────────
+# ── Recent posts / calendar (cross-folder) — must come BEFORE /posts/{post_id} ─
 
 @router.get("/posts/recent", response_model=list[PostListResponse])
 def get_recent_posts(
@@ -109,6 +112,25 @@ def get_recent_posts(
     user: User = Depends(get_current_user),
 ):
     return service.get_recent_posts(db, user_id=user.id, limit=limit)
+
+
+@router.get("/posts/calendar", response_model=list[CalendarPostItem])
+def get_calendar_posts(
+    start: datetime,
+    end: datetime,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return service.CalendarService.get_calendar_posts(db, user_id=user.id, start=start, end=end)
+
+
+@router.get("/posts/weekly-history", response_model=list[WeeklyHistoryPoint])
+def get_weekly_history(
+    weeks: int = 12,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return service.CalendarService.get_weekly_history(db, user_id=user.id, weeks=weeks)
 
 
 @router.get("/posts/{post_id}", response_model=PostResponse)
@@ -202,9 +224,10 @@ def update_post_analytics(
 ):
     result = service.upsert_post_analytics(
         db, post_id=post_id, user_id=user.id,
-        impressions=data.impressions, reactions=data.reactions,
+        impressions=data.impressions, reactions=data.reactions, comments=data.comments,
     )
     background_tasks.add_task(sync_invalidate_user_tool_cache, str(user.id))
+    background_tasks.add_task(sync_invalidate_user_analytics_cache, str(user.id))
     return result
 
 

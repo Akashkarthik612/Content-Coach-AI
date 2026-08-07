@@ -26,6 +26,15 @@ class ProfileUpdate(BaseModel):
     formatting_prefs: Optional[dict] = None
     linkedin_headline: Optional[str] = None
     linkedin_about: Optional[str] = None
+    weekly_post_target: Optional[int] = Field(None, ge=1, le=7)
+
+
+class WeeklyTargetUpdate(BaseModel):
+    """Dedicated get-or-create endpoint body — unlike ProfileUpdate/PATCH
+    /api/profile, this must succeed even for a user who hasn't onboarded yet
+    (no user_profile row), since the Schedule page's target picker isn't
+    gated behind onboarding."""
+    weekly_post_target: int = Field(..., ge=1, le=7)
 
 
 class OnboardingSubmit(BaseModel):
@@ -65,6 +74,7 @@ class ProfileResponse(BaseModel):
     formatting_prefs: dict
     linkedin_headline: Optional[str]
     linkedin_about: Optional[str]
+    weekly_post_target: Optional[int]
     created_at: datetime
     updated_at: datetime
 

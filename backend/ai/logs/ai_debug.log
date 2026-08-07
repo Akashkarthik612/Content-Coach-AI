@@ -46,3 +46,5 @@
 2026-07-31 17:22:21,554 DEBUG    backend.ai.style_memory — No style memory found in DB: user_id=ca0baf57-d4d2-44ab-911d-ee7248f83ca5
 2026-07-31 17:22:21,569 INFO     backend.ai.agents.writer_node — writer_node: no style_json, no profile — using cold-start defaults
 2026-07-31 17:22:24,252 INFO     backend.ai.agents.writer_node — writer_node: draft generated, char_count=1377
+2026-08-03 15:16:22,257 DEBUG    backend.ai.style_memory — Style memory check: user_id=4b2f0669-bca6-4c5c-b474-ebc7dab84939 published=2 st_count=0 lt_count=0 run_st=False run_lt=False
+2026-08-03 15:16:22,273 DEBUG    backend.ai.style_memory — Style memory thresholds not met for user_id=4b2f0669-bca6-4c5c-b474-ebc7dab84939 — skipping

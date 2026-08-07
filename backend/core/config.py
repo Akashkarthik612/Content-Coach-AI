@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     LINKEDIN_REDIRECT_URI: str = "http://localhost:8000/api/linkedin/auth/callback"
     FRONTEND_URL: str = "http://localhost:5173"
 
+    # Background scheduler — auto-publishes posts at their scheduled_at time.
+    # See backend/scheduler/.
+    SCHEDULER_ENABLED: bool = True
+    SCHEDULER_POLL_INTERVAL_SECONDS: int = 60
+    SCHEDULER_BATCH_SIZE: int = 25
+    SCHEDULER_MAX_ATTEMPTS: int = 3
+
 
 
 @lru_cache

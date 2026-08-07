@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from backend.auth.models import User
 from backend.profile.models import UserProfile
-from backend.profile.schemas import AccountSettingsResponse, OnboardingSubmit, ProfileCreate, ProfileUpdate
+from backend.profile.schemas import AccountSettingsResponse, OnboardingSubmit, ProfileCreate, ProfileUpdate, WeeklyTargetUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +75,21 @@ class ProfileService:
         self.db.commit()
         self.db.refresh(profile)
         logger.info("Profile updated: user_id=%s", user_id)
+        return profile
+
+    def set_weekly_target(self, user_id: UUID, data: WeeklyTargetUpdate) -> UserProfile:
+        """Get-or-create — mirrors upsert_from_onboarding's pattern. The
+        weekly posting target is a lightweight preference, not gated behind
+        the onboarding-required create_profile()/update_profile() contract."""
+        profile = self.db.query(UserProfile).filter(UserProfile.user_id == user_id).first()
+        if profile is None:
+            profile = UserProfile(user_id=user_id)
+            self.db.add(profile)
+        profile.weekly_post_target = data.weekly_post_target
+        profile.updated_at = _utcnow()
+        self.db.commit()
+        self.db.refresh(profile)
+        logger.info("Weekly target set: user_id=%s target=%d", user_id, data.weekly_post_target)
         return profile
 
     def upsert_from_onboarding(self, user_id: UUID, data: OnboardingSubmit) -> UserProfile:

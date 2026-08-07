@@ -1,7 +1,7 @@
 # Content Coach — Project State
 > Living reference for Claude. This file describes only the current state of the code — no changelog, no history. When architecture, decisions, or status change, edit the relevant section in place; do not append a dated entry.
 > **UI/Frontend state:** see [claude_ui.md](claude_ui.md) for the frontend component map, design tokens, and page-by-page breakdown.
-> Last updated: 2026-08-02
+> Last updated: 2026-08-04
 
 ---
 
@@ -31,7 +31,7 @@
 | Backend | FastAPI + Uvicorn |
 | ORM | SQLAlchemy |
 | Database | PostgreSQL + pgvector |
-| Migrations | Alembic (head: `0018_add_password_hash_nullable`) |
+| Migrations | Alembic (head: `0020_add_weekly_post_target_to_profile`) |
 | Auth | Supabase JWT (default, `AUTH_PROVIDER=supabase`) — prod. Isolated local dev fallback (`AUTH_PROVIDER=local`, `backend/auth_local/`) — bcrypt direct (`bcrypt.hashpw`/`checkpw`), **no passlib** (incompatible with bcrypt ≥ 4.0), `X-User-Id` header. See Authentication Flow. |
 | AI / RAG | LangChain, LangGraph, Google Gemini API |
 | Embeddings | `models/gemini-embedding-001` — 768 dims (`output_dimensionality=768`) |
@@ -58,7 +58,7 @@ f:\My_first_product\
 ├── CLAUDE.md · claude_ui.md · DEVELOPMENT.md
 │
 ├── backend/
-│   ├── main.py                   ← FastAPI app. CORS `allow_origins` (hardcoded): localhost:5173, localhost, localhost:80, the deployed CloudFront URL. Mounts vault/ai/linkedin/profile routers always; `auth_local.router` only when `AUTH_PROVIDER=="local"`. `lifespan`: opens `AsyncPostgresSaver` + `AsyncPostgresStore`, calls `.setup()` on both + `store.start_ttl_sweeper()`, compiles the graph once via `build_assistant(checkpointer, store)` onto `app.state.assistant`, stashes the store on `app.state.store`, registers the compiled graph with `assistant_registry.set_assistant()`. `GET /health` (no auth).
+│   ├── main.py                   ← FastAPI app. CORS `allow_origins` (hardcoded): localhost:5173, localhost, localhost:80, the deployed CloudFront URL. Mounts vault/ai/linkedin/profile routers always; `auth_local.router` only when `AUTH_PROVIDER=="local"`. `lifespan`: opens `AsyncPostgresSaver` + `AsyncPostgresStore`, calls `.setup()` on both + `store.start_ttl_sweeper()`, compiles the graph once via `build_assistant(checkpointer, store)` onto `app.state.assistant`, stashes the store on `app.state.store`, registers the compiled graph with `assistant_registry.set_assistant()`; also starts/stops `scheduler.service.SchedulerService` (`app.state.scheduler`) when `settings.SCHEDULER_ENABLED`. `GET /health` (no auth).
 │   ├── auth/                     ← Supabase-backed (prod default)
 │   │   ├── base_auth.py          ← `BaseAuthProvider` ABC (`verify_token(token) -> AuthenticatedUser`); `AuthenticatedUser` dataclass
 │   │   ├── models.py              ← `User` (id UUID PK, username/email nullable unique, password_hash nullable, created_at)
@@ -87,7 +87,7 @@ f:\My_first_product\
 │   │   ├── llm_retry.py           ← `invoke_with_retry`/`invoke_with_retry_sync` — see Tech Stack
 │   │   ├── thread_state.py        ← `shape_thread_state()` — single source of truth for "is this thread paused on a draft / paused on angles / done"; used by `/stream`, `/query`, `/resume`, and the two thread-read routes
 │   │   ├── checkpointing/
-│   │   │   ├── factory.py         ← `create_checkpointer()` → `AsyncPostgresSaver.from_conn_string()`; `create_store()` → `AsyncPostgresStore.from_conn_string()` (7-day TTL, `refresh_on_read=True`, hourly sweep, title-only semantic index)
+│   │   │   ├── factory.py         ← `create_pool()` → `AsyncConnectionPool` (`max_size=20`, `autocommit=True`, `prepare_threshold=0`) — shared by both, so concurrent requests each get their own connection instead of fighting over one; `create_checkpointer(pool)` → `AsyncPostgresSaver(pool)`; `create_store(pool)` → `AsyncPostgresStore(pool, ...)` (7-day TTL, `refresh_on_read=True`, hourly sweep, title-only semantic index). `main.py`'s lifespan opens the pool once and passes it to both factories
 │   │   │   ├── models.py          ← `ThreadRegistry` (`thread_registry` table) — thread ownership only, never conversation content
 │   │   │   ├── service.py         ← `ThreadRegistryService(db)` (CRUD: register/is_owner/list_for_session/delete_for_session/touch/mark_completed) + `ThreadSessionService` facade (`.start()`/`.resume_config()`/`.complete()`/`.delete_session()` — the last cascades `checkpointer.adelete_thread()` + the Store record); `router.py` depends on the facade only
 │   │   │   └── session_memory_store.py ← `SessionMemoryService(store)` — all `chat_sessions` Store reads/writes: `get`/`start_or_touch`/`touch_existing`/`list_active`/`delete`/`search`. `ChatSessionRecord{title, last_active_at, thread_ids}` is the only value shape stored. Untitled ("new chat") sessions are excluded from semantic indexing
@@ -100,8 +100,8 @@ f:\My_first_product\
 │   │       ├── context_loaders.py       ← `ProfileContextLoader`, `StyleContextLoader` — stateless read helpers used by `writer_node`/`researcher_node`
 │   │       ├── writer_node.py           ← Style-aware LinkedIn post drafter; Strategy pattern (cold-start vs. onboarding-profile vs. style-aware prompt); `writer_task.action` (`"write"`/`"rewrite"`) picks the branch; weaves in `research_brief` when present
 │   │       ├── human_approval_node.py   ← `interrupt()` HITL checkpoint; saves via `save_draft_to_vault()` on approve/edit, discards on reject
-│   │       ├── researcher.py            ← `researcher_linkedin()` — manual `bind_tools()` loop (`_MAX_TOOL_LOOP_ROUNDS=6`) over `web_search` + `search_vault_posts`, grounded in `user_profile` context when available, parses the final turn into exactly 5 `ResearchAngle`s via regex. `researcher_node()` is the Send-dispatched graph wrapper. `expand_research_angle()` / `modify_angle_summary()` are separate tools-less one-shot calls used by `angle_review_node`'s `expand`/`modify` actions
-		│       ├── angle_review_node.py   ← `angle_review_node` — INTERRUPT node, loops on `interrupt()` within one invocation for `pick`/`expand`/`modify`/`none_fit`. `map_chosen_angle_node` — pure Python, reshapes the picked `ResearchAngle` (plus any edited `final_angle_sections`) into `FlatResearchBrief`, writes `research_brief`
+│   │       ├── researcher.py            ← `researcher_linkedin()` — manual `bind_tools()` loop (`_MAX_TOOL_LOOP_ROUNDS=6`) over `web_search` + `search_vault_posts`, grounded in `user_profile` context when available. Its system prompt opens with an internal mode-selection step (Strategic Angles / Content Series / Research Brief / Comparison / Learning Guide / Evidence Pack) — prompt-only reasoning, always resolves to Strategic Angles in practice since this node is only reached via LinkedIn post-writing requests. `ResearchArtifactParser` parses the final turn into a mode-agnostic `ResearchArtifact` (`ResearchArtifactItem`s with a generic `attributes` bag); only `"strategic_angles"` has a registered regex/format today, any other mode raises `ResearcherDecisionError`. `researcher_node()` is the Send-dispatched graph wrapper — adapts the artifact back to the existing `{angles, search_context, summary}` wire shape via `ResearchArtifactParser.to_wire_dicts()`, so the review pipeline/frontend are untouched by the mode-agnostic internals. `expand_research_angle()` / `modify_angle_summary()` are separate tools-less one-shot calls used by `angle_review_node`'s `expand`/`modify` actions
+		│       ├── angle_review_node.py   ← `angle_review_node` — INTERRUPT node, loops on `interrupt()` within one invocation for `pick`/`expand`/`modify`/`none_fit`. `map_chosen_angle_node` — pure Python, reshapes the picked angle wire dict (plus any edited `final_angle_sections`) into `FlatResearchBrief`, writes `research_brief`
 │   │       ├── sql_fetch_node.py        ← Write-only: `save_draft_to_vault()`
 │   │       ├── style_agent.py           ← `analyze_style()` LLM fn + `_fetch_posts_and_count()` DB helper. There is no separate `style_retriever_node` graph node — style resolution is folded into `writer_node` via `context_loaders.StyleContextLoader`
 │   │       ├── tools.py                 ← 7 async `@tool` functions — see Tools table below. `get_style_samples` is defined but not bound anywhere — dead
@@ -119,11 +119,14 @@ f:\My_first_product\
 │   │   ├── cache.py               ← Redis client (sync + async), tool/embed/style/search cache helpers — degrades silently when Redis is unreachable
 │   │   ├── database.py            ← SQLAlchemy engine, SessionLocal, Base
 │   │   └── dependencies.py        ← `get_db()`, `get_current_user()` — branches on `settings.AUTH_PROVIDER` at call time: `"local"` → `_get_current_user_local()` (X-User-Id header); else → `_get_current_user_supabase()` (Bearer/JWKS). Single choke point — no router depends on either helper directly
+│   ├── scheduler/                 ← Background auto-publish for scheduled posts; started/stopped in `main.py`'s lifespan (`settings.SCHEDULER_ENABLED`, default true)
+│   │   ├── jobs.py                ← `ScheduledPublishJob` (static methods, mirrors `LinkedInConnectService`'s style) — `due_post_ids()` snapshots due posts once per tick; `claim_post()` locks one via Postgres `FOR UPDATE SKIP LOCKED` (safe under multiple app processes); `publish_one()` reuses `LinkedInConnectService.publish_or_auth` (no new LinkedIn code) + `update_post_status()`, never raises — records failures onto the post itself; `_record_failure()` increments `schedule_attempts`, flips status to `failed` at `SCHEDULER_MAX_ATTEMPTS` (default 3); `run_tick()` is what APScheduler calls on its timer
+│   │   └── service.py             ← `SchedulerService` (static `start`/`stop`) — wraps APScheduler's `BackgroundScheduler`, one interval job (`SCHEDULER_POLL_INTERVAL_SECONDS`, default 60s) on `run_tick`, `max_instances=1` + `coalesce=True` so a slow tick can't overlap the next
 │   ├── scripts/
 │   │   ├── backfill_embeddings.py ← one-off re-embed script
 │   │   ├── smoke_researcher.py    ← manual live smoke test for `researcher_linkedin`
 │   │   └── smoke_web_search.py    ← manual live smoke test for the `web_search` tool
-│   └── alembic/versions/          ← 0001–0018, linear chain, head = 0018 (re-adds `users.password_hash`, nullable)
+│   └── alembic/versions/          ← 0001–0020, linear chain, head = 0020 (adds `user_profile.weekly_post_target`; 0019 adds `post_status.failed` + `posts.schedule_attempts`/`last_schedule_error`)
 │
 └── frontend/                      ← see claude_ui.md for the full component/page map, design tokens, and real-vs-mock status
 ```
@@ -140,7 +143,7 @@ f:\My_first_product\
 
 ## Database Schema
 
-Migration head: `0018_add_password_hash_nullable`. Chain is linear (`0001→…→0018`), no branches.
+Migration head: `0020_add_weekly_post_target_to_profile`. Chain is linear (`0001→…→0020`), no branches.
 
 ```sql
 users(id UUID PK default gen_random_uuid(), username TEXT UNIQUE nullable, email TEXT UNIQUE nullable,
@@ -148,10 +151,10 @@ users(id UUID PK default gen_random_uuid(), username TEXT UNIQUE nullable, email
 folders(id UUID PK, user_id UUID NOT NULL FK→users, name TEXT NOT NULL, description TEXT nullable,
         created_at TIMESTAMPTZ NOT NULL default now())
 posts(id UUID PK, user_id UUID NOT NULL FK→users, folder_id UUID nullable FK→folders, title TEXT NOT NULL,
-      status post_status_enum NOT NULL default 'draft' (draft|published|archived|scheduled),
+      status post_status_enum NOT NULL default 'draft' (draft|published|archived|scheduled|failed),
       is_pinned BOOLEAN NOT NULL default false, current_version INT NOT NULL default 1,
-      scheduled_at TIMESTAMPTZ nullable, created_at TIMESTAMPTZ NOT NULL default now(),
-      updated_at TIMESTAMPTZ NOT NULL default now())
+      scheduled_at TIMESTAMPTZ nullable, schedule_attempts INT NOT NULL default 0, last_schedule_error TEXT nullable,
+      created_at TIMESTAMPTZ NOT NULL default now(), updated_at TIMESTAMPTZ NOT NULL default now())
 post_versions(id UUID PK, post_id UUID NOT NULL FK→posts ON DELETE CASCADE, version_number INT NOT NULL,
               content TEXT NOT NULL, source TEXT nullable, change_summary TEXT nullable (API-aliased "version_label"),
               char_count INT nullable, created_at TIMESTAMPTZ NOT NULL default now(),
@@ -176,6 +179,7 @@ user_profile(id UUID PK, user_id UUID UNIQUE NOT NULL FK→users ON DELETE CASCA
              profession TEXT nullable, industry TEXT nullable, role TEXT nullable, target_audience TEXT nullable,
              writing_style TEXT nullable, goals JSONB NOT NULL default '[]', topics JSONB NOT NULL default '[]',
              formatting_prefs JSONB NOT NULL default '{}', linkedin_headline TEXT nullable, linkedin_about TEXT nullable,
+             weekly_post_target INT nullable,
              created_at TIMESTAMPTZ NOT NULL default now(), updated_at TIMESTAMPTZ NOT NULL default now())
 thread_registry(thread_id UUID PK, user_id UUID NOT NULL FK→users ON DELETE CASCADE (indexed),
                  session_id UUID nullable (indexed), status TEXT NOT NULL default 'active',
@@ -205,6 +209,8 @@ In prod (`AUTH_PROVIDER=supabase`, the default) there is no backend `/api/auth/*
 | PATCH/DELETE | `/folders/{id}` | Rename / Delete (cascades posts + embeddings) |
 | GET/POST | `/folders/{id}/posts` | List / Create posts in folder |
 | GET | `/posts/recent?limit=N` | Must be declared before `/posts/{post_id}` in router |
+| GET | `/posts/calendar?start=&end=` | `CalendarService.get_calendar_posts()` — real data: unions scheduled/failed posts (keyed off `scheduled_at`) with `post_publish_log` rows (keyed off `published_at`, one entry per publish, not deduped). Must be declared before `/posts/{post_id}` in router |
+| GET | `/posts/weekly-history?weeks=12` | `CalendarService.get_weekly_history()` — one point/week, distinct Mon–Fri days with a post; past weeks count published-only, current week also counts scheduled/failed. Must be declared before `/posts/{post_id}` in router |
 | GET/PATCH/DELETE | `/posts/{id}` | Get / Rename / Delete |
 | PATCH | `/posts/{id}/pin` | `{is_pinned: bool}` |
 | PATCH | `/posts/{id}/folder` | `{folder_id}` — moves a post; invalidates tool cache |
@@ -224,6 +230,7 @@ In prod (`AUTH_PROVIDER=supabase`, the default) there is no backend `/api/auth/*
 | GET | `` | — | 404 if none created yet |
 | PATCH | `` | `ProfileUpdate` (all optional) | `exclude_unset` partial update; 404 if none exists |
 | POST | `/onboarding` | `OnboardingSubmit` (all 7 fields optional) | `upsert_from_onboarding()` — get-or-create + `exclude_unset` merge, never 409s |
+| PATCH | `/weekly-target` | `WeeklyTargetUpdate{target: int}` | `ProfileService.set_weekly_target()` — get-or-create (unlike the onboarding-gated `PATCH /api/profile`, this never 404s); persists the Schedule page's weekly momentum target server-side |
 
 ### AI — `/api/ai` (all require auth)
 | Method | Path | Body | Notes |
@@ -297,7 +304,7 @@ Two providers, switched by `AUTH_PROVIDER`/`VITE_AUTH_MODE` (both default `"supa
 |---|---|---|---|
 | `supervisor_node` | COGNITIVE + TOOL CALLER | `agents/supervisor.py` | Binds 5 tools, loops on tool calls (`_MAX_STEPS=4`), then emits a `SupervisorClassification` JSON contract (`route: Literal["research","write","direct"]`). A vault question is answered directly; a redraft/rewrite/shorten/improve request on existing content routes to `"write"` (`writer_task.action="rewrite"`, expects the target content already fetched into `messages` via `search_vault_posts`); every fresh "write a post" request routes to `"research"` |
 | `tool_node` | EXECUTOR | `graph.py` (LangGraph `ToolNode`) | Bound to the same 5 tools as `supervisor_node`'s `bind_tools()` call — kept in sync deliberately. Executes the called tool, writes a `ToolMessage`, loops back to `supervisor_node` |
-| `researcher_node` | COGNITIVE + TOOL CALLER | `agents/researcher.py` | Send-dispatched with minimal state `{user_id, query}`. Runs its own manual tool loop (`web_search` + `search_vault_posts`, up to 6 rounds, separate from `tool_node`), grounded in `user_profile` when available, parses the final turn into exactly 5 `ResearchAngle`s. Writes `research_result = {angles, search_context}` |
+| `researcher_node` | COGNITIVE + TOOL CALLER | `agents/researcher.py` | Send-dispatched with minimal state `{user_id, query}`. Runs its own manual tool loop (`web_search` + `search_vault_posts`, up to 6 rounds, separate from `tool_node`), grounded in `user_profile` when available. Prompt reasons internally about a research mode (Strategic Angles is the only one with a wired parser/output format); `ResearchArtifactParser` parses the final turn into a mode-agnostic `ResearchArtifact`, adapted via `to_wire_dicts()` into exactly 5 angle wire dicts. Writes `research_result = {angles, search_context, summary}` |
 | `angle_review_node` | INTERRUPT | `agents/angle_review_node.py` | Loops on `interrupt()` within one invocation for `pick`/`expand`/`modify`/`none_fit`. `pick` sets `picked_angle_id` (and `final_angle_sections` if the angle was edited first); `expand`/`modify` call `expand_research_angle()`/`modify_angle_summary()` and re-interrupt; `none_fit` clears the pick and can carry fresh user text back to `supervisor_node` |
 | `map_chosen_angle_node` | PURE PYTHON | `agents/angle_review_node.py` | No LLM call. Reshapes the picked angle (using `final_angle_sections` if present) into `FlatResearchBrief`, writes `research_brief` |
 | `writer_node` | COGNITIVE | `agents/writer_node.py` | Style-aware LinkedIn post drafter. Strategy pattern: cold-start vs. onboarding-profile vs. `style_json`-driven prompt, built via `context_loaders.StyleContextLoader`/`ProfileContextLoader`. `writer_task.action` (`"write"`/`"rewrite"`) picks the branch; weaves in `research_brief` when present. Writes `draft` |
@@ -318,7 +325,7 @@ There is no `analytics_node` and no separate `style_retriever_node` graph node �
 | `task_type` | str | router / supervisor | not read by the router — routing reads `route` |
 | `route` | str | supervisor_node | edge key: `"research"` \| `"write"` \| `"direct"` (plus `"style_retrieval"`/`"writer_node"` pre-seed used only by `/draft-from-topic`) |
 | `steps_taken` | int | supervisor_node | tool-loop budget, capped at `_MAX_STEPS=4`; overrunning forces `route="direct"` |
-| `research_result` | dict | researcher_node | `{angles: [5 ResearchAngle], search_context}` |
+| `research_result` | dict | researcher_node | `{angles: [5 angle wire dicts], search_context, summary}` |
 | `picked_angle_id` | int \| None | angle_review_node | set on `pick`; `None` otherwise |
 | `final_angle_sections` | dict \| None | angle_review_node | the edited expand/modify sections for the picked angle, if any; consumed once by `map_chosen_angle_node` |
 | `entry_point` | str | angle_review_node | debug marker, not consumed by routing |
@@ -417,10 +424,12 @@ writer_node ──► human_approval_node ──► END
 |---|---|
 | "Forgot password" not wired | `HomePage.jsx`'s Forgot mode shows a static "not available yet" message — `sendPasswordResetEmail()` + `/reset-password` already exist (built for Settings) and could power it directly, but nothing calls them from `HomePage.jsx` |
 | Settings: username / cancel-subscription | Username change is `localStorage`-only; "Cancel subscription" only shows a toast — neither calls a backend endpoint (none exists for either) |
-| SchedulePage is entirely mock | Calendar/momentum/runway data is seeded client-side from hardcoded arrays; no endpoint exists for listing/creating scheduled posts by date range, even though `posts.scheduled_at` + `PATCH /posts/{id}/status` exist server-side |
+| SchedulePage: X/Reddit publishing still stubbed | Calendar, 12-week momentum history, content-runway rail, and the weekly-post target are all real (`GET /posts/calendar`, `GET /posts/weekly-history`, `PATCH /profile/weekly-target` — see API Endpoints and `backend/scheduler/`), and `backend/scheduler/` auto-publishes due posts. But the scheduler's `publish_one` only ever calls the LinkedIn flow — X/Reddit scheduled publishing has no backend path yet, matching `publishing.js`'s existing stub for those platforms |
+| Local dev can't run a live backend on Windows | `uvicorn backend.main:app` fails at startup on this machine — `create_checkpointer`'s async psycopg connection errors with `Psycopg cannot use the 'ProactorEventLoop' to run in async mode`. Blocks live-server/Playwright-against-real-backend verification here; use direct service-layer calls, FastAPI's `TestClient` as a context manager, or a real Linux/WSL environment instead |
+| AnalyticsPage is entirely mock | KPIs, best post, topic/type/consistency breakdown, and the content performance table are seeded client-side from the source design's hardcoded arrays; the "Log metrics" form doesn't call `PATCH /posts/{id}/analytics`, and `GET /analytics/summary` exists server-side but nothing on the page reads it yet |
 | X/Reddit publish + "send to review" | `publishing.js`'s `sendToReview()` and the non-LinkedIn branch of `publishPost()` are stubs |
 | Dead/orphaned frontend code | `api/chat.js` (all-stub, unimported), `components/shared/Button.jsx`/`Badge.jsx`/`Input.jsx`/`ContextMenu.jsx` (unreferenced), `hooks/useIdeas.js`/`useResizableRail.js` (unreferenced), `context/ReviewQueueContext.jsx` (provider wraps the whole app, but `useReviewQueue()` has no call sites), `components/AIAssistant/` (removed from disk entirely) |
-| Two unmerged sidebar/palette systems | `HonneSidebar` (green/cream, used by Chat/Schedule/Settings/MyWork) and `AppSidebar` (blue/indigo, used only by `AgentsPage` now — `MyWorkPage` no longer imports it) remain separate, unrelated components |
+| Two unmerged sidebar/palette systems | `HonneSidebar` (green/cream, used by Chat/Schedule/Analytics/Settings) and `AppSidebar` (blue/indigo, used only by `AgentsPage` now — `MyWorkPage` no longer imports it) remain separate, unrelated components |
 
 ---
 
@@ -441,6 +450,7 @@ writer_node ──► human_approval_node ──► END
 - **Supervisor routing: structured JSON output, three routes** — `SupervisorClassification.route: Literal["research", "write", "direct"]`, parsed via `model_validate_json()`; a parse/validation failure raises `SupervisorDecisionError` rather than silently mis-routing. `/draft-from-topic`'s `pre_routed=True` bypass is the only way to reach the writer without going through research or write.
 - **LLM retry** — `llm_retry.py`'s `invoke_with_retry`/`invoke_with_retry_sync` wrap every agent's Gemini call in tenacity exponential backoff (1–10s, up to 3 attempts) on 429/503/504 codes only; a genuine non-transient failure raises immediately. No key-rotation fallback exists.
 - **LinkedIn OAuth** — `backend/linkedin/` follows the same SRP/Strategy pattern as auth: `LinkedInAPIClient` (static HTTP, no state), `LinkedInConnectService` (business logic), `LinkedInAuth` model (storage). OAuth `state` param = `user_id` so the callback can identify the user without headers. UPSERT on callback so reconnecting overwrites the old token. 60s duplicate-publish guard. 3000-char limit enforced server-side.
+- **Scheduling reuses the existing vault tables, no separate job-queue table** — `backend/scheduler/` claims due posts directly off `posts`/`post_publish_log` via Postgres `FOR UPDATE SKIP LOCKED`, one post per tick, deliberately: a dedicated queue table would need dual-writes to stay in sync with vault edits/deletes, for no real benefit over row-level locking on the table that's already the source of truth. A post's actual publish history (and therefore analytics like best-day/best-time) should be read from `post_publish_log.published_at`, not `posts.scheduled_at` — the latter is only ever a future intent, not a real outcome.
 - **`user_profile` table + `/api/profile`** — `linkedin_headline`/`linkedin_about` are nullable/optional everywhere so a profile is usable without them. `researcher_node` reads it directly via SQLAlchemy (not `ProfileService`) to avoid its 404-on-missing-profile behavior, grounding the angle-generation prompt in the user's actual role/industry/audience when available.
 - **Stub user UUID:** `00000000-0000-0000-0000-000000000001` (seeded in migration `0003`).
 - **CSS approach:** landing/dashboard-lineage pages → inline styles + JS-const tokens; vault components → CSS modules — see [claude_ui.md](claude_ui.md).

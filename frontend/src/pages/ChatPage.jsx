@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Plus, ChevronDown, ChevronRight, Check, Copy, RotateCcw,
   ArrowLeft, Clock, Send, X, ThumbsUp, MessageCircle, Repeat2, PanelLeft, ExternalLink,
-  Settings, Pencil, LogOut,
+  Settings, Pencil, LogOut, CalendarClock,
 } from 'lucide-react';
 import { streamQuery, resumeAI, refineAI, getSessionThreads, getSessions, deleteSession } from '../api/ai';
 import { publishToLinkedIn, getLinkedInStatus, getLinkedInAuthUrl } from '../api/linkedin';
@@ -58,6 +58,13 @@ function greetingPeriod() {
   if (h < 12) return 'morning';
   if (h < 17) return 'afternoon';
   return 'evening';
+}
+
+function greetingEmoji() {
+  const h = new Date().getHours();
+  if (h < 12) return '🌅';
+  if (h < 17) return '☀️';
+  return '🌙';
 }
 
 function humanizeProvokes(type) {
@@ -529,9 +536,52 @@ function Composer({ draft, onDraft, onSend, disabled, taRef }) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────
+   Personalize-the-hook modal — new in the "Honne Chat v3" design update.
+   Shown before an angle is drafted, offering to seed the opening line with
+   a user-supplied stat/story/detail. hookInput rides the "pick" resume
+   call's content field into angle_review_node, which threads it through to
+   writer_node as research_brief.personal_hook_input — dismissing (backdrop
+   click) behaves the same as "Skip", matching the source design.
+   ──────────────────────────────────────────────────────────────────────── */
+function PersonalizeModal({ title, hookInput, onInput, onSkip, onSubmit }) {
+  return (
+    <div onClick={onSkip} style={{ position: 'fixed', inset: 0, zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(27,28,20,.32)', backdropFilter: 'blur(2px)', animation: 'ccFade .2s ease both' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, margin: '0 20px', background: '#fff', border: `1px solid ${HAIRLINE}`, borderRadius: 18, boxShadow: '0 40px 90px -40px rgba(20,60,30,.5)', overflow: 'hidden', animation: 'ccRise .3s cubic-bezier(.22,1,.36,1) both' }}>
+        <div style={{ padding: '24px 26px 4px' }}>
+          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: '#9FA291', fontWeight: 500 }}>LinkedIn Post</span>
+          <h2 style={{ fontFamily: FONT, fontSize: 20, fontWeight: 600, letterSpacing: '-.015em', color: INK, margin: '8px 0 8px' }}>Personalize the hook?</h2>
+          <p style={{ fontSize: 14, lineHeight: 1.6, color: '#7A7C6C', margin: '0 0 16px' }}>
+            Give me a stat, story, or detail to open &ldquo;{title}&rdquo; with — or skip and I&rsquo;ll write the hook myself.
+          </p>
+        </div>
+        <div style={{ padding: '0 26px 20px' }}>
+          <textarea
+            value={hookInput}
+            onChange={(e) => onInput(e.target.value)}
+            rows={3}
+            autoFocus
+            maxLength={500}
+            placeholder="e.g. Start with the UPI vs Visa stat…"
+            style={{ display: 'block', width: '100%', border: '1px solid rgba(27,28,20,.14)', borderRadius: 12, background: '#F7F8F5', fontSize: 14, lineHeight: 1.6, color: INK, padding: '12px 14px', resize: 'none', fontFamily: SANS }}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: 8, padding: '14px 26px 22px', borderTop: `1px solid ${HAIRLINE}`, background: '#FAFAF6' }}>
+          <button onClick={onSkip} style={{ flex: 1, height: 38, border: '1px solid rgba(27,28,20,.14)', background: '#fff', borderRadius: 10, fontSize: 13, fontWeight: 600, color: '#3A3C30', cursor: 'pointer' }}>
+            Skip, write it your way
+          </button>
+          <button onClick={onSubmit} style={{ flex: 1, height: 38, border: 'none', background: ACCENT, color: BG, borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: '0 8px 18px -10px rgba(20,102,59,.6)' }}>
+            Use this
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────
    Workspace view — post-approval redraft/publish surface
    ──────────────────────────────────────────────────────────────────────── */
-function WorkspaceView({ ws, onBack, onModeChange, onDocChange, onCmdInput, onCmdKey, onSubmitCmd, onChip, onCopy, onPublish, onConnectLinkedIn, onHistory, onToggleCmd, onApprove, onDecline, publishing, connecting, publishResult, linkedinConnected, versions, showVersions, userName, professionLine }) {
+function WorkspaceView({ ws, onBack, onModeChange, onDocChange, onCmdInput, onCmdKey, onSubmitCmd, onChip, onCopy, onPublish, onSchedule, onConnectLinkedIn, onHistory, onToggleCmd, onApprove, onDecline, publishing, connecting, publishResult, linkedinConnected, versions, showVersions, userName, professionLine }) {
   const words = ws.docText.trim() ? ws.docText.trim().split(/\s+/).length : 0;
   const readTime = Math.max(1, Math.ceil(words / 200)) + ' min read';
   const isEdit = ws.mode === 'edit';
@@ -564,6 +614,7 @@ function WorkspaceView({ ws, onBack, onModeChange, onDocChange, onCmdInput, onCm
           {ws.decision === 'edited' && <span style={pillTag('#DCFCE7', '#15803D')}>Saved with your edits</span>}
           <button onClick={onCopy} style={pillBtn('transparent', MUTED_2)}><Copy size={13} /> {ws.copied ? 'Copied' : 'Copy'}</button>
           <button onClick={onHistory} style={pillBtn('transparent', MUTED_2)}><Clock size={13} /> History</button>
+          <button onClick={onSchedule} style={pillBtn('rgba(27,28,20,.05)', '#3A3C30')}><CalendarClock size={13} /> Schedule</button>
           {linkedinConnected ? (
             <button onClick={onPublish} disabled={publishing} style={pillBtn(LI_BLUE, '#fff')}>
               <LinkedInGlyph size={13} color="#fff" /> {publishing ? 'Publishing…' : 'Publish to LinkedIn'}
@@ -738,6 +789,7 @@ export default function ChatPage() {
   const [profile, setProfile] = useState(null);
   const [linkedinConnected, setLinkedinConnected] = useState(false);
   const [connectingLinkedIn, setConnectingLinkedIn] = useState(false);
+  const [personalize, setPersonalize] = useState(null); // { messageId, index, title, hookInput } | null
 
   const taRef = useRef(null);
   const scrollRef = useRef(null);
@@ -984,12 +1036,12 @@ export default function ChatPage() {
     patchMessage(id, (m) => ({ anglesOpen: !(m.anglesOpen !== false) }));
   };
 
-  const pickAngle = async (aiId, index) => {
+  const pickAngle = async (aiId, index, hookInput = '') => {
     const msg = messages.find(m => m.id === aiId);
     if (!msg) return;
     patchMessage(aiId, { pickingIndex: index });
     try {
-      const data = await resumeAI(msg.threadId, 'pick', '', index);
+      const data = await resumeAI(msg.threadId, 'pick', hookInput, index);
       if (data.status === 'awaiting_angle_selection') {
         patchMessage(aiId, { pickingIndex: -1, angles: data.angles || [], summary: data.summary || '', error: data.error || '' });
       } else if (data.status === 'awaiting_approval') {
@@ -1003,6 +1055,10 @@ export default function ChatPage() {
           messageId: aiId, threadId: msg.threadId, title: msg.userPrompt?.slice(0, 60) || 'Untitled draft',
           docText: draftText, originalDraft: draftText, decision: null,
           mode: 'edit', commands: [], cmdInput: '', postId: data.post_id || '', copied: false, error: '',
+          // Captured from the personalize modal and already sent as part of
+          // the "pick" resume call above — kept here too in case the
+          // workspace UI wants to display/re-edit it later.
+          hookInput,
         });
         setPublishResult(null);
         setShowVersions(false);
@@ -1011,6 +1067,31 @@ export default function ChatPage() {
     } catch {
       patchMessage(aiId, { pickingIndex: -1, error: 'Something went wrong drafting this angle.' });
     }
+  };
+
+  // Personalize-the-hook modal — opened instead of drafting immediately when
+  // an angle's "Draft for LinkedIn" is clicked. Skip/backdrop-dismiss and
+  // "Use this" both proceed to the same pickAngle() call; only the hook text
+  // carried along differs.
+  const requestPersonalize = (messageId, index) => {
+    const msg = messages.find(m => m.id === messageId);
+    const title = msg?.angles?.[index]?.title || 'this angle';
+    setPersonalize({ messageId, index, title, hookInput: '' });
+  };
+  const onPersonalizeInput = (value) => {
+    setPersonalize(p => (p ? { ...p, hookInput: value } : p));
+  };
+  const skipPersonalize = () => {
+    if (!personalize) return;
+    const { messageId, index } = personalize;
+    setPersonalize(null);
+    pickAngle(messageId, index, '');
+  };
+  const submitPersonalize = () => {
+    if (!personalize) return;
+    const { messageId, index, hookInput } = personalize;
+    setPersonalize(null);
+    pickAngle(messageId, index, hookInput.trim());
   };
 
   const expandAngle = async (aiId, index) => {
@@ -1143,6 +1224,14 @@ export default function ChatPage() {
     }
   };
 
+  const wsSchedule = () => {
+    if (!ws?.postId) {
+      patchWs({ error: 'Approve the draft first — there is nothing saved to schedule yet.' });
+      return;
+    }
+    navigate(`/schedule?postId=${ws.postId}`);
+  };
+
   const wsHistory = async () => {
     if (!ws?.postId) return;
     setShowVersions(v => !v);
@@ -1167,6 +1256,16 @@ export default function ChatPage() {
     <div style={{ height: '100vh', overflow: 'hidden', background: BG, color: INK, fontFamily: SANS }}>
       <style>{KEYFRAMES}</style>
 
+      {personalize && (
+        <PersonalizeModal
+          title={personalize.title}
+          hookInput={personalize.hookInput}
+          onInput={onPersonalizeInput}
+          onSkip={skipPersonalize}
+          onSubmit={submitPersonalize}
+        />
+      )}
+
       {view === 'workspace' && ws ? (
         <WorkspaceView
           ws={ws}
@@ -1179,6 +1278,7 @@ export default function ChatPage() {
           onChip={(label) => submitWsCmd(label)}
           onCopy={wsCopy}
           onPublish={wsPublish}
+          onSchedule={wsSchedule}
           onConnectLinkedIn={connectLinkedIn}
           onHistory={wsHistory}
           onToggleCmd={() => patchWs((w) => ({ cmdOpen: !(w.cmdOpen !== false) }))}
@@ -1266,12 +1366,12 @@ export default function ChatPage() {
                             </div>
                             <ChevronRight size={15} color="#C0C2B2" />
                           </button>
-                          <button onClick={() => { setProfileOpen(false); navigate('/onboarding'); }} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', padding: '10px 11px', border: 'none', background: 'none', borderRadius: 10, cursor: 'pointer' }}>
+                          <button onClick={() => { setProfileOpen(false); navigate('/account-details'); }} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', padding: '10px 11px', border: 'none', background: 'none', borderRadius: 10, cursor: 'pointer' }}>
                             <span style={{ width: 20, height: 20, flex: '0 0 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5A5C4C' }}>
                               <Pencil size={17} strokeWidth={1.8} />
                             </span>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 13.5, fontWeight: 600, color: INK, letterSpacing: '-.005em' }}>Change details</div>
+                              <div style={{ fontSize: 13.5, fontWeight: 600, color: INK, letterSpacing: '-.005em' }}>Change my details</div>
                               <div style={{ fontSize: 11.5, color: '#9A9C8C', marginTop: 1 }}>Profession, industry &amp; goals</div>
                             </div>
                             <ChevronRight size={15} color="#C0C2B2" />
@@ -1295,7 +1395,7 @@ export default function ChatPage() {
               <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
                 <div style={{ width: '100%', maxWidth: 600, textAlign: 'center', animation: 'ccRise .6s cubic-bezier(.22,1,.36,1) both' }}>
                   <h1 style={{ fontFamily: FONT, fontWeight: 600, fontSize: 36, lineHeight: 1.16, letterSpacing: '-.02em', margin: '0 0 12px', color: INK }}>
-                    Good <span style={{ color: '#7A2230' }}>{greetingPeriod()}</span>, {userName}.
+                    Good <span style={{ color: '#7A2230' }}>{greetingPeriod()}</span> <span style={{ fontSize: '.92em', verticalAlign: '-2px' }}>{greetingEmoji()}</span>, {userName}.
                   </h1>
                   <p style={{ fontFamily: FONT, fontSize: 20, fontWeight: 400, letterSpacing: '-.01em', color: '#9A9C8C', margin: 0 }}>What should we work on?</p>
                 </div>
@@ -1309,7 +1409,7 @@ export default function ChatPage() {
                         msg={m}
                         onToggleTrace={toggleTrace}
                         onToggleAngles={toggleAngles}
-                        onPick={(i) => pickAngle(m.id, i)}
+                        onPick={(i) => requestPersonalize(m.id, i)}
                         onExpandAngle={(i) => expandAngle(m.id, i)}
                         onModifyAngle={(i, text) => modifyAngle(m.id, i, text)}
                         onCopy={() => copyMsg(m.id)}

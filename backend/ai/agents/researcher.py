@@ -28,12 +28,11 @@ import asyncio
 import logging
 import re
 import time
-from typing import Literal
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.func import task
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from backend.ai.activity import (
     BUILDING_ANGLES_ID,
@@ -52,31 +51,45 @@ logger = logging.getLogger(__name__)
 
 
 class ResearcherDecisionError(Exception):
-    """Raised when the tool-calling loop overruns its round limit or the final
-    response can't be parsed into at least 1 angle (max 5). Never swallowed
-    into a fabricated fallback — matches supervisor.py's SupervisorDecisionError."""
+    """Raised when the tool-calling loop overruns its round limit, the final
+    response can't be parsed into at least 1 angle (max 5), or
+    ResearchArtifactParser is asked to parse/adapt a research mode it has no
+    registered format for. Never swallowed into a fabricated fallback —
+    matches supervisor.py's SupervisorDecisionError."""
 
 
-class ResearchAngle(BaseModel):
-    """One strategic content angle proposed by the researcher. Kept as a
-    pydantic model (not a plain dataclass) deliberately — it's the final
-    validation layer on the LLM's free-text output, catching anything that
-    slips past AngleResponseParser.normalize_provokes()/parse_angles()'s own
-    regex-level checks (e.g. a field ending up the wrong type)."""
+class ResearchArtifactItem(BaseModel):
+    """One item of a research artifact proposed by the researcher — e.g. one
+    strategic angle today, one series entry or comparison row in a future
+    mode. Kept generic (an open `attributes` bag rather than named fields
+    like `audience`/`provokes_type`) so a future mode's shape doesn't force a
+    schema change here — ResearchArtifactParser.to_wire_dicts() is what maps
+    a mode's item back onto the field names its own frontend card expects."""
     title: str
-    argument: str  # short, one-line claim — kept for map_chosen_angle_node's
-                    # recommended_angle/talking-points so that brief doesn't
-                    # inherit the much longer glimpse text below unless the
-                    # user actually expanded/modified this angle.
-    glimpse: str  # 500+ char paragraph — the actual glimpse rendered on the
-                  # angle card, giving the user enough to judge the angle by
-                  # before expanding.
-    audience: str
-    provokes_type: Literal["comment", "long-dwell", "share"]
-    provokes_reason: str
-    source_url: str = ""  # asserted by the LLM; AngleResponseParser.parse_angles()
+    claim: str  # short, one-line takeaway — kept separate from `detail` so
+                # map_chosen_angle_node's recommended_angle/talking-points
+                # don't inherit the much longer paragraph below unless the
+                # user actually expanded/modified this item.
+    detail: str  # 500+ char paragraph for Strategic Angles — the actual
+                 # glimpse rendered on the angle card, giving the user enough
+                 # to judge the angle by before expanding.
+    source_url: str = ""  # asserted by the LLM; ResearchArtifactParser.parse()
                           # blanks this out unless it matches a URL this round's
                           # web_search calls actually returned — never a fabricated link.
+    attributes: dict[str, str] = Field(default_factory=dict)  # mode-specific
+        # extras. For Strategic Angles: "audience", "provokes_type",
+        # "provokes_reason".
+
+
+class ResearchArtifact(BaseModel):
+    """The mode-agnostic container researcher_linkedin() produces.
+    researcher_node() adapts this into the existing research_result shape
+    via ResearchArtifactParser.to_wire_dicts() — nothing downstream of that
+    (angle_review_node, map_chosen_angle_node, router.py, the frontend) ever
+    sees a ResearchArtifact directly."""
+    mode: str
+    items: list[ResearchArtifactItem]
+    summary: str = ""
 
 
 class ExpandedAngleSection(BaseModel):
@@ -107,17 +120,24 @@ def _extract_json_text(raw: str | list) -> str:
     return text
 
 
-class AngleResponseParser:
-    """Stateless helpers for turning the researcher LLM's free-text angle
-    response into ResearchAngle objects. Grouped as staticmethods purely for
-    namespacing — there is no instance state."""
+class ResearchArtifactParser:
+    """Parses the researcher LLM's free-text response into a mode-agnostic
+    ResearchArtifact. Strategic Angles is the only mode with a registered
+    block format today; a future mode adds its own regex + item-builder here
+    (and its own branch in to_wire_dicts()) without touching anything
+    downstream — angle_review_node, map_chosen_angle_node, router.py and the
+    frontend all consume to_wire_dicts()'s output, never this class directly.
 
-    # DOTALL added (alongside MULTILINE) so `glimpse` can be a genuine
-    # multi-sentence paragraph — `.` now matches newlines, but the group stays
-    # non-greedy, so it still only ever captures the minimal text up to the
-    # next literal marker line, whether that's on the same line or several
-    # lines down.
-    ANGLE_BLOCK_RE = re.compile(
+    Grouped as staticmethods purely for namespacing — there is no instance
+    state, matching this file's established convention (ToolCallExecutor,
+    ResearchPromptBuilder)."""
+
+    # DOTALL added (alongside MULTILINE) so the detail paragraph can be a
+    # genuine multi-sentence paragraph — `.` now matches newlines, but the
+    # group stays non-greedy, so it still only ever captures the minimal
+    # text up to the next literal marker line, whether that's on the same
+    # line or several lines down.
+    _STRATEGIC_ANGLE_BLOCK_RE = re.compile(
         r"\*\*(?P<title>.+?)\*\*\s*\n"
         r"(?P<argument>.+?)\n"
         r"(?P<glimpse>.+?)\n"
@@ -127,7 +147,7 @@ class AngleResponseParser:
         re.MULTILINE | re.DOTALL,
     )
 
-    PROVOKES_ALIASES = {
+    _PROVOKES_ALIASES = {
         "comment": "comment",
         "long-dwell": "long-dwell",
         "long dwell": "long-dwell",
@@ -147,10 +167,12 @@ class AngleResponseParser:
         return ""
 
     @staticmethod
-    def normalize_provokes(raw: str) -> tuple[str, str]:
+    def _normalize_provokes(raw: str) -> tuple[str, str]:
         """Splits a '{type} — {reason}' provokes line into its two parts,
         tolerating a plain hyphen instead of an em-dash and minor spacing
-        variance in the type."""
+        variance in the type. Strategic-Angles-specific — "provokes" isn't a
+        generic artifact concept, which is why it lives in `attributes`
+        rather than as a named field on ResearchArtifactItem."""
         # Requires whitespace on both sides so this doesn't split on the
         # hyphen embedded inside "long-dwell" itself — only the actual
         # "type — reason" separator (em-dash, or a plain hyphen tolerated as
@@ -158,59 +180,73 @@ class AngleResponseParser:
         parts = re.split(r"\s+[—-]\s+", raw, maxsplit=1)
         raw_type = parts[0].strip().lower()
         reason = parts[1].strip() if len(parts) > 1 else ""
-        provokes_type = AngleResponseParser.PROVOKES_ALIASES.get(raw_type)
+        provokes_type = ResearchArtifactParser._PROVOKES_ALIASES.get(raw_type)
         if provokes_type is None:
             raise ValueError(f"unrecognized provokes type: {raw_type!r}")
         return provokes_type, reason
 
     @staticmethod
-    def parse_angles(raw_text: str, valid_source_urls: set[str] | None = None) -> list[ResearchAngle]:
-        """valid_source_urls, when given, is the set of URLs this round's
-        web_search calls actually returned (see extract_sources below) — any
-        angle's asserted source_url that isn't in this set is blanked out
-        rather than trusted, so a fabricated/hallucinated citation never
-        reaches the frontend."""
-        valid_source_urls = valid_source_urls or set()
-        angles: list[ResearchAngle] = []
-        for match in AngleResponseParser.ANGLE_BLOCK_RE.finditer(raw_text):
+    def _parse_strategic_angles(raw_text: str, valid_source_urls: set[str]) -> list[ResearchArtifactItem]:
+        """valid_source_urls is the set of URLs this round's web_search calls
+        actually returned (see extract_sources below) — any item's asserted
+        source_url that isn't in this set is blanked out rather than
+        trusted, so a fabricated/hallucinated citation never reaches the
+        frontend."""
+        items: list[ResearchArtifactItem] = []
+        for match in ResearchArtifactParser._STRATEGIC_ANGLE_BLOCK_RE.finditer(raw_text):
             try:
-                provokes_type, provokes_reason = AngleResponseParser.normalize_provokes(
+                provokes_type, provokes_reason = ResearchArtifactParser._normalize_provokes(
                     match.group("provokes")
                 )
                 source_url = (match.group("source_url") or "").strip()
                 if source_url and source_url not in valid_source_urls:
                     logger.warning("researcher: dropping unverifiable source_url=%r (not in this round's results)", source_url)
                     source_url = ""
-                angles.append(ResearchAngle(
+                items.append(ResearchArtifactItem(
                     title=match.group("title").strip(),
-                    argument=match.group("argument").strip(),
-                    glimpse=match.group("glimpse").strip(),
-                    audience=match.group("audience").strip(),
-                    provokes_type=provokes_type,
-                    provokes_reason=provokes_reason,
+                    claim=match.group("argument").strip(),
+                    detail=match.group("glimpse").strip(),
                     source_url=source_url,
+                    attributes={
+                        "audience": match.group("audience").strip(),
+                        "provokes_type": provokes_type,
+                        "provokes_reason": provokes_reason,
+                    },
                 ))
             except (ValueError, ValidationError) as exc:
                 logger.warning("researcher: skipping unparseable angle block — %s", exc)
+        return items
 
-        if not angles:
-            logger.error("researcher: expected at least 1 angle, parsed 0 — raw=%r", raw_text)
+    @staticmethod
+    def parse(mode: str, raw_text: str, valid_source_urls: set[str] | None = None) -> ResearchArtifact:
+        """Entry point: dispatches to the item-builder registered for `mode`.
+        Only "strategic_angles" is registered today — any other mode raises
+        rather than silently mis-parsing, since no output format for it has
+        actually been specified to the LLM in RESEARCH_SYSTEM yet."""
+        valid_source_urls = valid_source_urls or set()
+        if mode != "strategic_angles":
+            raise ResearcherDecisionError(f"no parser registered for research mode {mode!r}")
+
+        items = ResearchArtifactParser._parse_strategic_angles(raw_text, valid_source_urls)
+        if not items:
+            logger.error("researcher: expected at least 1 item, parsed 0 — raw=%r", raw_text)
             raise ResearcherDecisionError(
                 "researcher_linkedin: expected at least 1 angle, parsed 0"
             )
-        if len(angles) > 5:
-            logger.warning("researcher: parsed %d angles, capping to 5", len(angles))
-            angles = angles[:5]
-        return angles
+        if len(items) > 5:
+            logger.warning("researcher: parsed %d angles, capping to 5", len(items))
+            items = items[:5]
+
+        return ResearchArtifact(mode=mode, items=items, summary=ResearchArtifactParser._parse_summary(raw_text))
 
     @staticmethod
-    def parse_summary(raw_text: str) -> str:
+    def _parse_summary(raw_text: str) -> str:
         """Extracts the personalized SUMMARY: block the prompt asks for, which
-        precedes the first angle block. Deliberately not part of
-        parse_angles()'s strict-count validation — if the model skips it (or
-        mangles the label), this just returns "" and the UI omits the intro
-        text; the 5-angle contract is the only hard requirement."""
-        first_match = AngleResponseParser.ANGLE_BLOCK_RE.search(raw_text)
+        precedes the first item block. Deliberately not part of parse()'s
+        strict-count validation — if the model skips it (or mangles the
+        label), this just returns "" and the UI omits the intro text; the
+        5-angle contract is the only hard requirement for this mode."""
+        first_match = ResearchArtifactParser._STRATEGIC_ANGLE_BLOCK_RE.search(raw_text)
         preamble = raw_text[:first_match.start()] if first_match else raw_text
         return re.sub(r"(?i)^\s*summary\s*:\s*", "", preamble.strip()).strip()
 
@@ -219,7 +255,8 @@ class AngleResponseParser:
         """Concatenates every web_search ToolMessage's content — the raw
         evidence pool 'Expand' reuses later without a fresh Tavily call.
         Deliberately excludes search_vault_posts results (the user's own
-        vault, not the web topic being expanded)."""
+        vault, not the web topic being researched). Mode-agnostic — operates
+        on tool-call messages, not on any artifact's fields."""
         return "\n\n".join(
             m.content for m in messages
             if isinstance(m, ToolMessage) and m.name == "web_search"
@@ -230,15 +267,40 @@ class AngleResponseParser:
     @staticmethod
     def extract_sources(messages: list) -> set[str]:
         """The set of URLs this round's web_search tool calls actually
-        returned — used by parse_angles() to validate (never trust blindly)
-        whatever source_url an angle asserts. Relies on web_search's own
+        returned — used by parse() to validate (never trust blindly)
+        whatever source_url an item asserts. Relies on web_search's own
         output format (tools.py): each result is `### {title}\\n{url}\\n{content}`,
         so a bare URL on its own line is unambiguous here."""
         urls: set[str] = set()
         for m in messages:
             if isinstance(m, ToolMessage) and m.name == "web_search":
-                urls.update(AngleResponseParser._SOURCE_URL_RE.findall(m.content))
+                urls.update(ResearchArtifactParser._SOURCE_URL_RE.findall(m.content))
         return urls
+
+    @staticmethod
+    def to_wire_dicts(artifact: ResearchArtifact) -> list[dict]:
+        """Adapts the generic artifact back into the exact dict shape
+        angle_review_node.py / map_chosen_angle_node / router.py /
+        thread_state.py / the frontend's AngleCard already consume — the
+        seam that keeps the review pipeline mode-agnostic internally but
+        Strategic-Angles-shaped at the boundary, for as long as Strategic
+        Angles is the only mode with a real UI. A future mode adds its own
+        branch here (and, separately, its own frontend card) without this
+        class's parse()/attributes contract needing to change."""
+        if artifact.mode != "strategic_angles":
+            raise ResearcherDecisionError(f"no wire adapter registered for research mode {artifact.mode!r}")
+        return [
+            {
+                "title": item.title,
+                "argument": item.claim,
+                "glimpse": item.detail,
+                "audience": item.attributes.get("audience", ""),
+                "provokes_type": item.attributes.get("provokes_type", ""),
+                "provokes_reason": item.attributes.get("provokes_reason", ""),
+                "source_url": item.source_url,
+            }
+            for item in artifact.items
+        ]
 
 
 class ResearchPromptBuilder:
@@ -247,8 +309,86 @@ class ResearchPromptBuilder:
     focused on orchestration rather than prompt text."""
 
     RESEARCH_SYSTEM = """\
-You are an elite LinkedIn content strategist. You do not write posts. You find the
-strongest strategic directions a post could be written from, and hand one to a writer.
+You are Honne's Research Agent.
+
+Your responsibility is not to write content. Your responsibility is to understand what
+the user is trying to accomplish and organize knowledge into the most useful research
+artifact.
+
+The Research Agent decides how knowledge should be organized.
+The Writer Agent decides how knowledge should be communicated.
+
+Never optimize for one fixed output format. Instead, choose the research artifact that
+best helps the user accomplish their objective.
+
+Research artifacts should always be designed to be reviewed, expanded, modified and
+approved before passing them to the Writer.
+
+Do not write hooks. Do not write storytelling. Do not write post copy. Those
+responsibilities belong exclusively to the Writer Agent.
+
+========================================
+STEP 1 — DETERMINE USER INTENT
+========================================
+
+Before producing research, silently determine what the user is actually trying to
+accomplish.
+
+Possible research modes include:
+
+• Strategic Angles
+Generate multiple independent strategic directions for LinkedIn content.
+
+• Content Series
+Generate a connected sequence of topics designed to teach or explore a subject over
+multiple posts.
+
+• Research Brief
+Produce structured research to help the user deeply understand a topic.
+
+• Comparison
+Compare products, technologies, companies or approaches.
+
+• Learning Guide
+Organize a topic into a logical learning progression.
+
+• Evidence Pack
+Collect important supporting evidence, studies, statistics and notable examples.
+
+Choose exactly ONE research mode. Do not combine multiple modes unless explicitly
+requested.
+
+If the user explicitly requests a particular research format, honor that request.
+
+If the request is genuinely ambiguous, ask one concise clarification question. Otherwise
+infer the most appropriate format automatically.
+
+If the request is about LinkedIn content creation but no format is specified, default to
+Strategic Angles.
+
+========================================
+GENERAL RESEARCH PRINCIPLES
+========================================
+
+The output of this agent is never the final deliverable — it is an editable research
+artifact.
+
+Research should help users think before they write. Organize information clearly. Avoid
+unnecessary repetition. Use evidence instead of generic observations. Never optimize for
+sounding impressive — optimize for helping the user make better decisions.
+
+Search results are raw evidence, not a brief. Mine them for concrete numbers, companies,
+scenarios and examples. Never summarize search results mechanically.
+
+========================================
+STRATEGIC ANGLES MODE
+========================================
+
+Everything below applies ONLY when the selected research mode is Strategic Angles —
+today the only mode with a wired output format; a request that resolves to a different
+mode has no format specified yet and should still be handled through the principles
+above as best you can. Generate exactly five completely independent strategic
+directions.
 
 Your bar: if this topic went to five different top strategists in separate rooms, what
 five directions would they independently choose? Five wordings of one idea is a failure.
@@ -314,8 +454,11 @@ search results specifically supports this angle. Never invent a URL.}
 """
 
     EXPAND_SYSTEM = """\
-You already researched a topic and proposed several strategic angles for a LinkedIn
-post. The user wants more detail on ONE specific angle before deciding to write it up.
+You previously generated a research artifact. The user wants to expand ONE section of
+that artifact.
+
+The section may come from Strategic Angles, Content Series, Research Brief, Comparison,
+Learning Guide or any future research mode.
 
 Using ONLY the search context provided below (do not invent new facts), produce a
 structured summary as raw JSON matching this exact shape — nothing else, no markdown
@@ -329,9 +472,9 @@ in the provided search context.
 """
 
     MODIFY_SYSTEM = """\
-You previously wrote a structured summary (sections with headings) for one strategic
-LinkedIn content angle. The user is now giving you a free-text instruction to revise
-that summary — e.g. "cut the part about X", "add something about Y", "make it punchier".
+You previously wrote a structured summary (sections with headings) for one research
+artifact section. The user is now giving you a free-text instruction to revise that
+summary — e.g. "cut the part about X", "add something about Y", "make it punchier".
 
 Apply the instruction to produce a revised summary. Keep whatever the instruction
 doesn't ask you to change. You may restructure or rename sections if the edit calls
@@ -483,18 +626,16 @@ async def researcher_linkedin(state: ResearcherState, profile_context: dict | No
     else:
         raise ResearcherDecisionError("researcher_linkedin: tool-calling loop exceeded round limit")
 
-    raw = AngleResponseParser.extract_text(response.content)
-    valid_source_urls = AngleResponseParser.extract_sources(messages)
-    angles = AngleResponseParser.parse_angles(raw, valid_source_urls=valid_source_urls)
-    summary = AngleResponseParser.parse_summary(raw)
+    raw = ResearchArtifactParser.extract_text(response.content)
+    valid_source_urls = ResearchArtifactParser.extract_sources(messages)
+    artifact = ResearchArtifactParser.parse("strategic_angles", raw, valid_source_urls=valid_source_urls)
     emit_activity(BUILDING_ANGLES_ID, BUILDING_ANGLES_TITLE, "completed", parent_id="researching")
     logger.info("researcher_linkedin: TOTAL %.2fs — produced %d angles for user_id=%s",
-                time.monotonic() - t_start, len(angles), user_id)
+                time.monotonic() - t_start, len(artifact.items), user_id)
 
     return {
-        "research_topics": [a.model_dump() for a in angles],
-        "research_search_context": AngleResponseParser.collect_web_search_context(messages),
-        "research_summary": summary,
+        "research_artifact": artifact,
+        "research_search_context": ResearchArtifactParser.collect_web_search_context(messages),
     }
 
 
@@ -579,20 +720,23 @@ async def modify_angle_summary(angle: dict, current_sections: list[dict], instru
 async def researcher_node(state: ResearcherState) -> dict:
     """Graph entry point — Send-dispatched from supervisor_node with a minimal
     {user_id, query} state slice. Wraps researcher_linkedin: fetches profile
-    context, runs the research, and reshapes its three-key return into the
-    single research_result state field
-    that angle_review_node and map_chosen_angle_node read downstream."""
+    context, runs the research, and adapts its mode-agnostic ResearchArtifact
+    (via ResearchArtifactParser.to_wire_dicts()) into the single
+    research_result state field that angle_review_node and
+    map_chosen_angle_node read downstream — unchanged in shape regardless of
+    this internal refactor."""
     user_id = state["user_id"]
     emit_node_activity("researcher_node", "running")
     profile_context = await asyncio.to_thread(ProfileContextLoader.load, user_id)
 
     result = await researcher_linkedin(state, profile_context=profile_context)
+    artifact = result["research_artifact"]
 
     emit_node_activity("researcher_node", "completed")
     return {
         "research_result": {
-            "angles": result["research_topics"],
+            "angles": ResearchArtifactParser.to_wire_dicts(artifact),
             "search_context": result["research_search_context"],
-            "summary": result["research_summary"],
+            "summary": artifact.summary,
         },
     }

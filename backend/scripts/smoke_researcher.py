@@ -14,10 +14,10 @@ from backend.core.config import settings
 
 
 async def run(query: str, user_id: str) -> None:
-    from backend.ai.agents.researcher import expand_research_angle, researcher_linkedin
+    from backend.ai.agents.researcher import ResearchArtifactParser, expand_research_angle, researcher_linkedin
 
     result = await researcher_linkedin({"user_id": user_id, "query": query})
-    angles = result["research_topics"]
+    angles = ResearchArtifactParser.to_wire_dicts(result["research_artifact"])
     search_context = result["research_search_context"]
 
     print(f"\n=== {len(angles)} angles ===\n")

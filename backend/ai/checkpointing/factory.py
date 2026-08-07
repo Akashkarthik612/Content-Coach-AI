@@ -1,4 +1,4 @@
-from contextlib import AbstractAsyncContextManager
+from psycopg_pool import AsyncConnectionPool
 
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -23,19 +23,32 @@ _session_title_embeddings = GoogleGenerativeAIEmbeddings(
 )
 
 
-def create_checkpointer(database_url: str) -> AbstractAsyncContextManager[AsyncPostgresSaver]:
+def create_pool(database_url: str) -> AsyncConnectionPool:
+    """Shared connection pool — AsyncPostgresSaver.from_conn_string() opens a
+    single raw psycopg connection, which isn't safe to use from more than one
+    coroutine at once. A pool gives each concurrent request its own
+    connection (max_size=20) instead of every request fighting over one."""
+    return AsyncConnectionPool(
+        conninfo=database_url,
+        max_size=20,
+        kwargs={"autocommit": True, "prepare_threshold": 0},
+        open=False,
+    )
+
+
+def create_checkpointer(pool: AsyncConnectionPool) -> AsyncPostgresSaver:
     """Single seam for the checkpointer backend — swap implementations here only."""
-    return AsyncPostgresSaver.from_conn_string(database_url)
+    return AsyncPostgresSaver(pool)
 
 
-def create_store(database_url: str) -> AbstractAsyncContextManager[AsyncPostgresStore]:
+def create_store(pool: AsyncConnectionPool) -> AsyncPostgresStore:
     """Single seam for the long-term (cross-thread/cross-session) store backend.
 
     TTL sweeper must be started explicitly (store.start_ttl_sweeper()) after
     store.setup() — this factory only constructs the configured instance.
     """
-    return AsyncPostgresStore.from_conn_string(
-        database_url,
+    return AsyncPostgresStore(
+        pool,
         ttl={
             "default_ttl": _SESSION_TTL_MINUTES,
             "refresh_on_read": True,

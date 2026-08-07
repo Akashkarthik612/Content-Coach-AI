@@ -24,6 +24,15 @@ export const getProfile = () =>
   })
 
 /**
+ * Set the Schedule page's weekly-posts target (1-7). Get-or-creates the
+ * profile row server-side, so this works even for a user who hasn't
+ * onboarded yet — unlike PATCH '' (update_profile), which 404s without an
+ * existing profile.
+ */
+export const updateWeeklyTarget = (weeklyPostTarget) =>
+  client.patch('/weekly-target', { weekly_post_target: weeklyPostTarget }).then(r => r.data)
+
+/**
  * Fetch the logged-in user's account identity (email + username) from the
  * `users` table — distinct from getProfile()'s onboarding data, and never
  * 404s (a `users` row always exists once authenticated). Backs the Settings

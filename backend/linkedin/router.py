@@ -4,6 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
+from backend.core.cache import sync_invalidate_user_analytics_cache
 from backend.core.config import settings
 from backend.core.dependencies import get_current_user, get_db
 from backend.linkedin.schemas import AuthUrlResponse, ConnectionStatusResponse, PublishResponse
@@ -100,6 +101,7 @@ def publish_post(
         # Mirror the style_memory trigger that vault router fires on publish
         from backend.ai.style_memory import sync_check_and_refresh_style_memory
         background_tasks.add_task(sync_check_and_refresh_style_memory, str(user.id))
+        background_tasks.add_task(sync_invalidate_user_analytics_cache, str(user.id))
 
     return result
 

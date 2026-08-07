@@ -1,5 +1,10 @@
 import axios from 'axios';
 import { attachAuthHeader } from './attachAuthHeader';
+import { supabase } from '../lib/supabaseClient';
+
+// Dev-only switch — see AUTH_PROVIDER on the backend (backend/auth_local/).
+// Defaults to Supabase; never set VITE_AUTH_MODE=local outside local dev.
+const IS_LOCAL_AUTH = import.meta.env.VITE_AUTH_MODE === 'local';
 
 const api = axios.create({ baseURL: '/api/ai' });
 attachAuthHeader(api);
@@ -14,7 +19,8 @@ export const queryAI = (prompt, sessionId = null) =>
  * @param {string} action    - "approved" | "edited" | "rejected" (human_approval_node) |
  *                             "pick" | "expand" | "modify" | "none_fit" (angle_review_node)
  * @param {string} [content] - free text: edited draft body ("edited"), modify instruction
- *                             ("modify"), or fresh guidance ("none_fit")
+ *                             ("modify"), fresh guidance ("none_fit"), or a personal
+ *                             stat/story/detail to open the hook with ("pick")
  * @param {number|null} [angle_id] - required for "pick" / "expand" / "modify"
  * @returns {Promise<{status?, answer?, draft?, angles?, actions?, summary?,
  *                     expanded_angle_id?, expanded_sections?, error?, post_id?}>}
@@ -85,16 +91,26 @@ export const deleteSession = (sessionId) =>
  */
 export function streamQuery(prompt, sessionId, onToken, onDone, onError, onActivity) {
   const controller = new AbortController();
-  const uid = localStorage.getItem('user_id') || '';
 
   (async () => {
     try {
+      // raw fetch() can't use axios interceptors, so attachAuthHeader's
+      // logic (attach Bearer <supabase_token>, or X-User-Id in local dev)
+      // is replicated inline here.
+      const headers = { 'Content-Type': 'application/json' };
+      if (IS_LOCAL_AUTH) {
+        const userId = localStorage.getItem('user_id');
+        if (userId) headers['X-User-Id'] = userId;
+      } else {
+        const { data } = await supabase.auth.getSession();
+        if (data.session) {
+          headers['Authorization'] = `Bearer ${data.session.access_token}`;
+        }
+      }
+
       const response = await fetch('/api/ai/stream', {
         method:  'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-User-Id':    uid,
-        },
+        headers,
         body:   JSON.stringify({ prompt, session_id: sessionId }),
         signal: controller.signal,
       });

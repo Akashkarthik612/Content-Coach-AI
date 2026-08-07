@@ -6,7 +6,9 @@ import OnboardingPage from './pages/OnboardingPage';
 import MyWorkPage from './pages/MyWorkPage';
 import ChatPage from './pages/ChatPage';
 import SchedulePage from './pages/SchedulePage';
+import AnalyticsPage from './pages/AnalyticsPage';
 import SettingsPage from './pages/SettingsPage';
+import AccountDetailsPage from './pages/AccountDetailsPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import AgentsPage from './pages/AgentsPage';
 import { ReviewQueueProvider } from './context/ReviewQueueContext';
@@ -46,7 +48,9 @@ export default function App() {
         <Route path="/vault"      element={<RequireAuth><MyWorkPage /></RequireAuth>} />
         <Route path="/chat"       element={<RequireAuth><ChatPage /></RequireAuth>} />
         <Route path="/schedule"   element={<RequireAuth><SchedulePage /></RequireAuth>} />
+        <Route path="/analytics"  element={<RequireAuth><AnalyticsPage /></RequireAuth>} />
         <Route path="/settings"   element={<RequireAuth><SettingsPage /></RequireAuth>} />
+        <Route path="/account-details" element={<RequireAuth><AccountDetailsPage /></RequireAuth>} />
         <Route path="/agents"     element={<RequireAuth><AgentsPage /></RequireAuth>} />
         <Route path="*"          element={<Navigate to="/" replace />} />
       </Routes>

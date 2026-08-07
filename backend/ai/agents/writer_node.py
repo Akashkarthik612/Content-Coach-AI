@@ -48,6 +48,7 @@ def _build_research_section(research_brief: dict) -> str:
     points = "\n".join(f"- {p}" for p in research_brief.get("talking_points", []))
     avoid  = research_brief.get("avoid_repeating") or ""
     hook   = research_brief.get("suggested_hook") or ""
+    personal_hook = research_brief.get("personal_hook_input") or ""
     evidence = "\n".join(
         f"- {e.get('point', '')}" + (f" (source: {e.get('source_title')})" if e.get("source_title") else "")
         for e in research_brief.get("supporting_evidence", [])
@@ -57,7 +58,12 @@ def _build_research_section(research_brief: dict) -> str:
         f"angle: {research_brief.get('recommended_angle', '')}\n"
         f"talking points:\n{points}\n"
         + (f"supporting facts (weave in naturally, no formal citations):\n{evidence}\n" if evidence else "")
-        + (f"a hook you could open with (adapt to the style rules above): {hook}\n" if hook else "")
+        + (
+            f"OPEN THE POST WITH THIS — the user's own stat/story/detail, in first person as their "
+            f"real experience, not paraphrased into something generic: {personal_hook}\n"
+            if personal_hook
+            else (f"a hook you could open with (adapt to the style rules above): {hook}\n" if hook else "")
+        )
         + (f"avoid: {avoid}\n" if avoid else "")
         + f"length: {research_brief.get('suggested_length', 'medium')}\n"
     )

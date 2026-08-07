@@ -3,6 +3,7 @@ from uuid import UUID
 
 import jwt
 from jwt import PyJWKClient
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.auth.base_auth import AuthenticatedUser, BaseAuthProvider
@@ -61,7 +62,18 @@ class UserSyncService:
             logger.info("Provisioning shadow user row: user_id=%s", user_id)
             user = User(id=user_id, email=identity.email, username=identity.username)
             db.add(user)
-            db.commit()
+            try:
+                db.commit()
+            except IntegrityError:
+                # Concurrent request already inserted this user between our
+                # get() check and this commit (the frontend fires several
+                # authenticated requests in parallel on page load) — fall
+                # back to reading it instead of crashing.
+                db.rollback()
+                user = db.get(User, user_id)
+                if user is None:
+                    raise
+                return user
             db.refresh(user)
             return user
 

@@ -1,11 +1,12 @@
-from typing import Generator
+from typing import AsyncGenerator, Generator
 from uuid import UUID
 
 from fastapi import Depends, Header, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from backend.core.config import settings
-from backend.core.database import SessionLocal
+from backend.core.database import AsyncSessionLocal, SessionLocal
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -14,6 +15,11 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+async def get_db_async() -> AsyncGenerator[AsyncSession, None]:
+    async with AsyncSessionLocal() as db:
+        yield db
 
 
 def get_current_user(

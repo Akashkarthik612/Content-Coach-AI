@@ -15,6 +15,11 @@ Key namespaces:
                                                  tenant-private, so one user's lookup warms
                                                  the cache for everyone; never touched by
                                                  invalidate_user_tool_cache)
+  analytics:kpi:{user_id}:{period}            — KPIResponse, TTL 30 min
+  analytics:rankings:{user_id}:{period}       — AnalyticsRankingsResponse, TTL 30 min
+                                                 (both actively invalidated on metric log,
+                                                 publish, and the weekly topic-classification
+                                                 job — see sync_invalidate_user_analytics_cache)
 """
 import hashlib
 import json
@@ -34,6 +39,7 @@ _EMBED_TTL      = 86400  # 24 hours   — content-addressed; same text = same ve
 _LT_STYLE_TTL   = 86400  # 24 hours   — long-term style; replaced on LT analysis run
 _ST_STYLE_TTL   = 3600   # 1 hour     — short-term style; replaced on ST analysis run
 _SEARCH_TTL     = 900    # 15 minutes — dedupe repeated queries without serving stale results too long
+_ANALYTICS_TTL  = 1800   # 30 minutes — safety net; actively invalidated on log/publish/topic-job
 
 
 # ── Lazy singletons ───────────────────────────────────────────────────────────
@@ -90,6 +96,14 @@ def search_key(query: str) -> str:
     return f"search:{query_hash(normalized)}"
 
 
+def analytics_kpi_key(user_id: str, period: str) -> str:
+    return f"analytics:kpi:{user_id}:{period}"
+
+
+def analytics_rankings_key(user_id: str, period: str) -> str:
+    return f"analytics:rankings:{user_id}:{period}"
+
+
 # ── Async helpers (used by @tool functions) ───────────────────────────────────
 
 async def async_get(key: str) -> str | None:
@@ -107,12 +121,12 @@ async def async_set(key: str, value: str, ttl: int = _TOOL_TTL) -> None:
         logger.warning("Redis async_set failed for key %s", key)
 
 
-async def async_get_json(key: str) -> list | None:
+async def async_get_json(key: str) -> list | dict | None:
     raw = await async_get(key)
     return json.loads(raw) if raw else None
 
 
-async def async_set_json(key: str, value: list, ttl: int = _EMBED_TTL) -> None:
+async def async_set_json(key: str, value: list | dict, ttl: int = _EMBED_TTL) -> None:
     await async_set(key, json.dumps(value), ttl=ttl)
 
 
@@ -147,6 +161,20 @@ def sync_invalidate_user_tool_cache(user_id: str) -> None:
             logger.debug("Invalidated %d cache key(s) for user %s", len(keys), user_id)
     except Exception:
         logger.warning("Redis sync cache invalidation failed for user %s", user_id)
+
+
+def sync_invalidate_user_analytics_cache(user_id: str) -> None:
+    """Sync — called both as a BackgroundTask (from routers that have one)
+    and as a direct call (from the scheduler jobs, which run outside any
+    request cycle and have no BackgroundTasks object)."""
+    try:
+        r = _get_sync()
+        keys = r.keys(f"analytics:*:{user_id}:*")
+        if keys:
+            r.delete(*keys)
+            logger.debug("Invalidated %d analytics cache key(s) for user %s", len(keys), user_id)
+    except Exception:
+        logger.warning("Redis analytics cache invalidation failed for user %s", user_id)
 
 
 def sync_get_json(key: str) -> dict | None:

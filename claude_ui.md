@@ -1,6 +1,6 @@
 # ContentCoach AI — UI State & Design System
 > Single source of truth for all UI decisions. This file describes only the current state of the frontend — no changelog, no history. When a page or component changes, edit its section in place.
-> Last updated: 2026-08-02
+> Last updated: 2026-08-04
 
 ---
 
@@ -68,10 +68,10 @@ Used by the surviving CSS-module components: `components/AIAssistant.module.css`
 
 Loaded via Google Fonts `<link>` in `index.html`.
 
-### Honne pages (HomePage, OnboardingPage, ChatPage, SchedulePage, SettingsPage, ResetPasswordPage, MyWorkPage)
+### Honne pages (HomePage, OnboardingPage, ChatPage, SchedulePage, AnalyticsPage, SettingsPage, ResetPasswordPage, MyWorkPage)
 | Font | Use |
 |---|---|
-| `Geist` | Chat/Schedule/Settings/ResetPassword/HomePage body — pulled in via a scoped `@import` inside each component's own `<style>` block, not a global `index.html` `<link>` |
+| `Geist` | Chat/Schedule/Analytics/Settings/ResetPassword/HomePage body — pulled in via a scoped `@import` inside each component's own `<style>` block, not a global `index.html` `<link>` |
 | `EB Garamond` | Serif display (titles, quote marks) on OnboardingPage/MyWorkPage — loaded globally in `index.html` |
 | `Hanken Grotesk` | Sans body on OnboardingPage/MyWorkPage |
 | `JetBrains Mono` | Eyebrow labels, metadata pills across all Honne pages — loaded globally |
@@ -123,7 +123,9 @@ All respect `@media (prefers-reduced-motion: reduce)`.
 | `/my-work`, `/vault` | `pages/MyWorkPage.jsx` | RequireAuth | Both paths render the same component |
 | `/chat` | `pages/ChatPage.jsx` | RequireAuth | App home page (post-login/post-onboarding redirect target) |
 | `/schedule` | `pages/SchedulePage.jsx` | RequireAuth | Calendar/momentum/content-runway view |
+| `/analytics` | `pages/AnalyticsPage.jsx` | RequireAuth | Performance dashboard — KPIs, best post, topic/type/consistency breakdown, content performance table |
 | `/settings` | `pages/SettingsPage.jsx` | RequireAuth | Account settings |
+| `/account-details` | `pages/AccountDetailsPage.jsx` | RequireAuth | Edit the onboarding profile fields (profession/industry/role/audience/goals/topics/style) post-onboarding. Reached from ChatPage's top-right account menu ("Change my details"), not from any sidebar nav item |
 | `/agents` | `pages/AgentsPage.jsx` | RequireAuth | Static "AI team" overview |
 | `*` | — | — | `<Navigate to="/">` |
 
@@ -292,6 +294,9 @@ Opened via "Open Workspace →" or automatically once a draft exists. Two-column
 - **Header** — back-to-chat, title + pills, Approve/Decline (or the decision pill once resolved), Copy, History (fetches `getVersions(postId)`), and a real LinkedIn-branded Connect/Publish button (`getLinkedInStatus()`/`getLinkedInAuthUrl()`/`publishToLinkedIn()`).
 - Approve calls `resumeAI(threadId,'edited',docText)` if the text changed, else `resumeAI(threadId,'approved')`; Decline calls `resumeAI(threadId,'rejected')`.
 
+### Header account menu (`profileOpen`)
+Top-right circular avatar button toggles a dropdown (click-outside overlay to close): a "My account" header row, then **Settings** (→ `/settings`), **Change my details** (→ `/account-details` — see `AccountDetailsPage.jsx` below), a divider, then **Log out** (`handleLogout()` — clears `localStorage`, navigates to `/login`).
+
 ### API calls
 ```js
 streamQuery(text, sessionId, onToken, onDone, onError, onActivity)  // SSE — main composer
@@ -317,8 +322,28 @@ HonneSidebar | header (Publishing/Schedule) + Calendar (month grid, day-detail p
 |---|---|
 | Sidebar (nav, search, persisted chat list) | ✅ Real — same `HonneSidebar` + `getSessions()`/`deleteSession()` as `ChatPage.jsx` |
 | Calendar navigation, day selection | ✅ Real client-side state |
-| Scheduled posts, momentum streak/history, week rails | ❌ Entirely mock — client-only state seeded from hardcoded `TITLES`/`PLATS`/`TIMES` arrays and a fixed `STREAK_WEEKS=12` constant. No backend endpoint exists for listing/creating scheduled posts by date range (`posts.scheduled_at` + `PATCH /posts/{id}/status` exist server-side, but nothing reads a calendar view back out of them) |
-| "Open in editor"/"Reschedule" kebab actions | ❌ Inert — close the menu only. "Cancel post" removes the mock row locally only |
+| Scheduled posts, publish history, momentum streak/history, content runway, weekly target | ✅ Real — `getCalendarPosts()`/`getWeeklyHistory()` (`GET /api/vault/posts/calendar`, `/posts/weekly-history`) via `backend/vault/service.py`'s `CalendarService`; weekly target persists via `PATCH /api/profile/weekly-target`. A background `backend/scheduler/` job auto-publishes due posts to LinkedIn. Day-click opens a real time-picker that calls `updatePostStatus(id, 'scheduled', isoDatetime)` |
+| "Open in editor"/"Reschedule" kebab actions | ❌ Still inert — close the menu only. "Cancel post" is real (`removePost()` → backend) |
+
+---
+
+## AnalyticsPage.jsx (`/analytics`)
+
+```
+HonneSidebar | header (Performance/Analytics) + platform chips + Log metrics (collapsible) | tracking banner + period switch (Weekly/Monthly/Yearly)
+KPI row (5 cards) | Best performing post + When you perform best
+Deeper analytics (collapsible): insights banner | By topic / By content type / Consistency panels | Content performance table (Top 10 / Bottom 10)
+```
+
+Ported 1:1 from the "Honne Analytics v2" Claude Design file (`ff122375-c3bc-4438-aece-706b0bd557b0`, `Honne Analytics v2.dc.html`) — same design project as `SchedulePage.jsx`/`ChatPage.jsx`, same token names/values, same `HonneSidebar` chrome. Replaces the previous `AnalyticsPage.jsx`/`useAnalytics.js` pair removed when Chat became the app home (no code from that removal survives — this is a fresh port, not a revival).
+
+### What's real vs mock
+| Feature | Status |
+|---|---|
+| Sidebar (nav, search, persisted chat list) | ✅ Real — same `HonneSidebar` + `getSessions()`/`deleteSession()` as `ChatPage.jsx`/`SchedulePage.jsx` |
+| Period switch, KPI row, best post, insights, topic/type/consistency breakdown, content performance table | ❌ Entirely mock — client-only state seeded from the source design's hardcoded `PERIOD_DATA`/`TOP`/`BOTTOM` arrays. No backend endpoint currently returns this shape (`GET /analytics/summary` exists but is unused here) |
+| "Log metrics" form (impressions/likes/comments, or a post published outside Honne) | ❌ Presentational only — "Save metrics" clears the form and shows a confirmation note; no backend call. `PATCH /posts/{id}/analytics` exists server-side but nothing on this page calls it yet |
+| Platform chips (LinkedIn connected, X/Reddit "Soon") | ❌ Static — doesn't read real `GET /api/linkedin/connection-status` |
 
 ---
 
@@ -343,6 +368,21 @@ Not built for local-auth dev mode — `supabase` is a placeholder client there, 
 
 ---
 
+## AccountDetailsPage.jsx (`/account-details`)
+
+Ported from the "Honne Account Details" Claude Design file (`ff122375-c3bc-4438-aece-706b0bd557b0`, `Honne Account Details.dc.html`). The source was a standalone localStorage-backed mock of the onboarding questionnaire; here it's the real edit surface for the same `user_profile` fields `OnboardingPage.jsx` collects at signup — same field keys and option vocabulary, so a value picked at onboarding round-trips identically here.
+
+```
+"← Back to chat" link | header ("Your details") | one card per field (profession/industry/role/audience/goals/topics/style) | Save changes
+```
+
+- **Load:** `getProfile()` (`GET /api/profile`) on mount; resolves `null` on 404 (no profile yet) and the form just starts blank — no error shown, matching `ChatPage.jsx`'s own use of the same call.
+- **Save:** `submitOnboarding()` (`POST /api/profile/onboarding`) — get-or-create + partial merge, so it works whether or not a profile row already exists; shows an inline error on failure (unlike `OnboardingPage.jsx`'s fire-and-forget save, this is an explicit user action so failures aren't swallowed) and a bottom-center "Saved" toast on success.
+- **Chrome:** same `HonneSidebar` + persisted chat list (`getSessions()`/`deleteSession()`) as `SettingsPage.jsx`/`SchedulePage.jsx`, though the page itself isn't a `SIDE_NAV` destination — it's reached only via `ChatPage.jsx`'s account menu (see above).
+- Field types: `chips` (single-select: profession/industry/style; multi-select: goals/topics) and `text` (role/audience, plain auto-height-less `<textarea>`).
+
+---
+
 ## ResetPasswordPage.jsx (`/reset-password`)
 
 Standalone landing page for Supabase's password-recovery email link. Public route, not `RequireAuth`-wrapped. No `HonneSidebar` — a centered card using the same Geist/Honne token style as `SettingsPage.jsx`.
@@ -360,7 +400,7 @@ Static "AI team" overview using `AppSidebar` (the only remaining consumer of tha
 ## Shared Components (`components/shared/`)
 
 ### `HonneSidebar.jsx`
-Used by `ChatPage.jsx`, `SchedulePage.jsx`, `SettingsPage.jsx`. Props: `open, onToggle, chats, activeIndex, onSelect, onDelete, onNewChat, search, onSearch, userName, navigate, activeNav`. Palette: `SIDEBAR_BG='#EFEDE3'`, `ACCENT='#14663B'`, `INK='#1B1C14'`, `BG='#F4F2EA'`; fonts Geist/JetBrains Mono. `SIDE_NAV`: Chats (`/chat`, enabled), Vault (`/my-work`, enabled), Analytics (disabled, no page behind it), Scheduled (`/schedule`, enabled). Footer button always navigates to `/settings`.
+Used by `ChatPage.jsx`, `SchedulePage.jsx`, `AnalyticsPage.jsx`, `SettingsPage.jsx`. Props: `open, onToggle, chats, activeIndex, onSelect, onDelete, onNewChat, search, onSearch, userName, navigate, activeNav`. Palette: `SIDEBAR_BG='#EFEDE3'`, `ACCENT='#14663B'`, `INK='#1B1C14'`, `BG='#F4F2EA'`; fonts Geist/JetBrains Mono. `SIDE_NAV`: Chats (`/chat`, enabled), Vault (`/my-work`, enabled), Analytics (`/analytics`, enabled), Scheduled (`/schedule`, enabled). Footer button always navigates to `/settings`.
 
 ### `AppSidebar.jsx`
 Used only by `AgentsPage.jsx` — `MyWorkPage.jsx` no longer imports it; it is a self-contained page with no sidebar of this kind. Exports `NAV_ITEMS` + `AppSidebar({navigate, activeKey, collapsed, onToggle, onCalendarOpen})`. Distinct palette: `INK='#111827'`, `BLUE='#3B82F6'`, `INDIGO='#6366F1'`, `VIOLET='#8B5CF6'`, fonts Hanken Grotesk/Newsreader/JetBrains Mono. Has its own inline mock calendar widget and sign-out button. `NAV_ITEMS`: `content`→`/my-work?new=1`, `agents`→`/agents`, `vault`→`/vault`, `chat`→`/chat`.

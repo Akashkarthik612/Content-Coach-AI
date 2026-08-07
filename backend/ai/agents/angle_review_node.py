@@ -60,6 +60,9 @@ async def angle_review_node(state: AgentState) -> dict:
                 # User expanded/modified this specific angle before picking it —
                 # the writer should work from that, not the pristine original.
                 result["final_angle_sections"] = working_sections[angle_id]
+            hook_input = (decision.get("content") or "").strip()[:500]
+            if hook_input:
+                result["personal_hook_input"] = hook_input
             return result
 
         if action == "expand":
@@ -142,12 +145,13 @@ async def angle_review_node(state: AgentState) -> dict:
 
 async def map_chosen_angle_node(state: AgentState) -> dict:
     """
-    Pure Python, no LLM call. Reshapes the picked ResearchAngle
+    Pure Python, no LLM call. Reshapes the picked angle wire dict
     ({title, argument, glimpse, audience, provokes_type, provokes_reason,
-    source_url}) into the FlatResearchBrief shape writer_node already reads.
-    Deliberately not a reuse of schemas/research.py's topic_to_flat — that
-    maps a different shape (ResearchTopic, from /draft-from-topic) that
-    doesn't line up field-for-field with a ResearchAngle.
+    source_url} — researcher.py's ResearchArtifactParser.to_wire_dicts()
+    output for its "strategic_angles" mode) into the FlatResearchBrief shape
+    writer_node already reads. Deliberately not a reuse of schemas/research.py's
+    topic_to_flat — that maps a different shape (ResearchTopic, from
+    /draft-from-topic) that doesn't line up field-for-field with this one.
 
     If the user expanded/modified this angle before picking it,
     final_angle_sections (set by angle_review_node's "pick" branch) holds
@@ -181,5 +185,6 @@ async def map_chosen_angle_node(state: AgentState) -> dict:
         talking_points=talking_points,
         supporting_evidence=supporting_evidence,
         suggested_length="medium",
+        personal_hook_input=state.get("personal_hook_input") or "",
     )
     return {"research_brief": brief.model_dump()}

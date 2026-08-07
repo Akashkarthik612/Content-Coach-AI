@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, X, Plus, MoreHorizontal, ExternalLink, CalendarClock, Trash2 } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { ChevronLeft, ChevronRight, ChevronDown, X, Plus, MoreHorizontal, ExternalLink, CalendarClock, Trash2 } from 'lucide-react';
 import { getSessions, deleteSession } from '../api/ai';
+import { getCalendarPosts, getPost, getWeeklyHistory, updatePostStatus } from '../api/vault';
+import { getProfile, updateWeeklyTarget } from '../api/profile';
 import HonneSidebar from '../components/shared/HonneSidebar';
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -34,11 +36,17 @@ const STYLES = `
 @keyframes schPop { 0% { transform: scale(.4); opacity: .3; } 60% { transform: scale(1.18); } 100% { transform: scale(1); opacity: 1; } }
 @keyframes schFlame { 0%,100% { transform: scale(1) rotate(-1.5deg); opacity: 1; } 20% { transform: scale(1.06,1.14) rotate(1.5deg); } 40% { transform: scale(.95,1.06) rotate(-1deg); opacity: .9; } 60% { transform: scale(1.09,1.17) rotate(1deg); } 80% { transform: scale(.97,1.04) rotate(-1.5deg); } }
 @keyframes schGlow { 0%,100% { opacity:.45; transform:scale(1); } 50% { opacity:.85; transform:scale(1.22); } }
+@keyframes schRing { 0% { box-shadow: 0 0 0 0 rgba(20,102,59,.35); } 100% { box-shadow: 0 0 0 16px rgba(20,102,59,0); } }
 @media (prefers-reduced-motion: reduce) { *{ animation-duration: .001ms !important; } }
 .sch-navbtn { transition: background .18s ease, color .18s ease; }
 .sch-navbtn:hover { background: rgba(27,28,20,.06); color: #14663B; }
 .sch-todaybtn { transition: border-color .18s ease, color .18s ease; }
 .sch-todaybtn:hover { border-color: rgba(20,102,59,.45); color: #14663B; }
+.sch-targetbtn { transition: border-color .2s ease, transform .18s cubic-bezier(.22,1,.36,1); }
+.sch-targetbtn:hover { border-color: rgba(20,102,59,.5); }
+.sch-targetbtn:active { transform: scale(.97); }
+.sch-chip { transition: transform .16s cubic-bezier(.22,1,.36,1); }
+.sch-chip:active { transform: scale(.9); }
 .sch-daycell:not(.sch-out):not(.sch-sel):hover { background: rgba(27,28,20,.04) !important; }
 .sch-closebtn { transition: background .18s ease, color .18s ease; }
 .sch-closebtn:hover { background: rgba(27,28,20,.06); color: #1B1C14; }
@@ -61,26 +69,20 @@ const MON3 = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV',
 const WD3 = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
 const WEEKDAYS_MON_FIRST = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
-// Presentational only — there is no backend endpoint yet for listing/creating
-// scheduled posts by date (post.scheduled_at exists but nothing reads a
-// date-range calendar view from it), so this page mocks its own local
-// schedule state the same way the source design did, seeded around the
-// real current date instead of the design's hardcoded test date.
-const TITLES = [
-  "The future of AI isn't about replacing people",
-  'What I learned building in public for 90 days',
-  '3 mistakes I made scaling my first team',
-  'Why I stopped chasing viral',
-  'The quiet advantage of writing every day',
-  'How consistency compounds your reputation',
-  'A contrarian take on remote work',
-  'The one metric I wish I tracked sooner',
-  "What nobody tells you about personal brand",
-  'Small bets beat big launches',
-];
-const PLATS = ['LinkedIn', 'X Thread', 'Reddit'];
-const TIMES = ['09:00', '08:30', '12:00', '07:45', '17:30'];
 const STREAK_WEEKS = 12; // presentational default, mirrors the source design's own prop default
+
+// Backend platform values are lowercase free text (only 'linkedin' is a real,
+// working integration today); the icon/color maps below key off the same
+// display labels the source design used.
+function platformLabel(platform) {
+  return { linkedin: 'LinkedIn', x: 'X Thread', reddit: 'Reddit' }[platform] || 'LinkedIn';
+}
+// Backend PostStatus values are lowercase ('scheduled'/'published'/'failed'/...);
+// the rest of this page's rendering (statusStyle, detail cards, runway rows)
+// was ported from the source design using capitalized display strings.
+function statusLabel(status) {
+  return { scheduled: 'Scheduled', published: 'Published', failed: 'Failed', draft: 'Draft' }[status] || 'Scheduled';
+}
 
 let _seq = 1;
 const nextId = () => _seq++;
@@ -112,6 +114,7 @@ function channelPath(ch) {
 function statusStyle(status) {
   if (status === 'Published') return { color: '#7A7C6C', bg: 'rgba(27,28,20,.06)' };
   if (status === 'Draft') return { color: '#9A7B14', bg: 'rgba(154,123,20,.12)' };
+  if (status === 'Failed') return { color: DANGER, bg: 'rgba(178,59,59,.1)' };
   return { color: ACCENT, bg: 'rgba(20,102,59,.1)' };
 }
 
@@ -161,6 +164,29 @@ export default function SchedulePage() {
     navigate('/chat');
   };
 
+  // Chat's "Schedule" button hands off a just-approved draft via ?postId=;
+  // while present, picking a calendar day here schedules THAT specific post
+  // rather than the normal "plan a new post" flow (which routes into chat).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const schedulingPostId = searchParams.get('postId');
+  const [schedulingPost, setSchedulingPost] = useState(null);
+  const [pickTime, setPickTime] = useState('09:00');
+  const [scheduling, setScheduling] = useState(false);
+
+  useEffect(() => {
+    if (!schedulingPostId) return;
+    getPost(schedulingPostId).then(setSchedulingPost).catch(() => {});
+  }, [schedulingPostId]);
+
+  // Gate on both the query param AND a matching fetched post — avoids ever
+  // flashing a stale previous post's title if postId changes before its
+  // fetch resolves.
+  const showScheduling = !!(schedulingPostId && schedulingPost && schedulingPost.id === schedulingPostId);
+
+  const cancelScheduling = useCallback(() => {
+    setSearchParams(prev => { const next = new URLSearchParams(prev); next.delete('postId'); return next; }, { replace: true });
+  }, [setSearchParams]);
+
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
   const monday = useMemo(() => {
     const dow = (today.getDay() + 6) % 7; // Mon = 0
@@ -168,30 +194,70 @@ export default function SchedulePage() {
   }, [today]);
   const offsetDate = useCallback((n) => new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + n), [monday]);
 
-  const [posts, setPosts] = useState(() => {
-    const seeded = [];
-    let pi = 0;
-    const push = (dt, status) => {
-      seeded.push({
-        id: `p${seeded.length}`, y: dt.getFullYear(), m: dt.getMonth(), d: dt.getDate(),
-        key: keyOf(dt.getFullYear(), dt.getMonth(), dt.getDate()),
-        time: TIMES[pi % TIMES.length], platform: PLATS[pi % PLATS.length], title: TITLES[pi % TITLES.length], status,
-      });
-      pi++;
-    };
-    const dow = (today.getDay() + 6) % 7;
-    const mon = new Date(today.getFullYear(), today.getMonth(), today.getDate() - dow);
-    const off = (n) => new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + n);
-    [0, 2, 4].forEach((o) => push(off(-7 + o), 'Published'));
-    [0, 1, 2, 3].forEach((o) => { const dt = off(o); push(dt, dt < today ? 'Published' : 'Scheduled'); });
-    [7, 9, 11].forEach((o) => push(off(o), 'Scheduled'));
-    return seeded;
-  });
+  const [posts, setPosts] = useState([]);
+  const [weeklyHistory, setWeeklyHistory] = useState([]);
 
   const [cal, setCal] = useState({ year: today.getFullYear(), month: today.getMonth(), seq: 0 });
+
+  // Calendar range widened past the visible month so the content-runway rail
+  // (anchored to *today*, independent of which month is on screen) always
+  // has data — matches Phase 1 of the schedule/publish plan.
+  const rangeStart = useMemo(() => {
+    const monthStart = new Date(cal.year, cal.month, 1);
+    const bufferStart = offsetDate(-7);
+    return monthStart < bufferStart ? monthStart : bufferStart;
+  }, [cal.year, cal.month, offsetDate]);
+  const rangeEnd = useMemo(() => {
+    const monthEnd = new Date(cal.year, cal.month + 1, 0, 23, 59, 59);
+    const bufferEnd = offsetDate(13);
+    return monthEnd > bufferEnd ? monthEnd : bufferEnd;
+  }, [cal.year, cal.month, offsetDate]);
+
+  const refetchCalendar = useCallback(() => {
+    getCalendarPosts(rangeStart.toISOString(), rangeEnd.toISOString())
+      .then(items => setPosts(items.map(item => {
+        const dt = new Date(item.effective_at);
+        return {
+          // postId is the real vault post id (used for actions like cancel/reschedule);
+          // id is unique per calendar entry — a post published on more than one
+          // real day would otherwise collide as a React list key.
+          id: `${item.id}-${dt.getTime()}`, postId: item.id,
+          y: dt.getFullYear(), m: dt.getMonth(), d: dt.getDate(),
+          key: keyOf(dt.getFullYear(), dt.getMonth(), dt.getDate()),
+          time: dt.toTimeString().slice(0, 5),
+          platform: platformLabel(item.platform),
+          title: item.title,
+          status: statusLabel(item.status),
+        };
+      })))
+      .catch(() => { /* calendar unavailable — leave the grid empty rather than fake data */ });
+    // This week's history bar depends on the same scheduled/published data
+    // the calendar just refreshed, so refetch it alongside — cheap, and
+    // keeps the momentum panel in sync with every schedule/cancel action.
+    getWeeklyHistory(12).then(setWeeklyHistory).catch(() => {});
+  }, [rangeStart, rangeEnd]);
+
+  useEffect(() => { refetchCalendar(); }, [refetchCalendar]);
   const [selKey, setSelKey] = useState(null);
   const [menuId, setMenuId] = useState(null);
   const [justDone, setJustDone] = useState(false);
+  const [weekTarget, setWeekTarget] = useState(4);
+  const [targetOpen, setTargetOpen] = useState(false);
+
+  // Load the persisted weekly-posts target once on mount (falls back to the
+  // default of 4 for a user who's never set one / hasn't onboarded yet).
+  useEffect(() => {
+    getProfile()
+      .then(profile => { if (profile?.weekly_post_target) setWeekTarget(profile.weekly_post_target); })
+      .catch(() => {});
+  }, []);
+
+  const setTarget = useCallback((n) => {
+    setWeekTarget(n);
+    setJustDone(true);
+    setTimeout(() => setJustDone(false), 900);
+    updateWeeklyTarget(n).catch(() => {});
+  }, []);
 
   const prevMonth = () => { setCal(s => { let m = s.month - 1, y = s.year; if (m < 0) { m = 11; y--; } return { year: y, month: m, seq: s.seq + 1 }; }); setSelKey(null); };
   const nextMonth = () => { setCal(s => { let m = s.month + 1, y = s.year; if (m > 11) { m = 0; y++; } return { year: y, month: m, seq: s.seq + 1 }; }); setSelKey(null); };
@@ -207,32 +273,22 @@ export default function SchedulePage() {
     return n;
   }, [offsetDate]);
 
-  const addOn = useCallback((y, m, d) => {
-    setPosts(prev => {
-      const i = prev.length;
-      const post = {
-        id: `u${Date.now()}${i}`, y, m, d, key: keyOf(y, m, d),
-        time: TIMES[i % TIMES.length], platform: PLATS[i % PLATS.length], title: TITLES[i % TITLES.length], status: 'Scheduled',
-      };
-      const next = [...prev, post];
-      if (weekCount(next) >= 5) { setJustDone(true); setTimeout(() => setJustDone(false), 1400); }
-      return next;
-    });
-    setMenuId(null);
-  }, [weekCount]);
+  // Planning a day means drafting real content — chat is the app's one
+  // content-creation entry point (see writer_node/human_approval_node), so
+  // "Plan this day"/"Plan"/the runway CTA all hand off to a new chat rather
+  // than fabricating a fake post. Scheduling an *existing* draft for a
+  // specific day/time is the postId-driven flow below, reached via chat's
+  // own "Schedule" button.
+  const addOn = useCallback(() => { goToChat(null); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const fillWeek = useCallback(() => { goToChat(null); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const removePost = useCallback((id) => {
-    setPosts(prev => prev.filter(p => p.id !== id));
+  // Cancelling a scheduled/failed post reverts it to draft (keeps the post
+  // in the vault, just off the calendar) — reuses the existing status
+  // endpoint, no new backend call needed.
+  const removePost = useCallback((postId) => {
     setMenuId(null);
-  }, []);
-
-  const fillWeek = useCallback(() => {
-    for (let o = 0; o < 5; o++) {
-      const dt = offsetDate(o);
-      const k = keyOf(dt.getFullYear(), dt.getMonth(), dt.getDate());
-      if (!posts.some(p => p.key === k)) { addOn(dt.getFullYear(), dt.getMonth(), dt.getDate()); return; }
-    }
-  }, [offsetDate, posts, addOn]);
+    updatePostStatus(postId, 'draft').then(refetchCalendar).catch(() => {});
+  }, [refetchCalendar]);
 
   const weeks = useMemo(() => {
     const year = cal.year, month = cal.month;
@@ -271,40 +327,70 @@ export default function SchedulePage() {
     return { selDate, label, dayPosts };
   }, [selKey, posts]);
 
-  const progressDone = weekCount(posts);
-  const progressTarget = 5;
-  const allPublished = useMemo(() => {
-    if (progressDone === 0) return false;
-    for (let o = 0; o < 5; o++) {
-      const dt = offsetDate(o);
-      const p = posts.find(x => x.key === keyOf(dt.getFullYear(), dt.getMonth(), dt.getDate()));
-      if (p && p.status !== 'Published') return false;
-    }
-    return true;
-  }, [posts, offsetDate, progressDone]);
+  const confirmSchedule = useCallback(() => {
+    if (!schedulingPostId || !detail?.selDate) return;
+    const [hh, mm] = pickTime.split(':').map(Number);
+    const dt = new Date(detail.selDate.getFullYear(), detail.selDate.getMonth(), detail.selDate.getDate(), hh, mm);
+    setScheduling(true);
+    updatePostStatus(schedulingPostId, 'scheduled', dt.toISOString())
+      .then(() => { cancelScheduling(); refetchCalendar(); })
+      .catch(() => {})
+      .finally(() => setScheduling(false));
+  }, [schedulingPostId, detail, pickTime, cancelScheduling, refetchCalendar]);
 
-  const momentumMsg = allPublished ? 'You showed up this week. Now keep the momentum going.'
-    : progressDone === 0 ? 'Your week is open. Let’s fill it with ideas worth sharing.'
-    : progressDone <= 2 ? 'You’re off to a good start. Keep building your rhythm.'
-    : progressDone === 3 ? 'Your rhythm is taking shape. Two more to lock the week.'
-    : progressDone === 4 ? 'One more post and your week is complete.'
-    : 'Your week is covered. Your future self will thank you.';
+  const progressDone = weekCount(posts);
+  const metTarget = progressDone >= weekTarget;
+  const onFire = progressDone > weekTarget;
+  const over = progressDone - weekTarget;
+  const dayWord = weekTarget === 1 ? 'day' : 'days';
+
+  const targetChips = useMemo(() => [1, 2, 3, 4, 5, 6, 7].map((n) => {
+    const on = n === weekTarget;
+    return { n, bg: on ? ACCENT : 'rgba(27,28,20,.04)', color: on ? '#F4F2EA' : '#5A5C4C', border: on ? 'none' : '1px solid rgba(27,28,20,.1)' };
+  }), [weekTarget]);
+
+  const momentumMsg = onFire
+    ? `You’re ${over} post${over === 1 ? '' : 's'} past your target — one step ahead of your own standards. Keep this energy.`
+    : metTarget ? 'Target hit. Your week is complete — you did exactly what you set out to do.'
+    : progressDone === 0 ? 'Set your pace above, then fill your week with ideas worth sharing.'
+    : `${weekTarget - progressDone} more post${(weekTarget - progressDone) === 1 ? '' : 's'} to reach your target of ${weekTarget} this week.`;
+  const momentumFoot = onFire ? 'This is how presence compounds — ahead of your own pace.' : 'You’re building a presence that compounds.';
 
   const history = useMemo(() => {
-    const hn = Math.min(12, STREAK_WEEKS);
+    const hn = weeklyHistory.length || 12;
     return Array.from({ length: hn }, (_, i) => {
-      const last = i === hn - 1;
-      const h = 40 + ((i * 37) % 55);
-      return { h: `${h}%`, bg: last ? ACCENT : 'rgba(20,102,59,.28)' };
+      const point = weeklyHistory[i];
+      const last = point ? point.is_current : i === hn - 1;
+      const count = point ? point.days_with_post : 0;
+      const r = weekTarget > 0 ? Math.min(1, count / weekTarget) : 0;
+      const label = `${last ? 'This week' : (i === hn - 2 ? 'Last week' : `${hn - 1 - i} weeks ago`)} · ${count}/${weekTarget}${count >= weekTarget ? ' ✓' : ''}`;
+      const bg = (last && onFire) ? '#C2410C' : `rgba(20,102,59,${(0.14 + r * 0.86).toFixed(2)})`;
+      return {
+        h: `${(26 + r * 74).toFixed(0)}%`, bg,
+        border: (last && r === 0) ? '1px dashed rgba(20,102,59,.3)' : 'none',
+        opacity: count >= weekTarget ? 1 : .92, title: label,
+      };
     });
-  }, []);
+  }, [weeklyHistory, weekTarget, onFire]);
+
+  const progressDots = useMemo(() => {
+    const dotCount = Math.max(weekTarget, progressDone);
+    const dots = [];
+    for (let i = 0; i < dotCount; i++) {
+      const bonus = i >= weekTarget;
+      if (i < progressDone) dots.push({ isFlame: bonus, filled: true });
+      else if (i === progressDone) dots.push({ isFlame: true, filled: false });
+      else dots.push({ isFlame: false, filled: false });
+    }
+    return dots;
+  }, [weekTarget, progressDone]);
 
   const cta = useMemo(() => {
-    if (allPublished || progressDone >= 5) return { title: 'Your week is covered.', sub: 'Keep the momentum going.', btn: 'Plan next week', action: () => {}, completed: true };
-    if (progressDone === 4) return { title: 'One more post to complete your week.', sub: 'You’re almost there — Friday is still open.', btn: 'Create one more', action: fillWeek, completed: false };
-    if (progressDone >= 1) { const left = 5 - progressDone; return { title: 'You’re off to a good start.', sub: `${left} more posts will complete your week.`, btn: `Create the next ${left}`, action: fillWeek, completed: false }; }
+    if (onFire) return { title: 'You’re ahead of your target.', sub: 'Every extra post compounds. Keep going.', btn: 'Plan next week', action: () => {}, completed: true };
+    if (metTarget) return { title: 'Target reached — your week is complete.', sub: 'Keep the momentum going.', btn: 'Plan next week', action: () => {}, completed: true };
+    if (progressDone >= 1) { const left = weekTarget - progressDone; return { title: 'You’re on your way.', sub: `${left} more post${left === 1 ? '' : 's'} to reach your target.`, btn: left === 1 ? 'Create one more' : `Create the next ${left}`, action: fillWeek, completed: false }; }
     return { title: 'Your week is waiting.', sub: 'Let’s fill it with ideas worth sharing.', btn: 'Plan my week', action: fillWeek, completed: false };
-  }, [allPublished, progressDone, fillWeek]);
+  }, [onFire, metTarget, progressDone, weekTarget, fillWeek]);
 
   const thisWeekRows = useMemo(() => {
     const rows = [];
@@ -347,6 +433,15 @@ export default function SchedulePage() {
             <h1 style={{ fontFamily: FONT, fontSize: 32, fontWeight: 600, lineHeight: 1.15, letterSpacing: '-.02em', color: INK, margin: '8px 0 6px' }}>Schedule</h1>
             <p style={{ fontSize: 15, color: MUTED, margin: 0, letterSpacing: '-.005em' }}>Your ideas, planned for the week ahead.</p>
           </header>
+
+          {showScheduling && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, background: 'rgba(20,102,59,.08)', border: '1px solid rgba(20,102,59,.2)', borderRadius: 12, padding: '11px 16px', marginBottom: 20 }}>
+              <span style={{ fontSize: 13.5, color: '#2C4A38', letterSpacing: '-.005em' }}>
+                Scheduling <strong style={{ fontWeight: 600 }}>{schedulingPost.title}</strong> — pick a day on the calendar, then a time.
+              </span>
+              <button onClick={cancelScheduling} style={{ border: 'none', background: 'none', color: ACCENT, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>Cancel</button>
+            </div>
+          )}
 
           <section style={{ display: 'grid', gridTemplateColumns: '1.35fr 1fr', gap: 20, alignItems: 'start', marginBottom: 34 }}>
 
@@ -415,6 +510,20 @@ export default function SchedulePage() {
                             <X size={13} strokeWidth={2.3} />
                           </button>
                         </div>
+                        {showScheduling && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#fff', border: `1px solid ${HAIRLINE}`, borderRadius: 12, padding: '10px 13px', marginBottom: 9 }}>
+                            <input
+                              type="time" value={pickTime} onChange={(e) => setPickTime(e.target.value)}
+                              style={{ border: `1px solid ${HAIRLINE}`, borderRadius: 8, padding: '6px 8px', fontSize: 13, fontFamily: MONO, color: INK }}
+                            />
+                            <button
+                              className="sch-plan" onClick={confirmSchedule} disabled={scheduling}
+                              style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 32, border: 'none', borderRadius: 9, background: ACCENT, color: '#F4F2EA', fontSize: 12.5, fontWeight: 600, cursor: scheduling ? 'default' : 'pointer', opacity: scheduling ? 0.7 : 1 }}
+                            >
+                              <CalendarClock size={13} strokeWidth={2.3} />{scheduling ? 'Scheduling…' : 'Schedule for this day'}
+                            </button>
+                          </div>
+                        )}
                         {detail.dayPosts.length > 0 ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
                             {detail.dayPosts.map(p => {
@@ -451,7 +560,7 @@ export default function SchedulePage() {
 
             {/* MOMENTUM */}
             <div style={{ background: '#F1F7F1', border: '1px solid rgba(20,102,59,.14)', borderRadius: 18, padding: '22px 22px 20px', animation: 'schRise .55s cubic-bezier(.22,1,.36,1) both .1s' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 18 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 14 }}>
                 <span style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38, flex: '0 0 38px', borderRadius: 11, background: '#fff', border: '1px solid rgba(20,102,59,.14)' }}>
                   <span style={{ position: 'absolute', width: 22, height: 22, borderRadius: 999, background: 'radial-gradient(circle,rgba(249,115,22,.45),transparent 70%)', animation: 'schGlow 1.6s ease-in-out infinite' }} />
                   <span style={{ position: 'relative', transformOrigin: '50% 80%', animation: 'schFlame 1.3s ease-in-out infinite', display: 'flex' }}><FlameIcon size={20} /></span>
@@ -462,22 +571,48 @@ export default function SchedulePage() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 34, marginBottom: 20 }}>
+              <div style={{ position: 'relative', display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+                <button className="sch-targetbtn" onClick={() => setTargetOpen(o => !o)} title="Set weekly target" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 34, padding: '0 12px 0 14px', border: `1px solid ${targetOpen ? 'rgba(20,102,59,.5)' : 'rgba(27,28,20,.12)'}`, background: '#fff', borderRadius: 10, cursor: 'pointer' }}>
+                  <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '.12em', textTransform: 'uppercase', color: MUTED_3, fontWeight: 500 }}>Target</span>
+                  <span style={{ fontFamily: FONT, fontSize: 13, fontWeight: 600, color: ACCENT }}>{weekTarget}/wk</span>
+                  <ChevronDown size={12} strokeWidth={2.4} style={{ transform: targetOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform .2s ease' }} />
+                </button>
+                {targetOpen && (
+                  <>
+                    <div onClick={() => setTargetOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 20 }} />
+                    <div style={{ position: 'absolute', top: 38, right: 0, zIndex: 21, width: 214, background: '#fff', border: `1px solid ${HAIRLINE}`, borderRadius: 13, boxShadow: '0 22px 50px -22px rgba(20,60,30,.4), 0 4px 12px -6px rgba(27,28,20,.14)', padding: 14, transformOrigin: 'top right', animation: 'schPop .22s cubic-bezier(.22,1,.36,1) both' }}>
+                      <div style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '.16em', textTransform: 'uppercase', color: MUTED_3, fontWeight: 500, marginBottom: 10 }}>Posts per week</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 5 }}>
+                        {targetChips.map(c => (
+                          <button key={c.n} className="sch-chip" onClick={() => setTarget(c.n)} style={{ height: 32, border: c.border, borderRadius: 8, background: c.bg, color: c.color, fontFamily: FONT, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>{c.n}</button>
+                        ))}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: MUTED_5, marginTop: 11, lineHeight: 1.45, letterSpacing: '-.005em' }}>Aim for <span style={{ color: ACCENT, fontWeight: 600 }}>{weekTarget} {dayWord} a week</span>. Hit it and the week is yours.</div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 34, marginBottom: 9 }}>
                 {history.map((h, i) => (
-                  <span key={i} style={{ flex: 1, height: h.h, borderRadius: 3, background: h.bg }} />
+                  <span key={i} title={h.title} style={{ flex: 1, height: h.h, borderRadius: 3, background: h.bg, border: h.border, opacity: h.opacity }} />
                 ))}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+                <span style={{ fontSize: 11, color: MUTED_4, letterSpacing: '-.005em' }}>12-week consistency</span>
+                <span style={{ fontSize: 11, color: MUTED_2, fontWeight: 600, letterSpacing: '-.005em' }}>This week</span>
               </div>
 
               <div style={{ height: 1, background: HAIRLINE, marginBottom: 18 }} />
 
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, marginBottom: 13 }}>
                 <span style={{ fontSize: 13.5, color: '#5A5C4C', fontWeight: 500, letterSpacing: '-.005em' }}>This week</span>
-                <span style={{ fontFamily: FONT, fontSize: 14, fontWeight: 600, color: INK }}><span style={{ color: ACCENT }}>{progressDone}</span> / {progressTarget} scheduled</span>
+                <span style={{ fontFamily: FONT, fontSize: 14, fontWeight: 600, color: INK }}><span style={{ color: onFire ? '#C2410C' : ACCENT }}>{progressDone}</span> / {weekTarget} {onFire ? `done · +${over} over` : 'target'}</span>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                {Array.from({ length: 5 }, (_, i) => {
-                  if (i === progressDone) {
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 9, marginBottom: 16 }}>
+                {progressDots.map((p, i) => {
+                  if (p.isFlame) {
                     return (
                       <span key={i} style={{ position: 'relative', width: 19, height: 19, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <span style={{ position: 'absolute', width: 24, height: 24, borderRadius: 999, background: 'radial-gradient(circle,rgba(249,115,22,.4),transparent 70%)', animation: 'schGlow 1.5s ease-in-out infinite' }} />
@@ -485,30 +620,29 @@ export default function SchedulePage() {
                       </span>
                     );
                   }
-                  const filled = i < progressDone;
                   return (
                     <span key={i} style={{
                       width: 19, height: 19, borderRadius: 999,
-                      background: filled ? ACCENT : 'rgba(20,102,59,.1)',
-                      border: filled ? 'none' : '1.5px solid rgba(20,102,59,.25)',
-                      boxShadow: filled ? 'inset 0 -2px 3px rgba(0,0,0,.16), 0 1px 2px rgba(20,102,59,.45)' : 'none',
-                      animation: filled && justDone ? `schPop .5s cubic-bezier(.22,1,.36,1) both ${(i * 0.06).toFixed(2)}s` : 'none',
+                      background: p.filled ? ACCENT : 'rgba(20,102,59,.1)',
+                      border: p.filled ? 'none' : '1.5px solid rgba(20,102,59,.25)',
+                      boxShadow: p.filled ? 'inset 0 -2px 3px rgba(0,0,0,.16), 0 1px 2px rgba(20,102,59,.45)' : 'none',
+                      animation: p.filled && justDone ? `schPop .5s cubic-bezier(.22,1,.36,1) both ${(i * 0.06).toFixed(2)}s` : 'none',
                     }} />
                   );
                 })}
               </div>
 
-              <div style={{ background: '#fff', border: `1px solid ${HAIRLINE}`, borderRadius: 13, padding: '14px 15px', animation: (justDone && progressDone >= 5) ? 'schPop .9s ease-out both' : 'none' }}>
+              <div style={{ background: onFire ? '#FFF4EC' : '#fff', border: `1px solid ${onFire ? 'rgba(194,65,12,.2)' : HAIRLINE}`, borderRadius: 13, padding: '14px 15px', animation: (justDone && metTarget) ? 'schRing .9s ease-out both' : 'none' }}>
+                {onFire && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                    <span style={{ flex: '0 0 16px', transformOrigin: '50% 80%', animation: 'schFlame 1.1s ease-in-out infinite', display: 'flex' }}><FlameIcon size={16} /></span>
+                    <span style={{ fontFamily: FONT, fontSize: 14, fontWeight: 700, color: '#C2410C', letterSpacing: '-.01em' }}>You&rsquo;re on fire</span>
+                  </div>
+                )}
                 <p style={{ fontFamily: FONT, fontSize: 14.5, lineHeight: 1.5, color: '#26281C', margin: 0, letterSpacing: '-.005em' }}>{momentumMsg}</p>
               </div>
 
-              <p style={{ fontSize: 12.5, color: MUTED_5, margin: '15px 0 0', lineHeight: 1.5, letterSpacing: '-.005em' }}>You&rsquo;re building a presence that compounds.</p>
-              <div style={{ display: 'flex', gap: 10, marginTop: 15, padding: '13px 14px', background: 'rgba(20,102,59,.08)', borderRadius: 12 }}>
-                <span style={{ flex: '0 0 16px', marginTop: 1, transformOrigin: '50% 80%', animation: 'schFlame 1.4s ease-in-out infinite', display: 'flex' }}><FlameIcon size={16} /></span>
-                <p style={{ fontSize: 13, lineHeight: 1.55, color: '#2C4A38', margin: 0, fontWeight: 500, letterSpacing: '-.005em' }}>
-                  Post at least <span style={{ color: ACCENT, fontWeight: 600 }}>5 days a week</span> and you&rsquo;ll stand apart from 95% of the crowd — opening opportunities you could only ever imagine.
-                </p>
-              </div>
+              <p style={{ fontSize: 12.5, color: MUTED_5, margin: '15px 0 0', lineHeight: 1.5, letterSpacing: '-.005em' }}>{momentumFoot}</p>
             </div>
           </section>
 
@@ -556,7 +690,7 @@ export default function SchedulePage() {
                               <button className="sch-menuitem" onClick={() => setMenuId(null)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '9px 10px', border: 'none', background: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, color: '#3A3C30', cursor: 'pointer' }}>
                                 <CalendarClock size={14} />Reschedule
                               </button>
-                              <button className="sch-menuitem" onClick={() => removePost(r.p.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '9px 10px', border: 'none', background: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, color: DANGER, cursor: 'pointer' }}>
+                              <button className="sch-menuitem" onClick={() => removePost(r.p.postId)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '9px 10px', border: 'none', background: 'none', borderRadius: 8, fontSize: 13, fontWeight: 500, color: DANGER, cursor: 'pointer' }}>
                                 <Trash2 size={14} />Cancel post
                               </button>
                             </div>

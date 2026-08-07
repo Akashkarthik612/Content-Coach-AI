@@ -10,7 +10,7 @@ needs profile context, writer_node needs style + profile context.
 
 No instance state anywhere here — both classes are stateless namespaces
 (never instantiated), matching the @staticmethod convention already used by
-researcher.py's AngleResponseParser/ToolCallExecutor/ResearchPromptBuilder.
+researcher.py's ResearchArtifactParser/ToolCallExecutor/ResearchPromptBuilder.
 """
 import asyncio
 import logging

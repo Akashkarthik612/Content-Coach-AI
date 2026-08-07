@@ -27,6 +27,7 @@ class PostStatus(str, enum.Enum):
     published = "published"
     archived = "archived"
     scheduled = "scheduled"
+    failed = "failed"  # scheduled post whose auto-publish attempt exhausted retries
 
 
 class Folder(Base):
@@ -68,6 +69,8 @@ class Post(Base):
     current_version = Column(Integer, nullable=False, default=1, server_default="1")
     is_pinned = Column(Boolean, nullable=False, default=False, server_default="false")
     scheduled_at = Column(DateTime(timezone=True), nullable=True)
+    schedule_attempts = Column(Integer, nullable=False, default=0, server_default="0")
+    last_schedule_error = Column(Text, nullable=True)
     created_at = Column(
         DateTime(timezone=True), nullable=False, default=_utcnow, server_default="now()"
     )
@@ -167,6 +170,7 @@ class PostAnalytics(Base):
     )
     impressions = Column(Integer, nullable=False, default=0, server_default="0")
     reactions   = Column(Integer, nullable=False, default=0, server_default="0")
+    comments    = Column(Integer, nullable=False, default=0, server_default="0")
     updated_at  = Column(
         DateTime(timezone=True), nullable=False, default=_utcnow, server_default="now()"
     )

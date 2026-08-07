@@ -27,7 +27,8 @@ class AgentState(TypedDict):
     # Overrunning it forces route="direct" instead of raising.
     steps_taken: int
 
-    # Set by researcher_node: {"angles": [up to 5 ResearchAngle dicts], "search_context": str,
+    # Set by researcher_node: {"angles": [up to 5 wire dicts, adapted from ResearchArtifactItem
+    # via ResearchArtifactParser.to_wire_dicts()], "search_context": str,
     # "summary": str}. "summary" is a short (2-4 sentence) personalized intro, grounded in
     # the user's profile when available, explaining what's being proposed and why — may be
     # "" if the LLM omitted it, never required. Read by angle_review_node (surfaced in the
@@ -46,6 +47,13 @@ class AgentState(TypedDict):
     # angle's raw argument/glimpse. None when the user picked an angle they
     # never touched (map_chosen_angle_node falls back to the raw angle then).
     final_angle_sections: list[dict] | None
+
+    # Set by angle_review_node's "pick" branch from the resume payload's
+    # "content" field — the raw stat/story/detail the user typed into the
+    # frontend's "personalize the hook" modal before picking an angle. ""
+    # when skipped. Read once by map_chosen_angle_node and folded into
+    # research_brief.personal_hook_input for writer_node to open the post with.
+    personal_hook_input: str
 
     # Debug/forward-compat marker — records which node most recently produced
     # a state transition worth knowing about on resume (e.g. "angle_review").
