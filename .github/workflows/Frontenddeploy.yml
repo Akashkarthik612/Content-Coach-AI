@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - feat/analyser
+      - feature/scheduler-analytics-hook-personalization
     paths: 
       - 'frontend/**'
       - '.github/workflows/Frontenddeploy.yml'
+      - '.github/workflows/frontend-e2e.yml'
    
   workflow_dispatch:
 
