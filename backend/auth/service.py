@@ -12,6 +12,20 @@ from backend.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+_USERNAME_CONSTRAINT = "uq_users_username"
+
+
+def _is_username_collision(exc: IntegrityError) -> bool:
+    orig = getattr(exc, "orig", None)
+    constraint_name = getattr(getattr(orig, "diag", None), "constraint_name", None)
+    if constraint_name:
+        return constraint_name == _USERNAME_CONSTRAINT
+    # Fallback for DB-APIs that don't expose `.diag` (e.g. sqlite, used in tests) —
+    # every driver's IntegrityError message names the offending column/constraint.
+    message = str(orig or exc)
+    return _USERNAME_CONSTRAINT in message or "users.username" in message
+
+
 # Singleton (same pattern as the `_llm` module-level instances elsewhere) — PyJWKClient
 # caches Supabase's public signing keys internally so most calls don't hit the network.
 _jwks_client: PyJWKClient | None = None
@@ -64,12 +78,28 @@ class UserSyncService:
             db.add(user)
             try:
                 db.commit()
-            except IntegrityError:
+            except IntegrityError as exc:
+                db.rollback()
+                if _is_username_collision(exc):
+                    # Another user already holds this username (a pre-existing bad
+                    # row, or two signups landing in the same instant — new signups
+                    # are now blocked earlier by AuthAvailabilityService). Never let
+                    # this block the request: every authenticated route depends on
+                    # this method succeeding, so provision without the username
+                    # rather than 500ing the user's entire session.
+                    logger.warning(
+                        "Shadow username collision, provisioning without it: user_id=%s username=%r",
+                        user_id, identity.username,
+                    )
+                    user = User(id=user_id, email=identity.email, username=None)
+                    db.add(user)
+                    db.commit()
+                    db.refresh(user)
+                    return user
                 # Concurrent request already inserted this user between our
                 # get() check and this commit (the frontend fires several
                 # authenticated requests in parallel on page load) — fall
                 # back to reading it instead of crashing.
-                db.rollback()
                 user = db.get(User, user_id)
                 if user is None:
                     raise
@@ -81,16 +111,50 @@ class UserSyncService:
         # confirms an email change or updates their username via Supabase),
         # but this row is only ever written once on first sight otherwise —
         # re-sync on every call so a change made in Supabase actually shows
-        # up here on the user's next authenticated request.
-        changed = False
+        # up here on the user's next authenticated request. Email and username
+        # are committed separately so a username collision can never block a
+        # legitimate email sync (or vice versa).
         if identity.email and user.email != identity.email:
             user.email = identity.email
-            changed = True
-        if identity.username and user.username != identity.username:
-            user.username = identity.username
-            changed = True
-        if changed:
-            logger.info("Synced user row from JWT claims: user_id=%s", user_id)
+            logger.info("Synced email from JWT claims: user_id=%s", user_id)
             db.commit()
             db.refresh(user)
+
+        if identity.username and user.username != identity.username:
+            user.username = identity.username
+            logger.info("Synced username from JWT claims: user_id=%s", user_id)
+            try:
+                db.commit()
+            except IntegrityError as exc:
+                db.rollback()
+                if not _is_username_collision(exc):
+                    raise
+                # Someone else already holds the new username — keep this
+                # user's previously-stored value rather than aborting.
+                logger.warning(
+                    "Self-heal username collision, keeping stored value: user_id=%s username=%r",
+                    user_id, identity.username,
+                )
+                db.refresh(user)
+            else:
+                db.refresh(user)
         return user
+
+
+class AuthAvailabilityService:
+    """Pre-signup uniqueness check — lets the frontend reject a taken
+    username/email before ever calling Supabase's signUp(), instead of
+    discovering the collision later when UserSyncService provisions the
+    shadow row."""
+
+    @staticmethod
+    def check(db: Session, username: str | None, email: str | None) -> tuple[bool, bool]:
+        username_available = True
+        if username:
+            username_available = db.query(User).filter(User.username == username).first() is None
+
+        email_available = True
+        if email:
+            email_available = db.query(User).filter(User.email == email).first() is None
+
+        return username_available, email_available

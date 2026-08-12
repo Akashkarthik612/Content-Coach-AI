@@ -83,12 +83,12 @@ class LocalUserService:
     def _assert_username_free(self, username: str) -> None:
         if self.db.query(User).filter(User.username == username).first():
             logger.warning("Local registration rejected: username=%s already taken", username)
-            raise HTTPException(status_code=409, detail="Username already taken")
+            raise HTTPException(status_code=409, detail="Username already exists")
 
     def _assert_email_free(self, email: str) -> None:
         if self.db.query(User).filter(User.email == email).first():
             logger.warning("Local registration rejected: email already registered")
-            raise HTTPException(status_code=409, detail="Email already registered")
+            raise HTTPException(status_code=409, detail="Email already exists")
 
     @staticmethod
     def _hash(password: str) -> str:

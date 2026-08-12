@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.analytics.router import router as analytics_router
+from backend.auth.router import router as auth_router
 from backend.vault.router import router as vault_router
 from backend.ai.router import router as ai_router
 from backend.ai.graph import build_assistant
@@ -67,6 +68,7 @@ app.include_router(ai_router)
 app.include_router(linkedin_router, prefix="/api/linkedin")
 app.include_router(profile_router)
 app.include_router(analytics_router)
+app.include_router(auth_router)
 
 if settings.AUTH_PROVIDER == "local":
     # Dev-only password auth (bcrypt + X-User-Id) — see backend/auth_local/. Never

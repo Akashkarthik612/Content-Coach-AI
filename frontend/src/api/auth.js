@@ -1,9 +1,32 @@
+import axios from 'axios';
+
 import { supabase } from '../lib/supabaseClient';
 import { localLogin, localRegister } from './localAuth';
 
 // Dev-only switch — see AUTH_PROVIDER on the backend (backend/auth_local/).
 // Defaults to Supabase; never set VITE_AUTH_MODE=local outside local dev.
 const IS_LOCAL_AUTH = import.meta.env.VITE_AUTH_MODE === 'local';
+
+// Mounted unconditionally on the backend regardless of AUTH_PROVIDER — see
+// backend/auth/router.py.
+const _authApi = axios.create({ baseURL: '/api/auth' });
+
+// Pre-signup uniqueness check — lets us reject a taken username/email before
+// ever calling supabase.auth.signUp(), instead of discovering the collision
+// later when the backend shadow-provisions the user row.
+async function _checkAvailability(username, email) {
+  const { data } = await _authApi.get('/availability', { params: { username, email } });
+  if (!data.username_available) {
+    const e = new Error('Username already exists');
+    e.code = 'conflict';
+    throw e;
+  }
+  if (!data.email_available) {
+    const e = new Error('Email already exists');
+    e.code = 'conflict';
+    throw e;
+  }
+}
 
 // ── Error classifier ──────────────────────────────────────────────────────────
 // Single place that maps Supabase errors to user messages + machine codes.
@@ -32,6 +55,8 @@ export const login = async (email, password) => {
 
 export const register = async (username, email, password) => {
   if (IS_LOCAL_AUTH) return localRegister(username, email, password);
+
+  await _checkAvailability(username, email);
 
   const { data, error } = await supabase.auth.signUp({
     email,
