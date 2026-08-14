@@ -3,6 +3,8 @@
 // DashboardPage.jsx's inline Sidebar (2026-07-29: Dashboard/Templates/Analytics
 // nav entries removed along with that page — Chat is the app's home page now).
 
+import { logout } from '../../api/auth';
+
 const INK    = '#111827'
 const BODY   = '#4B5563'
 const MUTED  = '#6B7280'
@@ -144,7 +146,7 @@ export function AppSidebar({ navigate, activeKey = 'content', collapsed, onToggl
                 <div style={{ fontSize: 13, fontWeight: 600, color: INK, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
                 <div style={{ fontSize: 11.5, color: FAINT }}>Pro plan</div>
               </div>
-              <button onClick={() => { localStorage.clear(); navigate('/login') }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }} title="Sign out">
+              <button onClick={async () => { await logout(); navigate('/login') }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' }} title="Sign out">
                 <svg viewBox="0 0 20 20" fill="none" stroke={FAINT} strokeWidth="1.6" width="15" height="15">
                   <circle cx="10" cy="5" r="1.5"/><circle cx="10" cy="10" r="1.5"/><circle cx="10" cy="15" r="1.5"/>
                 </svg>

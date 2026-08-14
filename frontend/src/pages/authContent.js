@@ -32,6 +32,16 @@ export const AUTH_COPY = {
     forgotLink: 'Forgot?',
   },
 
+  forgotPassword: {
+    heading: 'Reset your password',
+    sub: "Enter your email and we'll send you a link to reset your password.",
+    emailPlaceholder: 'you@example.com',
+    submit: 'Send reset link',
+    submitting: 'Sending…',
+    sentHeading: 'Check your email',
+    backToLogin: '← Back to log in',
+  },
+
   switchMode: {
     signupPrompt: 'Already have an account?',
     signupAction: 'Log in',

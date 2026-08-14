@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import LandingPage from './pages/landing/LandingPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import WelcomeSplashPage from './pages/WelcomeSplashPage';
 import OnboardingPage from './pages/OnboardingPage';
 import MyWorkPage from './pages/MyWorkPage';
 import ChatPage from './pages/ChatPage';
@@ -43,6 +45,8 @@ export default function App() {
         <Route path="/login"    element={<HomePage initialMode="login" />} />
         <Route path="/register" element={<HomePage initialMode="register" />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/welcome"    element={<RequireAuth><WelcomeSplashPage /></RequireAuth>} />
         <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
         <Route path="/my-work"    element={<RequireAuth><MyWorkPage /></RequireAuth>} />
         <Route path="/vault"      element={<RequireAuth><MyWorkPage /></RequireAuth>} />

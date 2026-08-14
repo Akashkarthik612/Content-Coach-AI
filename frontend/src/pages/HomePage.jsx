@@ -101,7 +101,6 @@ export default function HomePage({ initialMode = 'login' }) {
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
   const [googleMsg, setGoogleMsg] = useState('');
-  const [forgotMsg, setForgotMsg] = useState('');
   const [confirmMsg, setConfirmMsg] = useState('');
   const [submitHov, setSubmitHov] = useState(false);
   const [googleHov, setGoogleHov] = useState(false);
@@ -112,7 +111,7 @@ export default function HomePage({ initialMode = 'login' }) {
   function field(key) { return e => setForm(f => ({ ...f, [key]: e.target.value })); }
 
   function switchMode(next) {
-    setError(''); setGoogleMsg(''); setForgotMsg(''); setConfirmMsg('');
+    setError(''); setGoogleMsg(''); setConfirmMsg('');
     setForm({ name: '', email: '', password: '' });
     setMode(next);
   }
@@ -122,7 +121,7 @@ export default function HomePage({ initialMode = 'login' }) {
     setError(''); setLoading(true);
     try {
       await login(form.email, form.password);
-      navigate('/chat');
+      navigate('/welcome', { state: { next: '/chat' } });
     } catch (err) {
       setError(err.message);
     } finally { setLoading(false); }
@@ -142,7 +141,7 @@ export default function HomePage({ initialMode = 'login' }) {
       if (data.needsEmailConfirmation) {
         setConfirmMsg(`Check ${data.email} for a confirmation link, then log in.`);
       } else {
-        navigate('/onboarding');
+        navigate('/welcome', { state: { next: '/onboarding' } });
       }
     } catch (err) {
       setError(err.message);
@@ -160,7 +159,7 @@ export default function HomePage({ initialMode = 'login' }) {
 
   function handleForgot(e) {
     e.preventDefault();
-    setForgotMsg("Password reset isn't available yet — contact support.");
+    navigate('/forgot-password');
   }
 
   return (
@@ -250,11 +249,6 @@ export default function HomePage({ initialMode = 'login' }) {
             {error && (
               <p style={{ fontSize: 13, color: C.errText, background: C.errBg, borderRadius: 10, padding: '9px 12px', margin: '4px 0 0', textAlign: 'center', fontFamily: GEIST }}>
                 {error}
-              </p>
-            )}
-            {!error && forgotMsg && (
-              <p style={{ fontSize: 12.5, color: C.muted, textAlign: 'center', margin: '4px 0 0' }}>
-                {forgotMsg}
               </p>
             )}
             {!error && confirmMsg && (

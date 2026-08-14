@@ -9,6 +9,7 @@ import { streamQuery, resumeAI, refineAI, getSessionThreads, getSessions, delete
 import { publishToLinkedIn, getLinkedInStatus, getLinkedInAuthUrl } from '../api/linkedin';
 import { getVersions } from '../api/vault';
 import { getProfile } from '../api/profile';
+import { logout } from '../api/auth';
 import HonneSidebar, { iconBtn } from '../components/shared/HonneSidebar';
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -769,7 +770,7 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const userName = localStorage.getItem('username') || 'there';
   const userInitial = userName.charAt(0).toUpperCase();
-  const handleLogout = () => { localStorage.clear(); navigate('/login'); };
+  const handleLogout = async () => { await logout(); navigate('/login'); };
 
   const [sideOpen, setSideOpen] = useState(true);
   const [profileOpen, setProfileOpen] = useState(false);

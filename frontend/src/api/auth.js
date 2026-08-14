@@ -81,3 +81,21 @@ export const googleSignIn = async () => {
   if (error) throw _classify(error);
   // Browser redirects away on success — nothing more to do here.
 };
+
+// Clears the localStorage keys authSession.js mirrors the Supabase session into.
+function _clearSession() {
+  localStorage.removeItem('user_id');
+  localStorage.removeItem('username');
+}
+
+class Logout {
+  static async execute() {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw _classify(error);
+    // Belt-and-suspenders — authSession.js's onAuthStateChange listener also
+    // clears these on the SIGNED_OUT event signOut() triggers.
+    _clearSession();
+  }
+}
+
+export const logout = () => Logout.execute();

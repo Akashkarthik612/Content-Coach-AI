@@ -4,6 +4,7 @@ import { Check, AlertTriangle } from 'lucide-react';
 import { getSessions, deleteSession } from '../api/ai';
 import { getAccountSettings } from '../api/profile';
 import { updateEmail, sendPasswordResetEmail } from '../api/account';
+import { logout } from '../api/auth';
 import HonneSidebar from '../components/shared/HonneSidebar';
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -213,7 +214,7 @@ export default function SettingsPage() {
     }
   };
 
-  const handleLogout = () => { localStorage.clear(); navigate('/login'); };
+  const handleLogout = async () => { await logout(); navigate('/login'); };
 
   const askCancel = () => setConfirmCancel(true);
   const dismissCancel = () => setConfirmCancel(false);

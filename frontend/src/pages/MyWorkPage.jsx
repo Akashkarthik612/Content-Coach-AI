@@ -409,7 +409,7 @@ function EditorView({ post, onBack, onPostSynced }) {
     if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px' }
   }
 
-  async function persistNow() {
+  async function persistNow(final = false) {
     const currentTitle = titleValueRef.current.trim()
     const currentBody  = bodyValueRef.current
     const updates = {}
@@ -418,7 +418,7 @@ function EditorView({ post, onBack, onPostSynced }) {
       updates.title = updated.title
     }
     if (currentBody.trim()) {
-      await saveVersion(post.id, currentBody, null, false)
+      await saveVersion(post.id, currentBody, null, final)
       const flat = flatten(currentBody)
       updates.preview = flat.slice(0, 220)
       updates.word_count = flat ? flat.split(' ').length : 0
@@ -510,7 +510,10 @@ function EditorView({ post, onBack, onPostSynced }) {
     clearTimeout(saveTimerRef.current)
     const isEmpty = !titleValueRef.current.trim() && !bodyValueRef.current.trim()
     if (!isEmpty) {
-      try { await persistNow() } catch (err) { console.error('Save on close failed:', err) }
+      // Closing the editor is the "finished this draft" checkpoint — mark the
+      // version final so it's embedded and searchable by the AI (search_vault_posts),
+      // same as any other final save. Autosaves while typing stay non-final.
+      try { await persistNow(true) } catch (err) { console.error('Save on close failed:', err) }
     }
     onBack(post.id, isEmpty)
   }
