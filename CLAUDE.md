@@ -1,7 +1,7 @@
 # Content Coach — Project State
 > Living reference for Claude. This file describes only the current state of the code — no changelog, no history. When architecture, decisions, or status change, edit the relevant section in place; do not append a dated entry.
 > **UI/Frontend state:** see [claude_ui.md](claude_ui.md) for the frontend component map, design tokens, and page-by-page breakdown.
-> Last updated: 2026-08-04
+> Last updated: 2026-08-26
 
 ---
 
@@ -38,7 +38,6 @@
 | LLM (supervisor) | `gemini-3.5-flash-lite` · temp `0.0` · `thinking_level="low"` · `max_output_tokens=2048` |
 | LLM (writer) | `gemini-3.6-flash` · temp `0.7` · `thinking_level="low"` · `max_output_tokens=8192` · `streaming=True` |
 | LLM (researcher — angle generation) | `gemini-3.6-flash` · temp `0.7` · `thinking_level="high"` (deliberate — needs real reasoning depth) · `max_output_tokens=8192` |
-| LLM (researcher — expand/modify) | `gemini-3.6-flash` · temp `0.3` · `thinking_level="low"` · `max_output_tokens=2048` · no tools bound |
 | LLM (style analyzer) | `gemini-3.1-flash-lite` · temp `0.1` · `thinking_level` not set · `max_output_tokens=1024` |
 | LLM resilience | `backend/ai/llm_retry.py` — `invoke_with_retry`/`invoke_with_retry_sync`, tenacity exponential backoff (1–10s, up to 3 attempts) on Gemini 429/503/504 `ClientError`/`ServerError` only; other failures raise immediately. No key-rotation fallback exists in the codebase. |
 | Web search (researcher) | Tavily (`tavily-python`) — `tools.py`'s `web_search`, `search_depth="basic"`, 4 results max, no per-user rate limit (see Known Gaps) |
@@ -102,8 +101,8 @@ f:\My_first_product\
 │   │       ├── context_loaders.py       ← `ProfileContextLoader`, `StyleContextLoader` — stateless read helpers used by `writer_node`/`researcher_node`
 │   │       ├── writer_node.py           ← Style-aware LinkedIn post drafter; Strategy pattern (cold-start vs. onboarding-profile vs. style-aware prompt); `writer_task.action` (`"write"`/`"rewrite"`) picks the branch; weaves in `research_brief` when present
 │   │       ├── human_approval_node.py   ← `interrupt()` HITL checkpoint; saves via `save_draft_to_vault()` on approve/edit, discards on reject
-│   │       ├── researcher.py            ← `researcher_linkedin()` — manual `bind_tools()` loop (`_MAX_TOOL_LOOP_ROUNDS=6`) over `web_search` + `search_vault_posts`, grounded in `user_profile` context when available. Its system prompt opens with an internal mode-selection step (Strategic Angles / Content Series / Research Brief / Comparison / Learning Guide / Evidence Pack) — prompt-only reasoning, always resolves to Strategic Angles in practice since this node is only reached via LinkedIn post-writing requests. `ResearchArtifactParser` parses the final turn into a mode-agnostic `ResearchArtifact` (`ResearchArtifactItem`s with a generic `attributes` bag); only `"strategic_angles"` has a registered regex/format today, any other mode raises `ResearcherDecisionError`. `researcher_node()` is the Send-dispatched graph wrapper — adapts the artifact back to the existing `{angles, search_context, summary}` wire shape via `ResearchArtifactParser.to_wire_dicts()`, so the review pipeline/frontend are untouched by the mode-agnostic internals. `expand_research_angle()` / `modify_angle_summary()` are separate tools-less one-shot calls used by `angle_review_node`'s `expand`/`modify` actions
-		│       ├── angle_review_node.py   ← `angle_review_node` — INTERRUPT node, loops on `interrupt()` within one invocation for `pick`/`expand`/`modify`/`none_fit`. `map_chosen_angle_node` — pure Python, reshapes the picked angle wire dict (plus any edited `final_angle_sections`) into `FlatResearchBrief`, writes `research_brief`
+│   │       ├── researcher.py            ← `researcher_linkedin()` — manual `bind_tools()` loop (`_MAX_TOOL_LOOP_ROUNDS=6`) over `web_search` + `search_vault_posts`, grounded in `user_profile` context when available. Its system prompt (`ResearchPromptBuilder.RESEARCH_SYSTEM`) now asks the LLM to choose per-turn between `MODE: CLARIFY` (a single batched question, used when there's too little to work with) and `MODE: ANGLES` with `REQUEST_TYPE: SINGLE_POST` (5 angles, unchanged from before) or `REQUEST_TYPE: SERIES` (N≤5 angles titled `"Part {i} of {N} — {Title}"`, one per part). `ResearchArtifactParser`/`researcher_node()` were **not** updated to match — see Known Gaps. `ResearchArtifactParser` parses the final turn into a mode-agnostic `ResearchArtifact` (`ResearchArtifactItem`s with a generic `attributes` bag); only `"strategic_angles"` has a registered regex/format today (still the single hardcoded mode argument passed into `.parse()`), any other mode raises `ResearcherDecisionError`. `researcher_node()` is the Send-dispatched graph wrapper — adapts the artifact back to the existing `{angles, search_context, summary}` wire shape via `ResearchArtifactParser.to_wire_dicts()`, so the review pipeline/frontend are untouched by the mode-agnostic internals
+		│       ├── angle_review_node.py   ← `angle_review_node` — INTERRUPT node, loops on `interrupt()` within one invocation for `pick`/`none_fit` (`expand`/`modify` — per-angle refine-before-picking — existed only for the old multi-card angle picker UI and were removed along with it). `map_chosen_angle_node` — pure Python, reshapes the picked angle wire dict into `FlatResearchBrief`, writes `research_brief`
 │   │       ├── sql_fetch_node.py        ← Write-only: `save_draft_to_vault()`
 │   │       ├── style_agent.py           ← `analyze_style()` LLM fn + `_fetch_posts_and_count()` DB helper. There is no separate `style_retriever_node` graph node — style resolution is folded into `writer_node` via `context_loaders.StyleContextLoader`
 │   │       ├── tools.py                 ← 7 async `@tool` functions — see Tools table below. `get_style_samples` is defined but not bound anywhere — dead
@@ -241,7 +240,7 @@ In prod (`AUTH_PROVIDER=supabase`, the default) `/register` and `/login` don't e
 | POST | `/stream` | `{prompt, session_id?}` | SSE. Mints/registers a thread via `ThreadSessionService.start()`. Event types: `token`, `activity`, `done`, `error`. `done` payload: `{status: "awaiting_approval"\|"awaiting_angle_selection"\|"complete", thread_id, session_id, ...}` |
 | POST | `/query` | `{prompt, session_id?}` | Non-streaming `ainvoke()` equivalent of `/stream` |
 | POST | `/draft-from-topic` | `{topic, platform="linkedin", session_id?}` | Bypasses the supervisor (`pre_routed=True`), pre-seeds `research_brief` via `topic_to_flat()` |
-| POST | `/resume` | `{thread_id, action, content="", angle_id?}` | `action` is a `human_approval_node` decision (`approved`\|`edited`\|`rejected`) or an `angle_review_node` decision (`pick`\|`expand`\|`modify`\|`none_fit`). 403 if the caller isn't the thread's registered owner. A `pick` can chain into a second interrupt (the new draft's own approval pause) |
+| POST | `/resume` | `{thread_id, action, content="", angle_id?}` | `action` is a `human_approval_node` decision (`approved`\|`edited`\|`rejected`\|`regenerate`) or an `angle_review_node` decision (`pick`\|`none_fit`). 403 if the caller isn't the thread's registered owner. A `pick` can chain into a second interrupt (the new draft's own approval pause) |
 | GET | `/threads/{thread_id}` | — | Read-only rehydration via `aget_state()` + `shape_thread_state()`; owner-only, no `.touch()` side effect |
 | GET | `/sessions` | — | The caller's live (not-yet-expired) `chat_sessions` Store records, most-recently-active first |
 | GET | `/sessions/{session_id}/threads` | — | Every `thread_id` grouped under this session, shaped via `shape_thread_state()` |
@@ -307,9 +306,9 @@ Two providers, switched by `AUTH_PROVIDER`/`VITE_AUTH_MODE` (both default `"supa
 |---|---|---|---|
 | `supervisor_node` | COGNITIVE + TOOL CALLER | `agents/supervisor.py` | Binds 5 tools, loops on tool calls (`_MAX_STEPS=4`), then emits a `SupervisorClassification` JSON contract (`route: Literal["research","write","direct"]`). A vault question is answered directly; a redraft/rewrite/shorten/improve request on existing content routes to `"write"` (`writer_task.action="rewrite"`, expects the target content already fetched into `messages` via `search_vault_posts`); every fresh "write a post" request routes to `"research"` |
 | `tool_node` | EXECUTOR | `graph.py` (LangGraph `ToolNode`) | Bound to the same 5 tools as `supervisor_node`'s `bind_tools()` call — kept in sync deliberately. Executes the called tool, writes a `ToolMessage`, loops back to `supervisor_node` |
-| `researcher_node` | COGNITIVE + TOOL CALLER | `agents/researcher.py` | Send-dispatched with minimal state `{user_id, query}`. Runs its own manual tool loop (`web_search` + `search_vault_posts`, up to 6 rounds, separate from `tool_node`), grounded in `user_profile` when available. Prompt reasons internally about a research mode (Strategic Angles is the only one with a wired parser/output format); `ResearchArtifactParser` parses the final turn into a mode-agnostic `ResearchArtifact`, adapted via `to_wire_dicts()` into exactly 5 angle wire dicts. Writes `research_result = {angles, search_context, summary}` |
-| `angle_review_node` | INTERRUPT | `agents/angle_review_node.py` | Loops on `interrupt()` within one invocation for `pick`/`expand`/`modify`/`none_fit`. `pick` sets `picked_angle_id` (and `final_angle_sections` if the angle was edited first); `expand`/`modify` call `expand_research_angle()`/`modify_angle_summary()` and re-interrupt; `none_fit` clears the pick and can carry fresh user text back to `supervisor_node` |
-| `map_chosen_angle_node` | PURE PYTHON | `agents/angle_review_node.py` | No LLM call. Reshapes the picked angle (using `final_angle_sections` if present) into `FlatResearchBrief`, writes `research_brief` |
+| `researcher_node` | COGNITIVE + TOOL CALLER | `agents/researcher.py` | Send-dispatched with minimal state `{user_id, query}`. Runs its own manual tool loop (`web_search` + `search_vault_posts`, up to 6 rounds, separate from `tool_node`), grounded in `user_profile` when available. Prompt can now ask for `MODE: CLARIFY` or `MODE: ANGLES` (`SINGLE_POST` or `SERIES`), but `ResearchArtifactParser`/`.parse()` still only understands a flat 5-angle Strategic Angles block — a `CLARIFY` response parses to 0 angles and raises `ResearcherDecisionError`; a `SERIES` response parses but each item's `title` comes through as `"Part {i} of {N} — {Title}"`. Adapted via `to_wire_dicts()` into angle wire dicts. Writes `research_result = {angles, search_context, summary}` |
+| `angle_review_node` | INTERRUPT | `agents/angle_review_node.py` | Loops on `interrupt()` within one invocation for `pick`/`none_fit`. `pick` sets `picked_angle_id`; `none_fit` clears the pick and can carry fresh user text back to `supervisor_node` |
+| `map_chosen_angle_node` | PURE PYTHON | `agents/angle_review_node.py` | No LLM call. Reshapes the picked angle into `FlatResearchBrief`, writes `research_brief` |
 | `writer_node` | COGNITIVE | `agents/writer_node.py` | Style-aware LinkedIn post drafter. Strategy pattern: cold-start vs. onboarding-profile vs. `style_json`-driven prompt, built via `context_loaders.StyleContextLoader`/`ProfileContextLoader`. `writer_task.action` (`"write"`/`"rewrite"`) picks the branch; weaves in `research_brief` when present. Writes `draft` |
 | `human_approval_node` | INTERRUPT | `agents/human_approval_node.py` | `interrupt()` HITL checkpoint. Saves via `save_draft_to_vault()` on approve/edit; discards on reject |
 
@@ -330,7 +329,6 @@ There is no `analytics_node` and no separate `style_retriever_node` graph node �
 | `steps_taken` | int | supervisor_node | tool-loop budget, capped at `_MAX_STEPS=4`; overrunning forces `route="direct"` |
 | `research_result` | dict | researcher_node | `{angles: [5 angle wire dicts], search_context, summary}` |
 | `picked_angle_id` | int \| None | angle_review_node | set on `pick`; `None` otherwise |
-| `final_angle_sections` | dict \| None | angle_review_node | the edited expand/modify sections for the picked angle, if any; consumed once by `map_chosen_angle_node` |
 | `entry_point` | str | angle_review_node | debug marker, not consumed by routing |
 | `pre_routed` | bool | router (`/draft-from-topic` only) | bypasses `supervisor_node` via the graph's conditional entry point |
 | `style_json` | dict | writer_node (via `StyleContextLoader`) | `{long_term: {...}, short_term: {...}\|None}` |
@@ -360,7 +358,7 @@ supervisor_node ── binds 5 tools; loops (capped at 4 steps); emits
   ├─ route == "research" ──► Send ──► researcher_node
   │                                         │ writes research_result
   │                                         ▼
-  │                                angle_review_node  (INTERRUPT: pick/expand/modify/none_fit)
+  │                                angle_review_node  (INTERRUPT: pick/none_fit)
   │                                         │
   │                    picked_angle_id set? ──no──► supervisor_node (re-classify)
   │                                         │
@@ -421,6 +419,7 @@ writer_node ──► human_approval_node ──► END
 | CORS hardcoded | `main.py`'s `allow_origins` is a fixed 4-entry list — any new environment needs a code change, not a config change |
 | Dead/unused code | `agents/base.py` (`BaseResearcher` ABC, no subclass), `agents/vector_search_node.py` (unused, duplicated logic lives in `tools.py`), `tools.py`'s `get_style_samples` (unbound), `schemas/research.py`'s `ResearchBrief`/`fallback_brief`, `state.py`'s `research_topics` field, `worker_states.py`'s `WriterState.style_json` field |
 | Stale in-code comments | `state.py`'s inline field comments for `route`, `steps_taken`, and `research_brief` describe behavior the code no longer has — see the Directory Map entry for `state.py` |
+| Researcher prompt/parser mismatch | `ResearchPromptBuilder.RESEARCH_SYSTEM` (`agents/researcher.py`) now lets the LLM choose `MODE: CLARIFY` or `MODE: ANGLES` (`SINGLE_POST`/`SERIES`), but `ResearchArtifactParser` and `researcher_linkedin`'s hardcoded `.parse("strategic_angles", ...)` call were never updated to match: a `CLARIFY` turn parses to 0 angle blocks and raises `ResearcherDecisionError` instead of surfacing the question, and a `SERIES` turn parses but leaks `"Part {i} of {N} — "` into each item's `title` field since `to_wire_dicts()` still only knows the flat Strategic Angles shape |
 
 ### Frontend
 | Gap | Detail |

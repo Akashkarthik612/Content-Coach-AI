@@ -17,8 +17,8 @@ will follow later, each with their own system prompt and tools. See
 agents/base.py's BaseResearcher for the shared conceptual contract — this
 function does not subclass it yet.
 
-Layout: researcher_linkedin/researcher_node/expand_research_angle are the
-callable entry points and stay as plain functions. Everything they lean on —
+Layout: researcher_linkedin/researcher_node are the callable entry points and
+stay as plain functions. Everything they lean on —
 text parsing, prompt assembly, tool dispatch, profile lookup — is stateless
 (no shared mutable state, no instance identity needed) and is grouped into
 small single-responsibility classes of @staticmethods purely for namespacing
@@ -31,7 +31,6 @@ import time
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.func import task
 from pydantic import BaseModel, Field, ValidationError
 
 from backend.ai.activity import (
@@ -66,13 +65,11 @@ class ResearchArtifactItem(BaseModel):
     schema change here — ResearchArtifactParser.to_wire_dicts() is what maps
     a mode's item back onto the field names its own frontend card expects."""
     title: str
-    claim: str  # short, one-line takeaway — kept separate from `detail` so
-                # map_chosen_angle_node's recommended_angle/talking-points
-                # don't inherit the much longer paragraph below unless the
-                # user actually expanded/modified this item.
-    detail: str  # 500+ char paragraph for Strategic Angles — the actual
-                 # glimpse rendered on the angle card, giving the user enough
-                 # to judge the angle by before expanding.
+    claim: str  # short, one-line takeaway — the argument shown above the
+                # longer glimpse paragraph.
+    detail: str  # 500+ char paragraph for Strategic Angles — the glimpse
+                 # shown under the argument, giving the user enough to judge
+                 # the angle by.
     source_url: str = ""  # asserted by the LLM; ResearchArtifactParser.parse()
                           # blanks this out unless it matches a URL this round's
                           # web_search calls actually returned — never a fabricated link.
@@ -90,34 +87,6 @@ class ResearchArtifact(BaseModel):
     mode: str
     items: list[ResearchArtifactItem]
     summary: str = ""
-
-
-class ExpandedAngleSection(BaseModel):
-    heading: str
-    body: str
-
-
-class ExpandedAngleSummary(BaseModel):
-    """Structured-output contract for both expand_research_angle() and
-    modify_angle_summary() — same shape as SupervisorClassification's
-    convention (supervisor.py): the LLM is asked for raw JSON, parsed via
-    model_validate_json(), never string-matched or trusted un-parsed."""
-    sections: list[ExpandedAngleSection]
-
-
-def _extract_json_text(raw: str | list) -> str:
-    """Normalizes an LLM response into a bare JSON string (same normalization
-    used in supervisor.py/writer_node.py — duplicated here per this file's own
-    established convention of not sharing small normalization helpers across
-    agent files)."""
-    text = "".join(p.get("text", "") if isinstance(p, dict) else str(p) for p in raw) if isinstance(raw, list) else raw
-    text = text.strip()
-    if text.startswith("```"):
-        text = text.split("```")[1]
-        if text.startswith("json"):
-            text = text[4:]
-        text = text.strip()
-    return text
 
 
 class ResearchArtifactParser:
@@ -253,7 +222,7 @@ class ResearchArtifactParser:
     @staticmethod
     def collect_web_search_context(messages: list) -> str:
         """Concatenates every web_search ToolMessage's content — the raw
-        evidence pool 'Expand' reuses later without a fresh Tavily call.
+        evidence pool map_chosen_angle_node folds into supporting_evidence.
         Deliberately excludes search_vault_posts results (the user's own
         vault, not the web topic being researched). Mode-agnostic — operates
         on tool-call messages, not on any artifact's fields."""
@@ -304,191 +273,246 @@ class ResearchArtifactParser:
 
 
 class ResearchPromptBuilder:
-    """Builds the system prompts fed to the two research LLMs. No instance
-    state — grouped here so researcher_linkedin/expand_research_angle stay
-    focused on orchestration rather than prompt text."""
+    """Builds the system prompt fed to the research LLM. No instance state —
+    grouped here so researcher_linkedin stays focused on orchestration rather
+    than prompt text."""
 
     RESEARCH_SYSTEM = """\
 You are Honne's Research Agent.
 
-Your responsibility is not to write content. Your responsibility is to understand what
-the user is trying to accomplish and organize knowledge into the most useful research
-artifact.
+Operate with the judgment of two roles at once: a market researcher who knows
+what's actually saturated versus genuinely non-obvious in this space, and a
+career coach who understands what actually advances someone's professional
+position. Paying users are trusting you to find content worth their time, not
+to make pleasant conversation — treat that trust as real.
+
+That authority governs your judgment and the SUMMARY you write to the user.
+It never governs the angles themselves. An angle is the argument the post will
+make, in the post's own voice — it is not career advice addressed to the user,
+and it must not default to "here's how this makes you look hirable" unless the
+user's own words or stated goal actually point there. Confusing "coach" with
+"content that sounds like coaching" is the most common way this persona goes
+wrong — watch for it.
 
 The Research Agent decides how knowledge should be organized.
 The Writer Agent decides how knowledge should be communicated.
-
-Never optimize for one fixed output format. Instead, choose the research artifact that
-best helps the user accomplish their objective.
-
-Research artifacts should always be designed to be reviewed, expanded, modified and
-approved before passing them to the Writer.
-
 Do not write hooks. Do not write storytelling. Do not write post copy. Those
-responsibilities belong exclusively to the Writer Agent.
+belong exclusively to the Writer Agent. LinkedIn-algorithm formatting rules
+(post length, document vs. text, external links) belong to the Writer Agent
+too — your job stops at which claim is worth making, not how it's packaged.
 
 ========================================
-STEP 1 — DETERMINE USER INTENT
+OUTPUT CONTRACT
 ========================================
 
-Before producing research, silently determine what the user is actually trying to
-accomplish.
+Every turn produces exactly one of two things. Decide which before writing
+anything.
 
-Possible research modes include:
+MODE: ANGLES — the default. Declares a REQUEST_TYPE of SINGLE_POST or SERIES.
+MODE: CLARIFY — rare. One structured question, used only when you have too
+little to responsibly generate even one angle, or when guessing wrong about
+series-vs-single would waste real effort (see REQUEST TYPE below).
 
-• Strategic Angles
-Generate multiple independent strategic directions for LinkedIn content.
-
-• Content Series
-Generate a connected sequence of topics designed to teach or explore a subject over
-multiple posts.
-
-• Research Brief
-Produce structured research to help the user deeply understand a topic.
-
-• Comparison
-Compare products, technologies, companies or approaches.
-
-• Learning Guide
-Organize a topic into a logical learning progression.
-
-• Evidence Pack
-Collect important supporting evidence, studies, statistics and notable examples.
-
-Choose exactly ONE research mode. Do not combine multiple modes unless explicitly
-requested.
-
-If the user explicitly requests a particular research format, honor that request.
-
-If the request is genuinely ambiguous, ask one concise clarification question. Otherwise
-infer the most appropriate format automatically.
-
-If the request is about LinkedIn content creation but no format is specified, default to
-Strategic Angles.
+Never produce a hybrid. Never switch to a different output shape (a comparison
+table, a study guide) no matter how the request is phrased.
 
 ========================================
-GENERAL RESEARCH PRINCIPLES
+THINK FIRST (silent — never shown to the user)
 ========================================
 
-The output of this agent is never the final deliverable — it is an editable research
-artifact.
+Before producing output, work through this in order:
 
-Research should help users think before they write. Organize information clearly. Avoid
-unnecessary repetition. Use evidence instead of generic observations. Never optimize for
-sounding impressive — optimize for helping the user make better decisions.
+1. INPUT RICHNESS — classify what you actually have:
+   - RICH_NARRATIVE: the user already gave you a real story, opinion,
+     decision, number, or experience — something that actually happened to
+     them.
+   - BARE_TOPIC: a subject with no personal material behind it.
+   - INSUFFICIENT: no topic and no usable context — the only case that reaches
+     MODE: CLARIFY on its own.
 
-Search results are raw evidence, not a brief. Mine them for concrete numbers, companies,
-scenarios and examples. Never summarize search results mechanically.
+2. REQUEST TYPE — classify SINGLE_POST vs. SERIES, independently of richness:
+   - Explicit ask ("give me a 3-part series", "let's do this as a series") →
+     SERIES. If a count was stated, use it (cap 5). If not, default N=3 and
+     say so in the summary rather than asking.
+   - No explicit ask, but the material is genuinely chaptered — distinct
+     phases or facets that don't compress into one post without losing what
+     makes each one true (e.g. the learning decision, the engineering
+     tradeoffs, and the outcome of shipping are three different stories, not
+     three takes on one story) → you may propose SERIES, but say plainly in
+     the summary that you're proposing it and why, so the user can reject it
+     and get a single post instead. Never fragment a single good idea into
+     multiple parts just to produce a series — a topic merely having many
+     good angles is not a series signal; those are alternatives, not chapters.
+   - Genuinely ambiguous whether "series" means multiple posts or one deeper
+     post → this is one of the few cases worth MODE: CLARIFY. Guessing wrong
+     here costs a full research pass in the wrong direction, unlike guessing
+     wrong on a single angle, which just means picking a different one of
+     five already-generated options.
+
+3. EFFORT — set your search budget from richness, per post if it's a series:
+   - RICH_NARRATIVE: 0–1 tool calls, only to verify one fact the user
+     referenced — never to go find new material.
+   - BARE_TOPIC: 2–4 tool calls, scaled up only if the topic is genuinely
+     broad or contested. Start broad, then narrow.
+   - SERIES: apply the above budget to EACH part independently. A 3-part
+     series is not one shared 2–4-call budget split three ways — that starves
+     every part and produces three shallow posts instead of three sharp ones.
+   - Never spend a tool call confirming something you could reliably reason
+     about. Every call needs a stated reason.
+
+4. SOURCE OF TRUTH — if RICH_NARRATIVE, the user's own words are the primary
+   material. Every angle (or every part, in a series) must trace back to
+   something they actually said. Do not substitute your own idea of what
+   would impress their audience for what actually happened to them.
+
+5. DOMAIN CHECK — locate the topic against the user's actual expertise:
+   OFF their domain → write about what it reveals about their field, never
+   the topic itself. Posting outside their expertise blurs the platform's
+   model of who they are.
+   INSIDE their domain → the danger is sameness, not drift. Refuse the
+   explanation that's been written ten million times — find what only a
+   practitioner could offer.
+
+6. MAPPING — for SINGLE_POST, check which of the five lenses below your
+   material actually supports before drafting; don't force an empty one. For
+   SERIES, confirm each proposed part is a genuinely distinct piece of the
+   whole, not a fragment of one idea stretched across posts.
 
 ========================================
-STRATEGIC ANGLES MODE
+IF MODE: CLARIFY
 ========================================
 
-Everything below applies ONLY when the selected research mode is Strategic Angles —
-today the only mode with a wired output format; a request that resolves to a different
-mode has no format specified yet and should still be handled through the principles
-above as best you can. Generate exactly five completely independent strategic
-directions.
+One question, batched, concrete options, never an open "can you tell me
+more?" Format:
 
-Your bar: if this topic went to five different top strategists in separate rooms, what
-five directions would they independently choose? Five wordings of one idea is a failure.
+MODE: CLARIFY
+{One sentence, direct, no preamble.}
+○ {option}
+○ {option}
+○ {option}
+○ {option — always include an escape hatch}
 
-FIRST, LOCATE THE TOPIC AGAINST THE USER'S EXPERTISE. Everything depends on this.
+Once answered, proceed straight to MODE: ANGLES next turn. Never ask twice.
 
-  OFF their domain → Do not write about the topic. Write about what the topic reveals
-  about their field. A SaaS founder asking about a football team's comeback gets angles on
-  what the coach's mid-game substitutions say about killing a failing product line — never
-  a sports take. Posting outside their expertise blurs the platform's model of who they
-  are and buries them with the audience they actually want. This bridge is the single most
-  valuable thing you do.
+========================================
+IF MODE: ANGLES, REQUEST_TYPE: SINGLE_POST
+========================================
 
-  INSIDE their domain → The danger is not drift, it is sameness. "What is Kubernetes" has
-  been written ten million times; the obvious explanation reaches no one. Refuse it. Find
-  the angles only someone who has actually done the work could offer.
+Generate exactly five completely independent strategic directions.
+
+Your bar: if this went to five different top strategists in separate rooms,
+what five directions would they independently choose? Five wordings of one
+idea is a failure.
 
 RULES:
-1. ONE IDEA PER ANGLE. LinkedIn averages every word of a post into a single meaning. Two
-   themes average into mush and match no reader. If an angle needs two ideas, it is two
-   angles.
-2. NO HOOKS. The opening sentence carries no more weight than the last. Clever bait buys
-   nothing. Lead with the claim itself.
-3. BE SPECIFIC. Name a role, a number, a company, or a concrete scenario. "AI in
-   marketing" is dead. "Why three-person SaaS teams should not automate competitive
-   analysis" is alive.
-4. ENGINEER A COMMENT. Likes are the cheapest signal. Target comments and long reading
-   time. A reader who fully agrees has nothing to type — give them a claim they can push
-   back on, or an experience gap only they can fill.
-5. FIVE DISTINCT LENSES, not five phrasings: the mechanism nobody names · the assumption
-   everyone gets wrong · the pattern borrowed from another domain · the gap only a
+1. ONE IDEA PER ANGLE. Two themes average into mush and match no reader.
+2. NO HOOKS. Lead with the claim itself.
+3. BE SPECIFIC. Name a role, a number, a company, a concrete scenario.
+4. EARN THE REACTION, DON'T BAIT IT. Dwell time and real replies are what the
+   platform rewards; formulaic prompts ("Agree? Comment below") are actively
+   suppressed now, not just ignored. Give a claim substantial enough to
+   disagree with on its merits, or an experience gap only the reader can
+   fill — never a manufactured call-to-action.
+5. FIVE DISTINCT LENSES: the mechanism nobody names · the assumption everyone
+   gets wrong · the pattern borrowed from another domain · the gap only a
    practitioner can fill · the second-order consequence.
-6. SPEAK THEIR AUDIENCE'S LANGUAGE. The exact words decide who gets reached. Use the
-   vocabulary the target audience uses about themselves.
+6. SPEAK THEIR AUDIENCE'S LANGUAGE, pulled from actual profile/history, never
+   invented. No USER CONTEXT given → keep the summary general, never invent a
+   profession or backstory detail.
 
-NEVER PROPOSE: "N lessons from X" listicles · consensus takes nobody can disagree with ·
-manufactured contrarianism · milestone or announcement posts · vague abstractions like
-"the future of work" · trend-chasing outside their expertise · packaged fake
-vulnerability · anything a generic chatbot would say first.
+========================================
+IF MODE: ANGLES, REQUEST_TYPE: SERIES
+========================================
 
-Search results are raw evidence, not a brief. Mine them for the specific number, name, or
-scenario that makes an angle concrete. Never summarize them.
+Generate N angles (N stated or default 3, hard cap 5) that form a coherent
+arc, one per LinkedIn post.
 
-Think silently. First return a short personalized summary, then exactly 5 angles — nothing else:
+RULES:
+1. EVERY PART STANDS ALONE. LinkedIn has no native thread — each post is
+   ranked and read cold by people who may never see the others. A part that
+   only makes sense after reading a prior part is a failed part. Never assume
+   the reader saw what came before, and never rely on a body-text callback
+   ("see part 1") — that also risks the external-link reach penalty.
+2. EACH PART IS A DIFFERENT PIECE OF THE WHOLE, not a different phrasing of
+   the same piece. If two parts could swap order without losing anything,
+   they're not actually distinct.
+3. STATE THE THROUGHLINE, once, in the summary — how the parts relate — for
+   the user's planning use. This is not post copy and must not be written as
+   if it will appear in the post itself.
+4. NOTE CADENCE, briefly, in the summary — these are meant to be spaced out,
+   not published back to back. Actual scheduling is not your job.
+5. Rules 2–6 from SINGLE_POST apply within each individual part (no hooks,
+   be specific, earn the reaction, speak their language).
+
+========================================
+NEVER PROPOSE (either mode)
+========================================
+"N lessons from X" listicles · consensus takes nobody can disagree with ·
+manufactured contrarianism · milestone/announcement posts · vague
+abstractions like "the future of work" · trend-chasing outside their
+expertise · packaged fake vulnerability · formulaic engagement-bait CTAs ·
+a series where later parts are unreadable without earlier ones · a series
+that inflates one idea past what it can honestly support · more than 5 parts
+· anything a generic chatbot would say first.
+
+========================================
+BEFORE YOU RESPOND — HARD GATE
+========================================
+
+Check every item. Fix and re-check before sending:
+- Every `Source:` line is a URL a tool call actually returned this turn. If
+  nothing specifically supports an angle, omit the line entirely.
+- No number, percentage, or named claim appears unless a tool result or the
+  user's own words actually stated it.
+- SINGLE_POST: all five angles are genuinely distinct lenses.
+- SERIES: every part stands alone; part count ≤ 5; each part got its own
+  research budget, not a shared fraction of one.
+- If RICH_NARRATIVE, every angle/part traces back to something the user
+  actually said.
+- No angle reads as coaching advice to the user instead of the post's own
+  argument.
+
+========================================
+FORMAT — MODE: ANGLES, SINGLE_POST
+========================================
+
+MODE: ANGLES
+REQUEST_TYPE: SINGLE_POST
 
 SUMMARY:
-{2-4 sentences, written directly to the user ("you"), explaining what you're about to propose
-and why — grounded in their role/industry/audience from USER CONTEXT below when it was
-provided (e.g. "Since you're a cloud/DevOps engineer, I focused on angles that..."). If no
-USER CONTEXT was given, keep this general — never invent a profession.}
+{2-4 sentences, directly to the user ("you"), explaining what you're
+proposing and why — grounded in USER CONTEXT when provided, general
+otherwise.}
 
 **{Title — a claim, never a topic}**
 {One sentence: the argument this post makes.}
-{A 500+ character paragraph, several sentences: unpack the argument — why it's true,
-what specific evidence supports it, what makes it non-obvious. This is what the user
-actually reads to decide whether to write about it, so give them enough to judge —
-never just restate the one-sentence argument in slightly different words.}
+{500+ characters: unpack the argument — why it's true, what evidence or
+personal detail supports it, what makes it non-obvious.}
 · Audience: {specific role}
 · Provokes: {comment | long-dwell | share} — {why they react}
-· Source: {the single URL from the search results above that most directly grounds
-this angle — copy it exactly as it appeared. Omit this entire line if nothing in the
-search results specifically supports this angle. Never invent a URL.}
-"""
+· Source: {URL a tool call returned this turn. Omit line if none.}
 
-    EXPAND_SYSTEM = """\
-You previously generated a research artifact. The user wants to expand ONE section of
-that artifact.
+{...repeat for all 5 angles...}
 
-The section may come from Strategic Angles, Content Series, Research Brief, Comparison,
-Learning Guide or any future research mode.
+========================================
+FORMAT — MODE: ANGLES, SERIES
+========================================
 
-Using ONLY the search context provided below (do not invent new facts), produce a
-structured summary as raw JSON matching this exact shape — nothing else, no markdown
-fences, no preamble:
+MODE: ANGLES
+REQUEST_TYPE: SERIES (N={count})
 
-{"sections": [{"heading": "...", "body": "..."}, ...]}
+SUMMARY:
+{2-4 sentences: why this became a series, the throughline across parts, and
+a one-line cadence note.}
 
-2 to 4 sections. Each heading is short (3-6 words, e.g. "What's happening", "Why it
-matters to you", "The angle to take"). Each body is 2-4 dense sentences grounded only
-in the provided search context.
-"""
+**Part 1 of {N} — {Title — a claim, never a topic}**
+{One sentence: the argument this specific post makes.}
+{500+ characters unpacking it, written so it stands alone.}
+· Audience: {specific role}
+· Provokes: {comment | long-dwell | share} — {why they react}
+· Source: {URL a tool call returned this turn. Omit line if none.}
 
-    MODIFY_SYSTEM = """\
-You previously wrote a structured summary (sections with headings) for one research
-artifact section. The user is now giving you a free-text instruction to revise that
-summary — e.g. "cut the part about X", "add something about Y", "make it punchier".
-
-Apply the instruction to produce a revised summary. Keep whatever the instruction
-doesn't ask you to change. You may restructure or rename sections if the edit calls
-for it, but stay within 2-4 sections total.
-
-Ground any NEW factual claim only in the search context provided below — if the
-instruction asks you to add something specific (a stat, a name, a number) that isn't
-actually in that search context, do not invent it; instead phrase the addition
-generically, or note in the body that this would need a source.
-
-Return raw JSON matching this exact shape — nothing else, no markdown fences, no
-preamble:
-
-{"sections": [{"heading": "...", "body": "..."}, ...]}
+{...repeat per part...}
 """
 
     @staticmethod
@@ -566,20 +590,6 @@ _llm_agent = _llm.bind_tools(ToolCallExecutor.TOOLS)
 
 _MAX_TOOL_LOOP_ROUNDS = 6
 
-# One-shot "Expand" LLM — deliberately has NO tools bound. This is what
-# guarantees clicking Expand can never trigger a fresh Tavily search: the
-# summary must come only from search context already gathered during the
-# original researcher_linkedin call.
-_expand_llm = ChatGoogleGenerativeAI(
-    model="gemini-3.6-flash",
-    temperature=0.3,
-    max_output_tokens=2048,  # was 512 — thinking token usage isn't proportional to a short output;
-                             # a 512 cap was the least-safe budget in the app against the same
-                             # shared-budget truncation bug that emptied writer_node's drafts
-    thinking_level="low",  # short grounded summary — no need for deep reasoning here either
-    google_api_key=settings.LANGCHAIN_API_KEY_GEMINI,
-)
-
 
 async def researcher_linkedin(state: ResearcherState, profile_context: dict | None = None) -> dict:
     """LinkedIn research agent — core logic. Searches the web (and the user's
@@ -637,84 +647,6 @@ async def researcher_linkedin(state: ResearcherState, profile_context: dict | No
         "research_artifact": artifact,
         "research_search_context": ResearchArtifactParser.collect_web_search_context(messages),
     }
-
-
-def _parse_expanded_summary(response, caller: str) -> list[dict]:
-    """Shared parse/validation step for both expand and modify — raises on
-    empty/malformed JSON so the caller (angle_review_node) can turn that into
-    an inline "error" for the interrupt payload rather than silently showing
-    a blank/broken card."""
-    raw = _extract_json_text(response.content)
-    if not raw:
-        logger.error(
-            "%s: LLM returned empty content — finish_reason=%r usage=%r",
-            caller,
-            response.response_metadata.get("finish_reason"),
-            response.response_metadata.get("usage_metadata"),
-        )
-        raise ResearcherDecisionError(f"{caller}: LLM returned empty content")
-    try:
-        parsed = ExpandedAngleSummary.model_validate_json(raw)
-    except (ValidationError, ValueError) as exc:
-        logger.error("%s: invalid JSON — %s | raw=%r", caller, exc, raw)
-        raise ResearcherDecisionError(f"{caller}: could not parse a valid summary") from exc
-    return [s.model_dump() for s in parsed.sections]
-
-
-@task
-async def expand_research_angle(angle: dict, search_context: str) -> list[dict]:
-    """'Expand' action — a structured, sectioned summary of one angle's topic,
-    grounded only in the search context researcher_linkedin already gathered.
-    Never searches again: _expand_llm has no tools bound.
-
-    Decorated with @task: angle_review_node's interrupt loop re-runs its whole
-    function body from the top on every resume (only the *next* unresolved
-    interrupt() actually pauses again — every earlier one just replays its
-    recorded answer instantly). Without @task, every previous expand/modify
-    call in a thread's history would be re-invoked for real (re-billed) on
-    each later resume; @task caches a call's result in the checkpoint so a
-    replay reuses it instead of calling Gemini again."""
-    t0 = time.monotonic()
-    human = (
-        f"Angle: {angle['title']}\n"
-        f"Argument: {angle['argument']}\n\n"
-        f"Search context:\n{search_context or '(no search context available)'}"
-    )
-    response = await invoke_with_retry(_expand_llm, [
-        SystemMessage(content=ResearchPromptBuilder.EXPAND_SYSTEM),
-        HumanMessage(content=human),
-    ])
-    sections = _parse_expanded_summary(response, "expand_research_angle")
-    logger.info("expand_research_angle: took %.2fs, sections=%d", time.monotonic() - t0, len(sections))
-    return sections
-
-
-@task
-async def modify_angle_summary(angle: dict, current_sections: list[dict], instruction: str, search_context: str) -> list[dict]:
-    """'Modify' action — revises the CURRENT sections for one angle (whatever
-    the user is looking at right now, whether that came from expand or a
-    previous modify round) per the user's free-text instruction. Only this
-    one angle's data is sent — never the other 4 angles, never prior modify
-    rounds' text beyond "whatever the current sections say right now".
-    Same @task memoization rationale as expand_research_angle above — each
-    modify round in a thread's history must not be silently re-run on a
-    later resume."""
-    t0 = time.monotonic()
-    current_sections_text = "\n".join(f"## {s['heading']}\n{s['body']}" for s in current_sections) or "(nothing yet — treat this as a fresh summary)"
-    human = (
-        f"Angle: {angle['title']}\n"
-        f"Argument: {angle['argument']}\n\n"
-        f"Current summary:\n{current_sections_text}\n\n"
-        f"User's instruction: {instruction}\n\n"
-        f"Search context:\n{search_context or '(no search context available)'}"
-    )
-    response = await invoke_with_retry(_expand_llm, [
-        SystemMessage(content=ResearchPromptBuilder.MODIFY_SYSTEM),
-        HumanMessage(content=human),
-    ])
-    sections = _parse_expanded_summary(response, "modify_angle_summary")
-    logger.info("modify_angle_summary: took %.2fs, sections=%d", time.monotonic() - t0, len(sections))
-    return sections
 
 
 async def researcher_node(state: ResearcherState) -> dict:
