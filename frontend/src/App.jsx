@@ -7,6 +7,7 @@ import WelcomeSplashPage from './pages/WelcomeSplashPage';
 import OnboardingPage from './pages/OnboardingPage';
 import MyWorkPage from './pages/MyWorkPage';
 import ChatPage from './pages/ChatPage';
+import TemplatesPage from './pages/TemplatesPage';
 import SchedulePage from './pages/SchedulePage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import SettingsPage from './pages/SettingsPage';
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="/my-work"    element={<RequireAuth><MyWorkPage /></RequireAuth>} />
         <Route path="/vault"      element={<RequireAuth><MyWorkPage /></RequireAuth>} />
         <Route path="/chat"       element={<RequireAuth><ChatPage /></RequireAuth>} />
+        <Route path="/templates"  element={<RequireAuth><TemplatesPage /></RequireAuth>} />
         <Route path="/schedule"   element={<RequireAuth><SchedulePage /></RequireAuth>} />
         <Route path="/analytics"  element={<RequireAuth><AnalyticsPage /></RequireAuth>} />
         <Route path="/settings"   element={<RequireAuth><SettingsPage /></RequireAuth>} />

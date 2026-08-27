@@ -24,8 +24,20 @@ async def human_approval_node(state: AgentState) -> dict:
 
     Decision payload expected from frontend:
         { "action": "approved" }
-        { "action": "edited",   "content": "<edited post text>" }
+        { "action": "edited",     "content": "<edited post text>" }
         { "action": "rejected" }
+        { "action": "regenerate", "content": "<edited post text>", "template": {...}|None }
+            Loops back through writer_node instead of saving/ending: draft is
+            set to the edited text and writer_task.action is switched to
+            "rewrite", so writer_node's existing rewrite branch (writer_node.py)
+            treats it as the new base to redraft. "template", when present
+            (resolved server-side by router.py via TemplateService), is
+            carried into state["template"] so writer_node restructures the
+            draft to match a newly picked template ("Change template" button).
+            The writer_node ->
+            human_approval_node edge then re-pauses on a fresh interrupt() —
+            same HITL checkpoint, new draft to review. See graph.py's
+            _approval_router for the conditional edge this relies on.
     """
     emit_node_activity("human_approval_node", "completed")
     decision: dict = interrupt({"draft": state["draft"]})
@@ -59,6 +71,17 @@ async def human_approval_node(state: AgentState) -> dict:
                 "You can find it in My Work."
             ),
         }
+
+    if action == "regenerate":
+        edited = decision.get("content", state["draft"])
+        out = {
+            "approval_status": "regenerate",
+            "draft": edited,
+            "writer_task": {"action": "rewrite", "topic": state["query"], "constraints": []},
+        }
+        if decision.get("template"):
+            out["template"] = decision["template"]
+        return out
 
     # rejected — nothing saved
     return {

@@ -22,7 +22,10 @@ _llm = ChatGoogleGenerativeAI(
     streaming=True,
 )
 
-_COLD_START_SYSTEM = """\
+def _build_cold_start_system(template: dict, writer_task: dict) -> str:
+    template_section   = _build_template_section(template)
+    action_instruction = _build_action_instruction(writer_task)
+    return f"""\
 You are a LinkedIn ghostwriter. Write a substantive, engaging post in a clean LinkedIn voice.
 
 STRUCTURE:
@@ -37,6 +40,8 @@ STYLE:
 - No emojis unless the user's request explicitly includes them
 - No bullets, no bold, no asterisks (*), no markdown — pure plain text
 - If the user's message contains ANY explicit formatting instruction (e.g. "avoid *"), treat it as an absolute law
+{template_section}
+{action_instruction}
 
 Output ONLY the post text. Nothing else.
 """
@@ -69,6 +74,26 @@ def _build_research_section(research_brief: dict) -> str:
     )
 
 
+def _build_template_section(template: dict) -> str:
+    if not template:
+        return ""
+    structure = template.get("structure")
+    structure_line = " → ".join(structure) if isinstance(structure, list) else str(structure)
+    fmt = template.get("format") or {}
+    format_line = ", ".join(f"{k}={v}" for k, v in fmt.items() if v is not None)
+    avoid = "\n".join(f"- {a}" for a in template.get("avoid", []))
+    return (
+        f"\nTEMPLATE (structure to follow — \"{template.get('name', '')}\"):\n"
+        f"purpose: {template.get('purpose', '')}\n"
+        f"structure: {structure_line}\n"
+        f"opening: {template.get('opening', '')}\n"
+        f"body: {template.get('body', '')}\n"
+        f"ending: {template.get('ending', '')}\n"
+        f"format: {format_line}\n"
+        + (f"avoid:\n{avoid}\n" if avoid else "")
+    )
+
+
 def _build_action_instruction(writer_task: dict) -> str:
     action      = writer_task.get("action", "write")
     constraints = writer_task.get("constraints") or []
@@ -83,7 +108,7 @@ def _build_action_instruction(writer_task: dict) -> str:
     )
 
 
-def _build_system_prompt(style_json: dict, research_brief: dict, writer_task: dict) -> str:
+def _build_system_prompt(style_json: dict, research_brief: dict, writer_task: dict, template: dict) -> str:
     lt     = style_json.get("long_term") or {}
     st     = style_json.get("short_term") or {}
     merged = {**lt, **st}
@@ -108,6 +133,7 @@ def _build_system_prompt(style_json: dict, research_brief: dict, writer_task: di
     )
 
     research_section    = _build_research_section(research_brief)
+    template_section    = _build_template_section(template)
     action_instruction  = _build_action_instruction(writer_task)
 
     return f"""\
@@ -118,6 +144,7 @@ STYLE RULES (extracted from their actual posts — every rule is non-negotiable)
 {style_block}
 {evolution_note}
 {research_section}
+{template_section}
 {action_instruction}
 
 ABSOLUTE LAWS:
@@ -129,7 +156,7 @@ ABSOLUTE LAWS:
 """
 
 
-def _build_onboarding_system_prompt(profile_context: dict, research_brief: dict, writer_task: dict) -> str:
+def _build_onboarding_system_prompt(profile_context: dict, research_brief: dict, writer_task: dict, template: dict) -> str:
     """Used when there's no post history yet (no style_json) but the user
     completed onboarding. Lighter-weight grounding than _build_system_prompt —
     it never claims to know the user's actual voice, only their stated
@@ -146,6 +173,7 @@ def _build_onboarding_system_prompt(profile_context: dict, research_brief: dict,
     ])
 
     research_section   = _build_research_section(research_brief)
+    template_section   = _build_template_section(template)
     action_instruction = _build_action_instruction(writer_task)
 
     return f"""\
@@ -157,6 +185,7 @@ write in a clean, professional, first-person LinkedIn voice.
 WHAT THEY TOLD US ABOUT THEMSELVES:
 {profile_block}
 {research_section}
+{template_section}
 {action_instruction}
 
 STYLE (defaults — no post history to override these yet):
@@ -182,15 +211,16 @@ async def writer_node(state: WriterState) -> dict:
     profile_context = context["profile_context"]
     research_brief  = state.get("research_brief") or {}
     writer_task     = state.get("writer_task") or {"action": "write"}
+    template        = state.get("template") or {}
 
     if style_json:
-        system_content = _build_system_prompt(style_json, research_brief, writer_task)
+        system_content = _build_system_prompt(style_json, research_brief, writer_task, template)
     elif profile_context:
         logger.info("writer_node: no style_json, using onboarding profile fallback")
-        system_content = _build_onboarding_system_prompt(profile_context, research_brief, writer_task)
+        system_content = _build_onboarding_system_prompt(profile_context, research_brief, writer_task, template)
     else:
         logger.info("writer_node: no style_json, no profile — using cold-start defaults")
-        system_content = _COLD_START_SYSTEM
+        system_content = _build_cold_start_system(template, writer_task)
 
     messages = [SystemMessage(content=system_content), *state["messages"]]
 

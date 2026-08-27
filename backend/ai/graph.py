@@ -73,6 +73,13 @@ def _supervisor_router(state: AgentState):
 
     route = state.get("route", "")
 
+    if route == "direct" and state.get("research_result") and state.get("picked_angle_id") is None:
+        # Supervisor answered a question about already-proposed angles
+        # (see supervisor.py rule 5) — re-pause on the same angle set
+        # instead of ending, so the user can still pick one afterward.
+        logger.debug("supervisor_router: direct answer mid angle-review -> angle_review_node")
+        return "angle_review_node"
+
     if route == "style_retrieval":
         # writer_node now resolves style/profile context itself as a plain
         # pre-step (StyleContextLoader) — no separate worker needed here, and
@@ -103,6 +110,37 @@ def _supervisor_router(state: AgentState):
     return "direct"
 
 
+def _approval_router(state: AgentState) -> str:
+    """
+    Route after human_approval_node resolves.
+
+    "regenerate" -> back to writer_node. human_approval_node already set
+    draft to the user's edited text and writer_task.action="rewrite" (see
+    human_approval_node.py), so writer_node treats the edit as the new base
+    to redraft. The fixed writer_node -> human_approval_node edge below then
+    re-pauses on a fresh interrupt() — same HITL checkpoint, new draft.
+    Anything else (approved/edited/rejected) -> END, nothing left to do.
+    """
+    if state.get("approval_status") == "regenerate":
+        return "writer_node"
+    return "end"
+
+
+def _researcher_router(state: AgentState) -> str:
+    """
+    Route after researcher_node.
+
+    SINGLE_POST -> research_result.angles is populated -> angle_review_node
+    (pick/none_fit HITL, unchanged).
+    SERIES -> researcher_node set state["answer"] directly instead (see
+    researcher.py) — nothing to review or pick, so this ends here like any
+    other direct answer.
+    """
+    if state.get("research_result", {}).get("angles"):
+        return "angle_review_node"
+    return "end"
+
+
 def _angle_review_router(state: AgentState) -> str:
     """
     Route after angle_review_node's interrupt loop resolves.
@@ -124,7 +162,7 @@ _graph.add_node("supervisor_node",      supervisor_node)
 _graph.add_node("tool_node",            tool_node)
 _graph.add_node("writer_node",          writer_node)             # resolves style/profile context itself, then generates the post
 _graph.add_node("human_approval_node",  human_approval_node)
-_graph.add_node("researcher_node",      researcher_node)         # worker: Tavily + Gemini, 5 angles
+_graph.add_node("researcher_node",      researcher_node)         # worker: Tavily + Gemini, up to 5 angles (or a plain SERIES answer)
 _graph.add_node("angle_review_node",    angle_review_node)       # interrupt: angle pick/expand/modify/none_fit
 _graph.add_node("map_chosen_angle_node", map_chosen_angle_node)  # pure python: picked angle -> research_brief
 
@@ -136,9 +174,10 @@ _graph.set_conditional_entry_point(_entry_router, {
 
 # ── Supervisor conditional edges ───────────────────────────────────────────────
 _graph.add_conditional_edges("supervisor_node", _supervisor_router, {
-    "tools":       "tool_node",
-    "direct":      END,
-    "writer_node": "writer_node",
+    "tools":             "tool_node",
+    "direct":            END,
+    "writer_node":       "writer_node",
+    "angle_review_node": "angle_review_node",
 })
 
 # ── Tool loop (supervisor chatbot / analytics data fetching) ───────────────────
@@ -146,11 +185,19 @@ _graph.add_edge("tool_node", "supervisor_node")
 
 # ── Write pipeline ──────────────────────────────────────────────────────────────
 _graph.add_edge("writer_node", "human_approval_node")
-_graph.add_edge("human_approval_node", END)
+_graph.add_conditional_edges("human_approval_node", _approval_router, {
+    "writer_node": "writer_node",
+    "end":         END,
+})
 
 # ── Research pipeline — researcher_node (Send dispatch) -> angle_review_node
-# (interrupt) -> map_chosen_angle_node (pure python) -> writer_node ──
-_graph.add_edge("researcher_node", "angle_review_node")
+# (interrupt) -> map_chosen_angle_node (pure python) -> writer_node.
+# SERIES responses skip straight to END instead (researcher_node sets
+# state["answer"] directly — see _researcher_router). ──
+_graph.add_conditional_edges("researcher_node", _researcher_router, {
+    "angle_review_node": "angle_review_node",
+    "end":                END,
+})
 _graph.add_conditional_edges("angle_review_node", _angle_review_router, {
     "map_chosen_angle_node": "map_chosen_angle_node",
     "supervisor_node":       "supervisor_node",

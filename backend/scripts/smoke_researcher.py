@@ -1,5 +1,5 @@
 """
-Manual smoke test for researcher_linkedin + expand_research_angle.
+Manual smoke test for researcher_linkedin.
 Runs live against Gemini + Tavily (+ real DB for the vault-search path), so
 TAVILY_API_KEY and LANGCHAIN_API_KEY_GEMINI must be set in .env before running.
 
@@ -14,11 +14,10 @@ from backend.core.config import settings
 
 
 async def run(query: str, user_id: str) -> None:
-    from backend.ai.agents.researcher import ResearchArtifactParser, expand_research_angle, researcher_linkedin
+    from backend.ai.agents.researcher import ResearchArtifactParser, researcher_linkedin
 
     result = await researcher_linkedin({"user_id": user_id, "query": query})
     angles = ResearchArtifactParser.to_wire_dicts(result["research_artifact"])
-    search_context = result["research_search_context"]
 
     print(f"\n=== {len(angles)} angles ===\n")
     for i, angle in enumerate(angles, 1):
@@ -27,10 +26,6 @@ async def run(query: str, user_id: str) -> None:
         print(f"    audience: {angle['audience']}")
         print(f"    provokes: {angle['provokes_type']} — {angle['provokes_reason']}")
         print()
-
-    print("=== Expand angle [1] ===\n")
-    summary = await expand_research_angle(angles[0], search_context)
-    print(summary)
 
 
 if __name__ == "__main__":

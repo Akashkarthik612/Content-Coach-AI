@@ -1,8 +1,16 @@
 # This file contains the backbne of teh application which is the API skeleton for various services.
 # so completely if there is a problem in routing or data flow between various services this is the place to be checkeed.
 
+import asyncio
 import logging
+import sys
 from contextlib import asynccontextmanager
+
+if sys.platform == "win32":
+    # psycopg's async pool needs a Selector event loop; Windows/uvicorn default to
+    # ProactorEventLoop, which crashes AsyncConnectionPool at startup. Must run at
+    # import time, before uvicorn creates its event loop.
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

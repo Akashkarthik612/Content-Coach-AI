@@ -27,6 +27,7 @@ export const iconBtn = { display: 'flex', alignItems: 'center', justifyContent: 
 export const SIDE_NAV = [
   { id: 'chat',      label: 'Chats',     icon: 'M21 11.5a8.4 8.4 0 0 1-11.8 7.7L3 21l1.9-6.1A8.4 8.4 0 1 1 21 11.5z', path: '/chat',      enabled: true },
   { id: 'vault',     label: 'Vault',     icon: 'M12 2l8 4.5v5c0 5-3.4 8.6-8 10.5-4.6-1.9-8-5.5-8-10.5v-5L12 2z',      path: '/my-work',   enabled: true },
+  { id: 'templates', label: 'Templates', icon: 'M4 4h7v7H4z|M13 4h7v4h-7z|M13 11h7v9h-7z|M4 14h7v6H4z',               path: '/templates', enabled: true },
   { id: 'analytics', label: 'Analytics', icon: 'M3 3v18h18|M7 15l3-4 3 3 5-6',                                        path: '/analytics', enabled: true },
   { id: 'scheduled', label: 'Scheduled', icon: 'M4 5h16v16H4z|M4 9h16|M8 3v4|M16 3v4',                                path: '/schedule',  enabled: true },
 ];

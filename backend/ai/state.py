@@ -40,14 +40,6 @@ class AgentState(TypedDict):
     # action="pick"). None while nothing has been picked yet, or on "none_fit".
     picked_angle_id: int | None
 
-    # Set by angle_review_node's "pick" branch ONLY when the picked angle was
-    # expanded/modified first — the user's final edited sections
-    # ({heading, body} dicts), read once by map_chosen_angle_node immediately
-    # after and folded into research_brief.talking_points in place of the
-    # angle's raw argument/glimpse. None when the user picked an angle they
-    # never touched (map_chosen_angle_node falls back to the raw angle then).
-    final_angle_sections: list[dict] | None
-
     # Set by angle_review_node's "pick" branch from the resume payload's
     # "content" field — the raw stat/story/detail the user typed into the
     # frontend's "personalize the hook" modal before picking an angle. ""
@@ -73,6 +65,10 @@ class AgentState(TypedDict):
     research_topics: list  # DORMANT — was written by the old (deleted) research_digest_node.
                             # Nothing populates this anymore; kept only for /stream's dead fallback branch.
     writer_task:    dict  # {action: "write"|"rewrite", topic, constraints: []}
+    template:       dict  # {} until a template is picked/changed; set via /resume by
+                          # angle_review_node's "pick" or human_approval_node's "regenerate"
+                          # (backend.ai.templates.services.TemplateService resolves the id).
+                          # Read by writer_node's _build_template_section.
 
     # Writer path
     draft:           str  # produced by writer_node

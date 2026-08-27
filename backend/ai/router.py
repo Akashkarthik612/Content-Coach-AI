@@ -14,6 +14,7 @@ from backend.ai._log_setup import setup_ai_file_logging
 from backend.ai.checkpointing.service import ThreadRegistryService, ThreadSessionService
 from backend.ai.checkpointing.session_memory_store import SessionMemoryService
 from backend.ai.schemas.research import ResearchTopic, topic_to_flat
+from backend.ai.templates.services import TemplateService
 from backend.ai.thread_state import shape_thread_state
 from backend.auth.models import User
 from backend.core.dependencies import get_current_user, get_db
@@ -46,18 +47,16 @@ class QueryRequest(BaseModel):
 
 
 class QueryResponse(BaseModel):
-    answer:            str
-    draft:             str = ""
-    thread_id:         str = ""
-    session_id:        str = ""          # echoes back the resolved session_id (minted server-side if omitted)
-    status:            str = "complete"  # "complete" | "awaiting_approval" | "awaiting_angle_selection"
-    angles:            list = []         # awaiting_angle_selection only
-    actions:           list = []         # awaiting_angle_selection only
-    summary:           str = ""          # awaiting_angle_selection only — personalized 2-4 line intro
-    expanded_angle_id: int | None = None # set after an "expand" or "modify" resume
-    expanded_sections: list = []         # set after an "expand" or "modify" resume — [{heading, body}]
-    error:             str = ""          # set on an invalid pick/expand angle_id
-    post_id:           str = ""          # set once human_approval_node saves a draft (approved/edited)
+    answer:     str
+    draft:      str = ""
+    thread_id:  str = ""
+    session_id: str = ""          # echoes back the resolved session_id (minted server-side if omitted)
+    status:     str = "complete"  # "complete" | "awaiting_approval" | "awaiting_angle_selection"
+    angles:     list = []         # awaiting_angle_selection only
+    actions:    list = []         # awaiting_angle_selection only
+    summary:    str = ""          # awaiting_angle_selection only — personalized 2-4 line intro
+    error:      str = ""          # set on an invalid pick angle_id
+    post_id:    str = ""          # set once human_approval_node saves a draft (approved/edited)
 
 
 class ThreadStateResponse(BaseModel):
@@ -75,8 +74,6 @@ class ThreadStateResponse(BaseModel):
     actions:         list = []
     summary:         str = ""
     approval_status: str = ""  # "" | "approved" | "edited" | "rejected" — only meaningful when status=="complete"
-    expanded_angle_id: int | None = None  # last expand/modify result, if any — only latest revision, no history
-    expanded_sections: list = []          # [{heading, body}]
 
 
 class SessionThreadsResponse(BaseModel):
@@ -96,10 +93,17 @@ class SessionListResponse(BaseModel):
 
 class ResumeRequest(BaseModel):
     thread_id: str
-    action:    str   # "approved" | "edited" | "rejected" (human_approval_node) |
-                      # "pick" | "expand" | "modify" | "none_fit" (angle_review_node)
-    content:   str = ""
-    angle_id:  int | None = None   # angle_review_node's "pick" / "expand" actions
+    action:    str   # "approved" | "edited" | "rejected" | "regenerate" (human_approval_node) |
+                      # "pick" | "none_fit" (angle_review_node)
+                      # "regenerate" loops back through writer_node with `content` as the new
+                      # base draft and re-pauses on a fresh interrupt() — see graph.py's
+                      # _approval_router. Response shape is identical to the first pause
+                      # (status="awaiting_approval", new draft in `draft`).
+    content:     str = ""
+    angle_id:    int | None = None   # angle_review_node's "pick" action
+    template_id: str | None = None   # optional, valid on "pick" and "regenerate" — resolved
+                                       # server-side via TemplateService and threaded into
+                                       # state["template"] for writer_node to follow
 
 
 class RefineDraftRequest(BaseModel):
@@ -141,6 +145,7 @@ def _build_initial_state(prompt: str, user_id: str, session_id: str) -> dict:
         "research_brief":  {},
         "research_topics": [],
         "writer_task":     {"action": "write", "topic": prompt, "constraints": []},
+        "template":        {},
         "draft":           "",
         "approval_status": "",
         "post_id":         "",
@@ -263,6 +268,7 @@ async def stream_query(
                         "angles":     shaped["angles"],
                         "actions":    shaped["actions"],
                         "summary":    shaped["summary"],
+                        "answer":     shaped["answer"],
                     }
                     yield f"data: {json.dumps(angle_payload)}\n\n"
                 else:
@@ -331,7 +337,7 @@ async def query(
         shaped = shape_thread_state(thread_id, final_state)
         if shaped["status"] == "awaiting_angle_selection":
             return QueryResponse(
-                answer="", thread_id=thread_id, session_id=session_id, status="awaiting_angle_selection",
+                answer=shaped["answer"], thread_id=thread_id, session_id=session_id, status="awaiting_angle_selection",
                 angles=shaped["angles"], actions=shaped["actions"], summary=shaped["summary"],
             )
 
@@ -413,16 +419,29 @@ async def resume(
     except PermissionError:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    decision = {"action": body.action, "content": body.content, "angle_id": body.angle_id}
-    await assistant.ainvoke(Command(resume=decision), config=config)
+    template = None
+    if body.template_id:
+        resolved = TemplateService.get_template(body.template_id)
+        if not resolved:
+            raise HTTPException(status_code=400, detail="Unknown template_id")
+        template = TemplateService.to_writer_shape(resolved)
 
-    # Don't trust the ainvoke() return value alone — a resume can land on a
-    # SECOND pause (e.g. a "pick" resume runs angle_review_node ->
-    # map_chosen_angle_node -> writer_node -> human_approval_node, which has
-    # its own interrupt). Check for that via aget_state(), same as /stream
-    # does, before deciding the thread is done.
-    final_state = await assistant.aget_state(config)
-    shaped      = shape_thread_state(body.thread_id, final_state)
+    decision = {"action": body.action, "content": body.content, "angle_id": body.angle_id, "template": template}
+    try:
+        await assistant.ainvoke(Command(resume=decision), config=config)
+
+        # Don't trust the ainvoke() return value alone — a resume can land on a
+        # SECOND pause (e.g. a "pick" resume runs angle_review_node ->
+        # map_chosen_angle_node -> writer_node -> human_approval_node, which has
+        # its own interrupt). Check for that via aget_state(), same as /stream
+        # does, before deciding the thread is done.
+        final_state = await assistant.aget_state(config)
+        shaped      = shape_thread_state(body.thread_id, final_state)
+    except Exception as exc:
+        # Same clean-message-only-on-the-wire behavior /stream already has —
+        # full detail stays server-side, the client never sees a raw traceback.
+        logger.error("resume: unhandled exception in graph — %s: %s", type(exc).__name__, exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Something went wrong. Please try again.")
 
     if shaped["status"] == "awaiting_approval":
         # human_approval_node paused again — e.g. the picked angle just
@@ -433,16 +452,13 @@ async def resume(
         )
 
     if shaped["status"] == "awaiting_angle_selection":
-        # angle_review_node re-interrupted — bad pick, an "expand"/"modify"
-        # result, or an error note re-surfacing the same angles.
-        # expanded_angle_id/expanded_sections/error are resume-action-specific,
-        # not part of the general thread shape, so they're read separately here.
+        # angle_review_node re-interrupted on a bad pick — error is
+        # resume-action-specific, not part of the general thread shape, so
+        # it's read separately here.
         interrupt_value = final_state.interrupts[0].value
         return QueryResponse(
-            answer="", thread_id=body.thread_id, status="awaiting_angle_selection",
+            answer=shaped["answer"], thread_id=body.thread_id, status="awaiting_angle_selection",
             angles=shaped["angles"], actions=shaped["actions"], summary=shaped["summary"],
-            expanded_angle_id=interrupt_value.get("expanded_angle_id"),
-            expanded_sections=interrupt_value.get("expanded_sections", []),
             error=interrupt_value.get("error", ""),
         )
 

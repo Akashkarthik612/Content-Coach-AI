@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Plus, ChevronDown, ChevronRight, Check, Copy, RotateCcw,
+  ChevronDown, ChevronRight, Check, Copy, RotateCcw,
   ArrowLeft, Clock, Send, X, ThumbsUp, MessageCircle, Repeat2, PanelLeft, ExternalLink,
-  Settings, Pencil, LogOut, CalendarClock,
+  Settings, Pencil, LogOut, CalendarClock, LayoutTemplate,
 } from 'lucide-react';
 import { streamQuery, resumeAI, refineAI, getSessionThreads, getSessions, deleteSession } from '../api/ai';
 import { publishToLinkedIn, getLinkedInStatus, getLinkedInAuthUrl } from '../api/linkedin';
@@ -11,6 +11,8 @@ import { getVersions } from '../api/vault';
 import { getProfile } from '../api/profile';
 import { logout } from '../api/auth';
 import HonneSidebar, { iconBtn } from '../components/shared/HonneSidebar';
+import AIMarkdown from '../components/shared/AIMarkdown';
+import { TEMPLATES, getTemplateById, readSelectedTemplateId, writeSelectedTemplateId, templateMiniBars } from '../data/templates';
 
 /* ────────────────────────────────────────────────────────────────────────
    Design tokens — ported 1:1 from the "Honne Chat v3" design (Claude Design
@@ -34,9 +36,10 @@ const LI_BLUE   = '#0A66C2';
 const FONT   = "'Geist', system-ui, sans-serif";
 const SANS   = FONT;
 const MONO   = "'JetBrains Mono', monospace";
+const SERIF  = "'EB Garamond', Georgia, serif";
 
 const KEYFRAMES = `
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
 @keyframes ccRise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes ccFade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes ccBreathe { 0%,100% { opacity: .55; transform: scale(.82); } 50% { opacity: 1; transform: scale(1); } }
@@ -68,13 +71,6 @@ function greetingEmoji() {
   return '🌙';
 }
 
-function humanizeProvokes(type) {
-  if (type === 'long-dwell') return 'Long dwell';
-  if (type === 'comment') return 'Comment';
-  if (type === 'share') return 'Share';
-  return type || '';
-}
-
 let _seq = 1;
 const nextId = () => _seq++;
 
@@ -101,20 +97,14 @@ function threadToMessages(t) {
   const aiId = nextId();
   const base = {
     id: aiId, role: 'ai', phase: 'done', text: '', activities: [], traceOpen: false,
-    angles: [], summary: '', expandingIndex: -1, pickingIndex: -1, modifyingIndex: -1, expandedSections: {},
+    angles: [], summary: '', pickingIndex: -1,
     decision: null, postId: t.post_id || '', threadId: t.thread_id,
     copied: false, error: '', userPrompt: t.user_prompt,
     answerNote: '',
   };
 
   if (t.status === 'awaiting_angle_selection') {
-    // Only the LATEST expand/modify revision survives a reload (thread_state.py
-    // surfaces the current interrupt payload, not a full edit history) — same
-    // limitation as human_approval_node's draft editing having no version history.
-    const expandedSections = t.expanded_angle_id != null && t.expanded_sections?.length
-      ? { [t.expanded_angle_id]: t.expanded_sections }
-      : {};
-    return [userMsg, { ...base, kind: 'angles', angles: t.angles || [], summary: t.summary || '', expandedSections }];
+    return [userMsg, { ...base, kind: 'angles', angles: t.angles || [], summary: t.summary || '', answer: t.answer || '' }];
   }
   if (t.status === 'awaiting_approval') {
     return [userMsg, { ...base, kind: 'draft', text: t.draft || '' }];
@@ -206,136 +196,12 @@ function ActivityTimeline({ activities, expanded, onToggle, phaseDone }) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────
-   Angle cards
-   ──────────────────────────────────────────────────────────────────────── */
-function AngleCard({ angle, index, onPick, onExpand, onModify, expanding, picking, modifying, expandedSections }) {
-  const [hover, setHover] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [instruction, setInstruction] = useState('');
-  const hasSections = !!expandedSections && expandedSections.length > 0;
-  const showLong = open && hasSections;
-
-  const toggleExpand = () => {
-    if (!hasSections) { onExpand(index); setOpen(true); return; }
-    setOpen(o => !o);
-  };
-
-  const submitModify = () => {
-    const text = instruction.trim();
-    if (!text || modifying) return;
-    onModify(index, text);
-    setInstruction('');
-  };
-
-  return (
-    <div
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        position: 'relative', background: '#fff', border: `1px solid ${HAIRLINE}`, borderRadius: 16,
-        padding: '19px 22px 17px', boxShadow: hover ? '0 22px 48px -26px rgba(20,60,30,.4)' : '0 1px 3px rgba(27,28,20,.05)',
-        transform: hover ? 'translateY(-2px)' : 'translateY(0)', transition: 'box-shadow .28s cubic-bezier(.22,1,.36,1), transform .28s cubic-bezier(.22,1,.36,1)',
-        overflow: 'hidden',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 7 }}>
-        <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '.11em', textTransform: 'uppercase', color: '#B0B2A2' }}>
-          {humanizeProvokes(angle.provokes_type)}
-        </span>
-      </div>
-      <div style={{ fontFamily: FONT, fontSize: 18, fontWeight: 600, letterSpacing: '-.01em', color: INK, margin: '0 0 7px', lineHeight: 1.44 }}>
-        {angle.title}
-      </div>
-      <div style={{ fontSize: 15, lineHeight: 1.5, color: INK, fontWeight: 600, marginBottom: 6 }}>{angle.argument}</div>
-      {angle.glimpse && (
-        <div style={{ fontSize: 14.5, lineHeight: 1.68, color: '#5C5E50', fontWeight: 400 }}>{angle.glimpse}</div>
-      )}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '.08em', textTransform: 'uppercase', color: '#B0B2A2' }}>
-          For: {angle.audience}
-        </span>
-        {angle.source_url && (
-          <a
-            href={angle.source_url} target="_blank" rel="noopener noreferrer"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, color: ACCENT, textDecoration: 'none' }}
-          >
-            <ExternalLink size={11} /> Source
-          </a>
-        )}
-      </div>
-
-      {showLong && (
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px dashed rgba(27,28,20,.12)', animation: 'ccFade .4s ease both' }}>
-          {expandedSections.map((s, si) => (
-            <div key={si} style={{ marginBottom: si < expandedSections.length - 1 ? 12 : 0 }}>
-              <div style={{ fontFamily: MONO, fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: '#8A8C7C', marginBottom: 4 }}>
-                {s.heading}
-              </div>
-              <div style={{ fontSize: 14.5, lineHeight: 1.68, color: '#5C5E50', fontWeight: 400, whiteSpace: 'pre-wrap' }}>{s.body}</div>
-            </div>
-          ))}
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 14 }}>
-            <input
-              value={instruction}
-              onChange={(e) => setInstruction(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitModify(); } }}
-              placeholder="Refine this angle — e.g. &quot;cut the part about X, add Y&quot;"
-              disabled={modifying}
-              style={{
-                flex: 1, height: 32, padding: '0 11px', border: `1px solid ${HAIRLINE}`, borderRadius: 8,
-                fontSize: 12.5, fontFamily: SANS, color: INK, background: '#FAF9F3', outline: 'none',
-              }}
-            />
-            <button
-              onClick={submitModify} disabled={modifying || !instruction.trim()}
-              style={{
-                flex: '0 0 auto', height: 32, padding: '0 12px', border: 'none', borderRadius: 8,
-                background: instruction.trim() && !modifying ? INK : '#E4E2D6',
-                color: instruction.trim() && !modifying ? BG : '#B0B2A2',
-                fontFamily: SANS, fontSize: 12, fontWeight: 600, cursor: instruction.trim() && !modifying ? 'pointer' : 'default',
-              }}
-            >
-              {modifying ? 'Refining…' : 'Refine'}
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16 }}>
-        <button
-          onClick={() => onPick(index)} disabled={picking}
-          style={{
-            flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-            height: 34, padding: '0 14px', border: 'none', borderRadius: 9,
-            background: INK, color: BG, fontFamily: FONT, fontSize: 12.5, fontWeight: 600, letterSpacing: '-.005em',
-            cursor: picking ? 'default' : 'pointer', boxShadow: '0 1px 2px rgba(27,28,20,.18)',
-          }}
-        >
-          <LinkedInGlyph size={14} />
-          <span>{picking ? 'Drafting…' : 'Draft for LinkedIn'}</span>
-        </button>
-        <button
-          onClick={toggleExpand} disabled={expanding} title="Show more about this angle"
-          style={{
-            flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-            height: 34, padding: '0 13px', border: '1px solid rgba(27,28,20,.14)', borderRadius: 9, background: '#fff',
-            color: '#3A3C30', fontFamily: FONT, fontSize: 12.5, fontWeight: 600, letterSpacing: '-.005em',
-            cursor: expanding ? 'default' : 'pointer',
-          }}
-        >
-          <span>{expanding ? 'Expanding…' : (showLong ? 'Collapse' : 'Expand')}</span>
-          <ChevronDown size={14} style={{ transform: showLong ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform .32s cubic-bezier(.22,1,.36,1)' }} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ────────────────────────────────────────────────────────────────────────
    One AI / user message
    ──────────────────────────────────────────────────────────────────────── */
-function MessageBubble({ msg, onToggleTrace, onToggleAngles, onPick, onExpandAngle, onModifyAngle, onCopy, onOpenWorkspace, onRegenerate }) {
+function MessageBubble({ msg, onToggleTrace, onPick, onCopy, onOpenWorkspace, onRegenerate }) {
+  const [expandedAngles, setExpandedAngles] = useState({});
+  const toggleAngle = (i) => setExpandedAngles((s) => ({ ...s, [i]: !s[i] }));
+
   if (msg.role === 'user') {
     return (
       <div style={{ display: 'flex', justifyContent: 'flex-end', animation: 'ccRise .5s cubic-bezier(.22,1,.36,1) both' }}>
@@ -363,67 +229,86 @@ function MessageBubble({ msg, onToggleTrace, onToggleAngles, onPick, onExpandAng
           <div style={{ color: DANGER, fontSize: 13.5, marginBottom: 8 }}>{msg.error}</div>
         )}
 
-        {(msg.phase === 'streaming' || (phaseDone && msg.text)) && (
+        {msg.phase === 'streaming' && (
           <div style={{ fontFamily: FONT, fontSize: 16, lineHeight: 1.75, color: '#26281C', whiteSpace: 'pre-wrap', letterSpacing: '-.005em', animation: 'ccFade .5s ease both' }}>
             {msg.text}
-            {msg.phase === 'streaming' && (
-              <span style={{ display: 'inline-block', width: 2, height: 15, marginLeft: 2, borderRadius: 2, background: ACCENT, verticalAlign: -2, animation: 'ccCaret .9s step-end infinite' }} />
-            )}
+            <span style={{ display: 'inline-block', width: 2, height: 15, marginLeft: 2, borderRadius: 2, background: ACCENT, verticalAlign: -2, animation: 'ccCaret .9s step-end infinite' }} />
           </div>
         )}
+        {phaseDone && msg.text && (
+          <AIMarkdown style={{ animation: 'ccFade .5s ease both' }}>{msg.text}</AIMarkdown>
+        )}
 
-        {msg.kind === 'angles' && phaseDone && (
+        {msg.kind === 'angles' && phaseDone && msg.angles.length > 0 && (
           <div style={{ marginTop: 20, animation: 'ccFade .5s ease both' }}>
-            {msg.summary && (
-              <div style={{ fontFamily: FONT, fontSize: 16, lineHeight: 1.75, letterSpacing: '-.005em', color: '#26281C', marginBottom: 16 }}>
-                {msg.summary}
-              </div>
-            )}
-            <button
-              onClick={() => onToggleAngles(msg.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', border: 'none', background: 'none', padding: 0, cursor: 'pointer', marginBottom: 16 }}
-            >
-              <span style={{ fontFamily: FONT, fontSize: 22, fontWeight: 600, letterSpacing: '-.015em', color: INK }}>
-                {msg.angles.length} possible angle{msg.angles.length === 1 ? '' : 's'}
-              </span>
-              <span style={{ fontSize: 12.5, color: MUTED_3, fontWeight: 500 }}>
-                {msg.anglesOpen !== false ? 'Draft any angle straight to LinkedIn' : 'Collapsed · tap a chip to draft'}
-              </span>
-              <span style={{ flex: 1 }} />
-              <ChevronDown size={17} color={MUTED_3} style={{ transform: msg.anglesOpen !== false ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform .34s cubic-bezier(.22,1,.36,1)' }} />
-            </button>
-
-            {msg.anglesOpen !== false ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {msg.angles.map((a, i) => (
-                  <AngleCard
-                    key={i}
-                    angle={a} index={i}
-                    onPick={onPick} onExpand={onExpandAngle} onModify={onModifyAngle}
-                    expanding={msg.expandingIndex === i} picking={msg.pickingIndex === i}
-                    modifying={msg.modifyingIndex === i}
-                    expandedSections={msg.expandedSections?.[i]}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {msg.angles.map((a, i) => (
-                  <button
-                    key={i} onClick={() => onPick(i)} disabled={msg.pickingIndex === i}
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 8, border: `1px solid ${HAIRLINE}`,
-                      background: '#fff', borderRadius: 999, padding: '8px 14px', fontSize: 12.5, fontWeight: 600,
-                      color: '#3A3C30', cursor: msg.pickingIndex === i ? 'default' : 'pointer',
-                    }}
-                  >
-                    <LinkedInGlyph size={13} color="#0A66C2" />
-                    {msg.pickingIndex === i ? 'Drafting…' : a.title}
-                  </button>
-                ))}
-              </div>
-            )}
-            <div style={{ fontSize: 12, color: MUTED_3, marginTop: 14 }}>None of these fit? Just type what you'd rather see below.</div>
+            {msg.answer && <AIMarkdown style={{ marginBottom: 18 }}>{msg.answer}</AIMarkdown>}
+            {msg.summary && <AIMarkdown style={{ marginBottom: 18 }}>{msg.summary}</AIMarkdown>}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+              {msg.angles.map((angle, i) => {
+                const picking = msg.pickingIndex === i;
+                const open = !!expandedAngles[i];
+                const cut = !!angle.glimpse && angle.glimpse.length > 190;
+                const bodyShown = !angle.glimpse ? '' : (open || !cut)
+                  ? angle.glimpse
+                  : angle.glimpse.slice(0, 190).replace(/[\s,;:.]+$/, '') + '…';
+                return (
+                  <div key={i} style={{ paddingLeft: 19, borderLeft: '1.5px solid rgba(27,28,20,.11)' }}>
+                    {angle.lens && (
+                      <div style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '.15em', textTransform: 'uppercase', color: MUTED_3, fontWeight: 500 }}>
+                        {angle.lens}
+                      </div>
+                    )}
+                    <div style={{ fontFamily: SERIF, fontSize: 22, fontWeight: 600, lineHeight: 1.28, letterSpacing: '-.005em', color: INK, marginTop: 8 }}>
+                      {angle.title}
+                    </div>
+                    <div style={{ fontSize: 15.5, lineHeight: 1.62, color: '#26281C', marginTop: 9 }}>{angle.argument}</div>
+                    {bodyShown && (
+                      <div style={{ fontSize: 14.5, lineHeight: 1.72, color: INK, marginTop: 8 }}>
+                        {bodyShown}{' '}
+                        {cut && (
+                          <button
+                            onClick={() => toggleAngle(i)}
+                            style={{ border: 'none', background: 'none', padding: 0, font: 'inherit', color: ACCENT, fontWeight: 500, cursor: 'pointer' }}
+                          >
+                            {open ? 'Less' : 'Read more'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap', marginTop: 14 }}>
+                      <button
+                        onClick={() => onPick(i)} disabled={picking}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 7, border: 'none', background: 'none', padding: 0,
+                          fontFamily: FONT, fontSize: 13.5, fontWeight: 600, color: ACCENT, letterSpacing: '-.005em',
+                          cursor: picking ? 'default' : 'pointer',
+                        }}
+                      >
+                        <LinkedInGlyph size={13} />
+                        <span>{picking ? 'Drafting…' : 'Draft for LinkedIn'}</span>
+                      </button>
+                      {angle.source_url && (
+                        <a
+                          href={angle.source_url} target="_blank" rel="noopener noreferrer"
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: 340, fontSize: 13, color: MUTED_2, textDecoration: 'none', borderBottom: '1px solid rgba(27,28,20,.14)', paddingBottom: 1 }}
+                        >
+                          <ExternalLink size={12} />
+                          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {angle.source_url.replace(/^https?:\/\//, '')}
+                          </span>
+                        </a>
+                      )}
+                      {angle.audience && (
+                        <span style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '.1em', textTransform: 'uppercase', color: '#B0B2A2' }}>
+                          {angle.audience}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 12, color: MUTED_3, marginTop: 18 }}>Not quite right? Just type what you'd rather see below.</div>
           </div>
         )}
 
@@ -432,6 +317,7 @@ function MessageBubble({ msg, onToggleTrace, onToggleAngles, onPick, onExpandAng
             <button onClick={() => onOpenWorkspace(msg.id)} style={pillBtn(ACCENT, '#fff')}>Open Workspace →</button>
             <span style={{ flex: 1 }} />
             <button onClick={onCopy} style={pillBtn('transparent', MUTED_2)}><Copy size={13} /> {msg.copied ? 'Copied' : 'Copy'}</button>
+            <button onClick={onRegenerate} title="Regenerate" style={pillBtn('transparent', MUTED_2)}><RotateCcw size={13} /> Rewrite</button>
           </div>
         )}
 
@@ -457,6 +343,7 @@ function MessageBubble({ msg, onToggleTrace, onToggleAngles, onPick, onExpandAng
         {msg.kind === 'direct' && phaseDone && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 12 }}>
             <button onClick={onCopy} style={pillBtn('transparent', MUTED_2)}><Copy size={13} /> {msg.copied ? 'Copied' : 'Copy'}</button>
+            <button onClick={onRegenerate} title="Regenerate" style={pillBtn('transparent', MUTED_2)}><RotateCcw size={13} /> Rewrite</button>
           </div>
         )}
       </div>
@@ -537,42 +424,115 @@ function Composer({ draft, onDraft, onSend, disabled, taRef }) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────
-   Personalize-the-hook modal — new in the "Honne Chat v3" design update.
-   Shown before an angle is drafted, offering to seed the opening line with
-   a user-supplied stat/story/detail. hookInput rides the "pick" resume
-   call's content field into angle_review_node, which threads it through to
-   writer_node as research_brief.personal_hook_input — dismissing (backdrop
-   click) behaves the same as "Skip", matching the source design.
+   Personalize-the-hook → pick-a-structure modal — the "Honne Chat v3"
+   design's two-step flow. Step 1 offers to seed the opening line with a
+   user-supplied stat/story/detail; step 2 offers a post-structure template
+   (see data/templates.js). Both steps' text ride the same channel the old
+   single-step hook modal already used — hookInput (now with the chosen
+   template's directive appended) rides the "pick" resume call's content
+   field into angle_review_node, which threads it through to writer_node as
+   research_brief.personal_hook_input. There is no backend concept of a
+   "template" — the choice is carried entirely as plain-text guidance.
+   Also reused standalone (no hook step) as the workspace's "Change
+   template" picker, in which case `step` is always 'template' and there is
+   no title/eyebrow to show.
    ──────────────────────────────────────────────────────────────────────── */
-function PersonalizeModal({ title, hookInput, onInput, onSkip, onSubmit }) {
+function StructureTile({ t, mini, active, onPick }) {
   return (
-    <div onClick={onSkip} style={{ position: 'fixed', inset: 0, zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(27,28,20,.32)', backdropFilter: 'blur(2px)', animation: 'ccFade .2s ease both' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, margin: '0 20px', background: '#fff', border: `1px solid ${HAIRLINE}`, borderRadius: 18, boxShadow: '0 40px 90px -40px rgba(20,60,30,.5)', overflow: 'hidden', animation: 'ccRise .3s cubic-bezier(.22,1,.36,1) both' }}>
-        <div style={{ padding: '24px 26px 4px' }}>
-          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: '#9FA291', fontWeight: 500 }}>LinkedIn Post</span>
-          <h2 style={{ fontFamily: FONT, fontSize: 20, fontWeight: 600, letterSpacing: '-.015em', color: INK, margin: '8px 0 8px' }}>Personalize the hook?</h2>
-          <p style={{ fontSize: 14, lineHeight: 1.6, color: '#7A7C6C', margin: '0 0 16px' }}>
-            Give me a stat, story, or detail to open &ldquo;{title}&rdquo; with — or skip and I&rsquo;ll write the hook myself.
-          </p>
+    <button
+      onClick={onPick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 13, width: '100%', cursor: 'pointer', textAlign: 'left',
+        padding: '11px 13px', background: '#fff', borderRadius: 12, border: `1px solid ${active ? ACCENT : 'rgba(27,28,20,.11)'}`,
+      }}
+    >
+      <span style={{ flex: '0 0 46px', display: 'flex', flexDirection: 'column', gap: 3, padding: '8px 7px', background: '#FBFAF5', border: `1px solid ${HAIRLINE}`, borderRadius: 8, alignSelf: 'stretch', justifyContent: 'center' }}>
+        {mini.map((r, i) => (
+          <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 3, flex: 'none' }}>
+            {r.dot && <span style={{ flex: '0 0 2px', width: 2, height: 2, borderRadius: 99, background: 'rgba(27,28,20,.3)' }} />}
+            <span style={{ height: r.h, width: r.w, borderRadius: 2, background: r.bg }} />
+          </span>
+        ))}
+      </span>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flex: 1 }}>
+        <span style={{ fontFamily: FONT, fontSize: 14, fontWeight: 600, letterSpacing: '-.01em', color: INK }}>{t.name}</span>
+        <span style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '.11em', textTransform: 'uppercase', color: '#B0B2A2' }}>{t.bestFor}</span>
+      </span>
+      {active && (
+        <span style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 99, background: ACCENT }}>
+          <Check size={10} color={BG} strokeWidth={3} />
+        </span>
+      )}
+    </button>
+  );
+}
+
+function PersonalizeModal({ step, title, hookInput, onInput, onBack, onSkip, onSubmit, onDismiss, templateId, onPickTemplate, primaryLabel }) {
+  const isHookStep = step === 'hook';
+  return (
+    <div onClick={onDismiss} style={{ position: 'fixed', inset: 0, zIndex: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(27,28,20,.32)', backdropFilter: 'blur(2px)', animation: 'ccFade .2s ease both' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 460, margin: '0 20px', maxHeight: 'calc(100vh - 40px)', display: 'flex', flexDirection: 'column', background: '#fff', border: `1px solid ${HAIRLINE}`, borderRadius: 18, boxShadow: '0 40px 90px -40px rgba(20,60,30,.5)', overflow: 'hidden', animation: 'ccRise .3s cubic-bezier(.22,1,.36,1) both' }}>
+        <div style={{ flex: '0 0 auto', padding: '24px 26px 4px' }}>
+          <span style={{ fontFamily: MONO, fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: '#9FA291', fontWeight: 500 }}>{isHookStep ? 'LinkedIn Post' : 'Structure'}</span>
+          {isHookStep ? (
+            <>
+              <h2 style={{ fontFamily: FONT, fontSize: 20, fontWeight: 600, letterSpacing: '-.015em', color: INK, margin: '8px 0 8px' }}>Personalize the hook?</h2>
+              <p style={{ fontSize: 14, lineHeight: 1.6, color: '#7A7C6C', margin: '0 0 16px' }}>
+                Give me a stat, story, or detail to open &ldquo;{title}&rdquo; with — or skip and I&rsquo;ll write the hook myself.
+              </p>
+            </>
+          ) : (
+            <>
+              <h2 style={{ fontFamily: FONT, fontSize: 20, fontWeight: 600, letterSpacing: '-.015em', color: INK, margin: '8px 0 8px' }}>{onBack ? 'Pick a structure' : 'Change the template'}</h2>
+              <p style={{ fontSize: 14, lineHeight: 1.6, color: '#7A7C6C', margin: '0 0 16px' }}>
+                {onBack ? 'The writer will follow this shape. You can change it later while editing.' : 'Pick a different shape and I’ll rewrite the post to match. Your hook is kept.'}
+              </p>
+            </>
+          )}
         </div>
-        <div style={{ padding: '0 26px 20px' }}>
-          <textarea
-            value={hookInput}
-            onChange={(e) => onInput(e.target.value)}
-            rows={3}
-            autoFocus
-            maxLength={500}
-            placeholder="e.g. Start with the UPI vs Visa stat…"
-            style={{ display: 'block', width: '100%', border: '1px solid rgba(27,28,20,.14)', borderRadius: 12, background: '#F7F8F5', fontSize: 14, lineHeight: 1.6, color: INK, padding: '12px 14px', resize: 'none', fontFamily: SANS }}
-          />
-        </div>
-        <div style={{ display: 'flex', gap: 8, padding: '14px 26px 22px', borderTop: `1px solid ${HAIRLINE}`, background: '#FAFAF6' }}>
-          <button onClick={onSkip} style={{ flex: 1, height: 38, border: '1px solid rgba(27,28,20,.14)', background: '#fff', borderRadius: 10, fontSize: 13, fontWeight: 600, color: '#3A3C30', cursor: 'pointer' }}>
-            Skip, write it your way
-          </button>
-          <button onClick={onSubmit} style={{ flex: 1, height: 38, border: 'none', background: ACCENT, color: BG, borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: '0 8px 18px -10px rgba(20,102,59,.6)' }}>
-            Use this
-          </button>
+
+        {isHookStep ? (
+          <div style={{ padding: '0 26px 20px' }}>
+            <textarea
+              value={hookInput}
+              onChange={(e) => onInput(e.target.value)}
+              rows={3}
+              autoFocus
+              maxLength={500}
+              placeholder="e.g. Start with the UPI vs Visa stat…"
+              style={{ display: 'block', width: '100%', border: '1px solid rgba(27,28,20,.14)', borderRadius: 12, background: '#F7F8F5', fontSize: 14, lineHeight: 1.6, color: INK, padding: '12px 14px', resize: 'none', fontFamily: SANS }}
+            />
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '0 26px 20px', flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
+            {TEMPLATES.map(t => (
+              <StructureTile key={t.id} t={t} mini={templateMiniBars(t)} active={t.id === templateId} onPick={() => onPickTemplate(t.id)} />
+            ))}
+          </div>
+        )}
+
+        <div style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 8, padding: '14px 26px 22px', borderTop: `1px solid ${HAIRLINE}`, background: '#FAFAF6' }}>
+          {isHookStep ? (
+            <>
+              <button onClick={onSkip} style={{ flex: 1, height: 38, border: '1px solid rgba(27,28,20,.14)', background: '#fff', borderRadius: 10, fontSize: 13, fontWeight: 600, color: '#3A3C30', cursor: 'pointer' }}>
+                Skip, write it your way
+              </button>
+              <button onClick={onSubmit} style={{ flex: 1, height: 38, border: 'none', background: ACCENT, color: BG, borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: '0 8px 18px -10px rgba(20,102,59,.6)' }}>
+                Continue
+              </button>
+            </>
+          ) : (
+            <>
+              {onBack && (
+                <button onClick={onBack} style={{ height: 38, padding: '0 14px', border: '1px solid rgba(27,28,20,.14)', background: '#fff', borderRadius: 10, fontSize: 13, fontWeight: 600, color: '#3A3C30', cursor: 'pointer' }}>
+                  Back
+                </button>
+              )}
+              <button onClick={onSubmit} style={{ flex: 1, height: 38, border: 'none', background: ACCENT, color: BG, borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: 'pointer', boxShadow: '0 8px 18px -10px rgba(20,102,59,.6)' }}>
+                {primaryLabel}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -582,13 +542,36 @@ function PersonalizeModal({ title, hookInput, onInput, onSkip, onSubmit }) {
 /* ────────────────────────────────────────────────────────────────────────
    Workspace view — post-approval redraft/publish surface
    ──────────────────────────────────────────────────────────────────────── */
-function WorkspaceView({ ws, onBack, onModeChange, onDocChange, onCmdInput, onCmdKey, onSubmitCmd, onChip, onCopy, onPublish, onSchedule, onConnectLinkedIn, onHistory, onToggleCmd, onApprove, onDecline, publishing, connecting, publishResult, linkedinConnected, versions, showVersions, userName, professionLine }) {
+function WorkspaceView({ ws, onBack, onModeChange, onDocChange, onCmdInput, onCmdKey, onSubmitCmd, onChip, onCopy, onPublish, onSchedule, onConnectLinkedIn, onHistory, onToggleCmd, onSave, onRegenerateDraft, onChangeTemplate, templateName, regenerating, publishing, connecting, publishResult, linkedinConnected, versions, showVersions, userName, professionLine }) {
   const words = ws.docText.trim() ? ws.docText.trim().split(/\s+/).length : 0;
   const readTime = Math.max(1, Math.ceil(words / 200)) + ' min read';
   const isEdit = ws.mode === 'edit';
   const cmdCan = !!ws.cmdInput.trim();
   const userInitial = (userName || '?').charAt(0).toUpperCase();
   const cmdOpen = ws.cmdOpen !== false;
+
+  // Autosizing the doc textarea by collapsing its height to 'auto' before
+  // remeasuring scrollHeight momentarily shrinks this scroll container's
+  // content height. If scrollTop was already past the new (temporarily
+  // smaller) max, the browser clamps it down — visibly jumping the page
+  // toward the top on every keystroke. Saving/restoring scrollTop around the
+  // resize keeps the reader's position stable. A stable ref (vs. the old
+  // inline callback ref, which React re-fires on every render) also stops
+  // the resize from running twice per keystroke.
+  const docRef = useRef(null);
+  const docScrollRef = useRef(null);
+  const autosizeDoc = useCallback(() => {
+    const el = docRef.current;
+    if (!el) return;
+    const container = docScrollRef.current;
+    const prevScrollTop = container ? container.scrollTop : null;
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+    if (container && prevScrollTop != null) container.scrollTop = prevScrollTop;
+  }, []);
+  useEffect(() => {
+    if (isEdit) autosizeDoc();
+  }, [ws.docText, isEdit, autosizeDoc]);
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'ccFade .4s ease both' }}>
@@ -606,8 +589,13 @@ function WorkspaceView({ ws, onBack, onModeChange, onDocChange, onCmdInput, onCm
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {!ws.decision && (
             <>
-              <button onClick={onApprove} style={pillBtn('#DCFCE7', '#15803D')}><Check size={13} /> Approve</button>
-              <button onClick={onDecline} style={pillBtn('#FEE2E2', DANGER)}>Decline</button>
+              <button onClick={onChangeTemplate} title="Rewrite this post in a different structure" disabled={regenerating} style={pillBtn('rgba(27,28,20,.05)', '#3A3C30')}>
+                <LayoutTemplate size={13} /> {templateName}
+              </button>
+              <button onClick={onRegenerateDraft} disabled={regenerating} style={pillBtn('rgba(27,28,20,.05)', '#3A3C30')}>
+                <RotateCcw size={13} /> {regenerating ? 'Regenerating…' : 'Regenerate'}
+              </button>
+              <button onClick={onSave} disabled={regenerating} style={pillBtn(ACCENT, '#fff')}><Check size={13} /> Save</button>
               <span style={{ width: 1, height: 18, background: HAIRLINE }} />
             </>
           )}
@@ -715,7 +703,7 @@ function WorkspaceView({ ws, onBack, onModeChange, onDocChange, onCmdInput, onCm
               <button onClick={() => onModeChange('view')} style={{ height: 28, padding: '0 13px', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', background: !isEdit ? '#fff' : 'transparent', color: !isEdit ? ACCENT : MUTED_2 }}>Preview</button>
             </div>
           </div>
-          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          <div ref={docScrollRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
             <div style={{ minHeight: '100%', display: 'flex', justifyContent: 'center', padding: isEdit ? '36px 28px 72px' : '44px 28px 64px', background: 'radial-gradient(120% 90% at 50% 0%, rgba(20,102,59,.05), transparent 60%)' }}>
               <div style={{ width: '100%', maxWidth: 540, height: 'fit-content', background: '#fff', border: `1px solid ${HAIRLINE}`, borderRadius: 16, boxShadow: isEdit ? '0 30px 70px -46px rgba(20,60,30,.45), 0 6px 20px -14px rgba(27,28,20,.18)' : '0 40px 90px -50px rgba(20,60,30,.5), 0 8px 24px -16px rgba(27,28,20,.2)', overflow: 'hidden', animation: 'ccRise .4s cubic-bezier(.22,1,.36,1) both' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '18px 20px 12px' }}>
@@ -738,8 +726,8 @@ function WorkspaceView({ ws, onBack, onModeChange, onDocChange, onCmdInput, onCm
                 {isEdit ? (
                   <textarea
                     value={ws.docText}
-                    onChange={(e) => { onDocChange(e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
-                    ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; } }}
+                    onChange={(e) => onDocChange(e.target.value)}
+                    ref={docRef}
                     placeholder="Write your post…"
                     style={{ display: 'block', width: '100%', border: 'none', background: 'none', padding: '0 20px 20px', fontFamily: SANS, fontSize: 14.5, lineHeight: 1.7, color: INK, letterSpacing: '-.003em', resize: 'none', overflow: 'hidden', minHeight: 220 }}
                   />
@@ -790,7 +778,13 @@ export default function ChatPage() {
   const [profile, setProfile] = useState(null);
   const [linkedinConnected, setLinkedinConnected] = useState(false);
   const [connectingLinkedIn, setConnectingLinkedIn] = useState(false);
-  const [personalize, setPersonalize] = useState(null); // { messageId, index, title, hookInput } | null
+  const [personalize, setPersonalize] = useState(null); // { messageId, index, title, hookInput, step: 'hook'|'template' } | null
+  // Structure template — a client-side preference (see data/templates.js;
+  // there is no backend field for it), initialized from whatever the user
+  // last picked on /templates. `tplPickerOpen` is the standalone
+  // "Change template" picker opened from the workspace (no hook step).
+  const [template, setTemplate] = useState(readSelectedTemplateId);
+  const [tplPickerOpen, setTplPickerOpen] = useState(false);
 
   const taRef = useRef(null);
   const scrollRef = useRef(null);
@@ -946,8 +940,8 @@ export default function ChatPage() {
     const aiId = nextId();
     const aiMsg = {
       id: aiId, role: 'ai', phase: 'working', kind: '', text: '',
-      activities: [], traceOpen: null, angles: [], summary: '', expandingIndex: -1, pickingIndex: -1, modifyingIndex: -1,
-      expandedSections: {}, decision: null, postId: '', threadId: priorMsg.threadId,
+      activities: [], traceOpen: null, angles: [], summary: '', pickingIndex: -1,
+      decision: null, postId: '', threadId: priorMsg.threadId,
       copied: false, error: '', userPrompt: text,
     };
     setMessages(prev => [...prev, userMsg, aiMsg]);
@@ -957,7 +951,7 @@ export default function ChatPage() {
     try {
       const data = await resumeAI(priorMsg.threadId, 'none_fit', text);
       if (data.status === 'awaiting_angle_selection') {
-        patchMessage(aiId, { phase: 'done', kind: 'angles', angles: data.angles || [], summary: data.summary || '' });
+        patchMessage(aiId, { phase: 'done', kind: 'angles', angles: data.angles || [], summary: data.summary || '', answer: data.answer || '' });
       } else {
         patchMessage(aiId, { phase: 'done', kind: 'direct', text: data.answer || '' });
       }
@@ -983,8 +977,8 @@ export default function ChatPage() {
     const aiId = nextId();
     const aiMsg = {
       id: aiId, role: 'ai', phase: 'working', kind: '', text: '',
-      activities: [], traceOpen: null, angles: [], summary: '', expandingIndex: -1, pickingIndex: -1, modifyingIndex: -1,
-      expandedSections: {}, decision: null, postId: '', threadId: '',
+      activities: [], traceOpen: null, angles: [], summary: '', pickingIndex: -1,
+      decision: null, postId: '', threadId: '',
       copied: false, error: '', userPrompt: text,
     };
     setMessages(prev => [...prev, userMsg, aiMsg]);
@@ -1033,16 +1027,12 @@ export default function ChatPage() {
     patchMessage(id, (m) => ({ traceOpen: !(m.traceOpen != null ? m.traceOpen : m.phase !== 'done') }));
   };
 
-  const toggleAngles = (id) => {
-    patchMessage(id, (m) => ({ anglesOpen: !(m.anglesOpen !== false) }));
-  };
-
-  const pickAngle = async (aiId, index, hookInput = '') => {
+  const pickAngle = async (aiId, index, hookInput = '', templateId = null) => {
     const msg = messages.find(m => m.id === aiId);
     if (!msg) return;
     patchMessage(aiId, { pickingIndex: index });
     try {
-      const data = await resumeAI(msg.threadId, 'pick', hookInput, index);
+      const data = await resumeAI(msg.threadId, 'pick', hookInput, index, templateId);
       if (data.status === 'awaiting_angle_selection') {
         patchMessage(aiId, { pickingIndex: -1, angles: data.angles || [], summary: data.summary || '', error: data.error || '' });
       } else if (data.status === 'awaiting_approval') {
@@ -1070,67 +1060,37 @@ export default function ChatPage() {
     }
   };
 
-  // Personalize-the-hook modal — opened instead of drafting immediately when
-  // an angle's "Draft for LinkedIn" is clicked. Skip/backdrop-dismiss and
-  // "Use this" both proceed to the same pickAngle() call; only the hook text
-  // carried along differs.
+  // Personalize-the-hook → pick-a-structure modal — opened instead of
+  // drafting immediately when an angle's "Draft for LinkedIn" is clicked.
+  // Step 1 (hook) hands off to step 2 (template); step 2's primary button
+  // is what actually calls pickAngle(). Backdrop-dismiss on step 1 behaves
+  // like Skip (jumps to step 2, empty hook); on step 2 it just closes,
+  // matching the source design's dismissModal().
   const requestPersonalize = (messageId, index) => {
     const msg = messages.find(m => m.id === messageId);
     const title = msg?.angles?.[index]?.title || 'this angle';
-    setPersonalize({ messageId, index, title, hookInput: '' });
+    setPersonalize({ messageId, index, title, hookInput: '', step: 'hook' });
   };
   const onPersonalizeInput = (value) => {
     setPersonalize(p => (p ? { ...p, hookInput: value } : p));
   };
+  const backToHook = () => {
+    setPersonalize(p => (p ? { ...p, step: 'hook' } : p));
+  };
+  const toTemplateStep = (hookInput) => {
+    setPersonalize(p => (p ? { ...p, hookInput, step: 'template' } : p));
+  };
   const skipPersonalize = () => {
     if (!personalize) return;
-    const { messageId, index } = personalize;
+    if (personalize.step === 'hook') { toTemplateStep(''); return; }
     setPersonalize(null);
-    pickAngle(messageId, index, '');
   };
   const submitPersonalize = () => {
     if (!personalize) return;
+    if (personalize.step === 'hook') { toTemplateStep(personalize.hookInput); return; }
     const { messageId, index, hookInput } = personalize;
     setPersonalize(null);
-    pickAngle(messageId, index, hookInput.trim());
-  };
-
-  const expandAngle = async (aiId, index) => {
-    const msg = messages.find(m => m.id === aiId);
-    if (!msg) return;
-    patchMessage(aiId, { expandingIndex: index });
-    try {
-      const data = await resumeAI(msg.threadId, 'expand', '', index);
-      patchMessage(aiId, (m) => ({
-        expandingIndex: -1,
-        expandedSections: { ...m.expandedSections, [index]: data.expanded_sections || [] },
-        error: data.error || '',
-      }));
-    } catch {
-      patchMessage(aiId, { expandingIndex: -1, error: 'Something went wrong expanding this angle.' });
-    }
-  };
-
-  // Re-invokable as many times as the user wants — each call revises the
-  // SAME angle in place, building on whatever it currently shows (the
-  // backend, not this handler, tracks "current version"; see
-  // angle_review_node.py's working_sections).
-  const modifyAngle = async (aiId, index, instructionText) => {
-    const msg = messages.find(m => m.id === aiId);
-    if (!msg) return;
-    patchMessage(aiId, { modifyingIndex: index });
-    try {
-      const data = await resumeAI(msg.threadId, 'modify', instructionText, index);
-      patchMessage(aiId, (m) => ({
-        modifyingIndex: -1,
-        // On failure the backend still echoes back the previous good
-        // sections under expanded_sections — never overwritten with blank.
-        expandedSections: { ...m.expandedSections, [index]: data.expanded_sections || m.expandedSections?.[index] || [] },
-        error: data.error || '',
-      }));
-    } catch {
-      patchMessage(aiId, { modifyingIndex: -1, error: "Couldn't apply that edit — try again." });
-    }
+    pickAngle(messageId, index, hookInput.trim(), template);
   };
 
   const regenerate = (aiId) => {
@@ -1163,7 +1123,7 @@ export default function ChatPage() {
 
   const patchWs = (fields) => setWs(prev => (prev ? { ...prev, ...(typeof fields === 'function' ? fields(prev) : fields) } : prev));
 
-  const wsApprove = async () => {
+  const wsSave = async () => {
     if (!ws) return;
     const edited = ws.docText !== ws.originalDraft;
     try {
@@ -1179,14 +1139,25 @@ export default function ChatPage() {
     }
   };
 
-  const wsDecline = async () => {
+  // The real writer-agent HITL loop: sends the exact edited text back through
+  // /resume with action="regenerate", which human_approval_node feeds to
+  // writer_node as the new base draft (writer_task.action="rewrite") and
+  // re-pauses on a fresh interrupt() — see human_approval_node.py/graph.py's
+  // _approval_router. Repeatable: each call redrafts whatever's currently in
+  // the doc box, same thread, until the user Saves.
+  const wsRegenerate = async () => {
     if (!ws) return;
+    patchWs({ regenerating: true, error: '' });
     try {
-      await resumeAI(ws.threadId, 'rejected');
-      if (ws.messageId) patchMessage(ws.messageId, { decision: 'declined' });
-      backToChat();
+      const data = await resumeAI(ws.threadId, 'regenerate', ws.docText);
+      if (data.status === 'awaiting_approval') {
+        patchWs({ docText: data.draft, originalDraft: data.draft, regenerating: false });
+        if (ws.messageId) patchMessage(ws.messageId, { text: data.draft });
+      } else {
+        patchWs({ regenerating: false, error: 'Something went wrong regenerating this draft.' });
+      }
     } catch {
-      patchWs({ error: 'Something went wrong declining this draft.' });
+      patchWs({ regenerating: false, error: 'Something went wrong regenerating this draft.' });
     }
   };
 
@@ -1199,6 +1170,41 @@ export default function ChatPage() {
       patchWs((w) => ({ docText: data.refined_draft || w.docText, commands: [...w.commands, { id: nextId(), text: note, response: 'Applied to the draft.' }] }));
     } catch {
       patchWs((w) => ({ commands: [...w.commands, { id: nextId(), text: note, response: 'Could not apply this change.' }] }));
+    }
+  };
+
+  // Picking a tile inside the personalize flow's structure step — sets the
+  // active template (persisted, so /templates and the next draft agree)
+  // without touching the current workspace/draft.
+  const pickTemplateTile = (id) => {
+    setTemplate(id);
+    writeSelectedTemplateId(id);
+  };
+
+  // Workspace's "Change template" — same real writer-agent HITL loop as
+  // wsRegenerate (see above), but with template_id set so writer_node
+  // restructures the draft to match the newly picked template instead of
+  // going through /refine's single-shot, non-graph rewrite. Keeps the
+  // current doc edits as the base draft. (A separate function from
+  // wsRegenerate, not a shared call, because WorkspaceView's Regenerate
+  // button passes onRegenerateDraft its click event directly — reusing that
+  // function with an extra leading param would take the event as templateId.)
+  const wsChangeTemplate = async (id) => {
+    if (!ws) return;
+    setTemplate(id);
+    writeSelectedTemplateId(id);
+    setTplPickerOpen(false);
+    patchWs({ regenerating: true, error: '' });
+    try {
+      const data = await resumeAI(ws.threadId, 'regenerate', ws.docText, null, id);
+      if (data.status === 'awaiting_approval') {
+        patchWs({ docText: data.draft, originalDraft: data.draft, regenerating: false });
+        if (ws.messageId) patchMessage(ws.messageId, { text: data.draft });
+      } else {
+        patchWs({ regenerating: false, error: 'Something went wrong changing the template.' });
+      }
+    } catch {
+      patchWs({ regenerating: false, error: 'Something went wrong changing the template.' });
     }
   };
 
@@ -1259,11 +1265,31 @@ export default function ChatPage() {
 
       {personalize && (
         <PersonalizeModal
+          step={personalize.step}
           title={personalize.title}
           hookInput={personalize.hookInput}
           onInput={onPersonalizeInput}
+          onBack={personalize.step === 'template' ? backToHook : undefined}
           onSkip={skipPersonalize}
           onSubmit={submitPersonalize}
+          onDismiss={skipPersonalize}
+          templateId={template}
+          onPickTemplate={pickTemplateTile}
+          primaryLabel={`Write with ${getTemplateById(template).name}`}
+        />
+      )}
+
+      {!personalize && tplPickerOpen && (
+        <PersonalizeModal
+          step="template"
+          hookInput=""
+          onInput={() => {}}
+          onSkip={() => setTplPickerOpen(false)}
+          onSubmit={() => setTplPickerOpen(false)}
+          onDismiss={() => setTplPickerOpen(false)}
+          templateId={template}
+          onPickTemplate={wsChangeTemplate}
+          primaryLabel="Done"
         />
       )}
 
@@ -1283,8 +1309,11 @@ export default function ChatPage() {
           onConnectLinkedIn={connectLinkedIn}
           onHistory={wsHistory}
           onToggleCmd={() => patchWs((w) => ({ cmdOpen: !(w.cmdOpen !== false) }))}
-          onApprove={wsApprove}
-          onDecline={wsDecline}
+          onSave={wsSave}
+          onRegenerateDraft={wsRegenerate}
+          onChangeTemplate={() => setTplPickerOpen(true)}
+          templateName={getTemplateById(template).name}
+          regenerating={!!ws.regenerating}
           publishing={publishing}
           connecting={connectingLinkedIn}
           publishResult={publishResult}
@@ -1319,10 +1348,6 @@ export default function ChatPage() {
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <button onClick={newChat} title="New conversation" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 34, padding: '0 14px', border: '1px solid rgba(27,28,20,.12)', background: '#fff', borderRadius: 10, fontSize: 13, fontWeight: 600, color: '#3A3C30', cursor: 'pointer', boxShadow: '0 1px 2px rgba(27,28,20,.04)' }}>
-                  <Plus size={14} /> New
-                </button>
-
                 <div style={{ position: 'relative' }}>
                   <button
                     onClick={() => setProfileOpen(o => !o)}
@@ -1409,10 +1434,7 @@ export default function ChatPage() {
                       <MessageBubble
                         msg={m}
                         onToggleTrace={toggleTrace}
-                        onToggleAngles={toggleAngles}
                         onPick={(i) => requestPersonalize(m.id, i)}
-                        onExpandAngle={(i) => expandAngle(m.id, i)}
-                        onModifyAngle={(i, text) => modifyAngle(m.id, i, text)}
                         onCopy={() => copyMsg(m.id)}
                         onOpenWorkspace={openWorkspace}
                         onRegenerate={() => regenerate(m.id)}

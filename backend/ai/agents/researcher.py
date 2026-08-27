@@ -110,8 +110,9 @@ class ResearchArtifactParser:
         r"\*\*(?P<title>.+?)\*\*\s*\n"
         r"(?P<argument>.+?)\n"
         r"(?P<glimpse>.+?)\n"
+        r"·\s*Lens:\s*(?P<lens>.+?)\n"
         r"·\s*Audience:\s*(?P<audience>.+?)\n"
-        r"·\s*Provokes:\s*(?P<provokes>.+?)\s*\n?"
+        r"·\s*(?:Provokes:\s*)?(?P<provokes>.+?)\s*\n?"
         r"(?:·\s*Source:\s*(?P<source_url>\S+)\s*)?(?:\n|$)",
         re.MULTILINE | re.DOTALL,
     )
@@ -177,6 +178,7 @@ class ResearchArtifactParser:
                     detail=match.group("glimpse").strip(),
                     source_url=source_url,
                     attributes={
+                        "lens": match.group("lens").strip(),
                         "audience": match.group("audience").strip(),
                         "provokes_type": provokes_type,
                         "provokes_reason": provokes_reason,
@@ -208,6 +210,25 @@ class ResearchArtifactParser:
 
         return ResearchArtifact(mode=mode, items=items, summary=ResearchArtifactParser._parse_summary(raw_text))
 
+    _MODE_HEADER_RE = re.compile(r"(?i)^\s*mode\s*:\s*angles\s*\n\s*request_type\s*:.*\n")
+    _SERIES_REQUEST_TYPE_RE = re.compile(r"(?i)request_type\s*:\s*series")
+
+    @staticmethod
+    def strip_mode_header(text: str) -> str:
+        """Strips the leading "MODE: ANGLES\\nREQUEST_TYPE: ..." control lines
+        the prompt asks the model to emit — shared by _parse_summary (single
+        post) and the SERIES plain-text path, so neither leaks control lines
+        into user-facing text."""
+        return ResearchArtifactParser._MODE_HEADER_RE.sub("", text.strip())
+
+    @staticmethod
+    def is_series(raw_text: str) -> bool:
+        """True when the model declared REQUEST_TYPE: SERIES anywhere in its
+        response — checked before attempting the strict angle-block parse,
+        since SERIES output has been observed to abandon that format
+        entirely (freeform prose instead of Part-i-of-N blocks)."""
+        return bool(ResearchArtifactParser._SERIES_REQUEST_TYPE_RE.search(raw_text))
+
     @staticmethod
     def _parse_summary(raw_text: str) -> str:
         """Extracts the personalized SUMMARY: block the prompt asks for, which
@@ -217,6 +238,7 @@ class ResearchArtifactParser:
         5-angle contract is the only hard requirement for this mode."""
         first_match = ResearchArtifactParser._STRATEGIC_ANGLE_BLOCK_RE.search(raw_text)
         preamble = raw_text[:first_match.start()] if first_match else raw_text
+        preamble = ResearchArtifactParser.strip_mode_header(preamble)
         return re.sub(r"(?i)^\s*summary\s*:\s*", "", preamble.strip()).strip()
 
     @staticmethod
@@ -267,6 +289,7 @@ class ResearchArtifactParser:
                 "provokes_type": item.attributes.get("provokes_type", ""),
                 "provokes_reason": item.attributes.get("provokes_reason", ""),
                 "source_url": item.source_url,
+                "lens": item.attributes.get("lens", ""),
             }
             for item in artifact.items
         ]
@@ -488,11 +511,13 @@ otherwise.}
 {One sentence: the argument this post makes.}
 {500+ characters: unpack the argument — why it's true, what evidence or
 personal detail supports it, what makes it non-obvious.}
+· Lens: {the one lens from RULE 5 above that this angle actually uses,
+verbatim — e.g. "The mechanism nobody names"}
 · Audience: {specific role}
 · Provokes: {comment | long-dwell | share} — {why they react}
 · Source: {URL a tool call returned this turn. Omit line if none.}
 
-{...repeat for all 5 angles...}
+{...repeat for all 5 angles, each with a different lens...}
 
 ========================================
 FORMAT — MODE: ANGLES, SERIES
@@ -508,11 +533,13 @@ a one-line cadence note.}
 **Part 1 of {N} — {Title — a claim, never a topic}**
 {One sentence: the argument this specific post makes.}
 {500+ characters unpacking it, written so it stands alone.}
+· Lens: Part 1 of {N}
 · Audience: {specific role}
 · Provokes: {comment | long-dwell | share} — {why they react}
 · Source: {URL a tool call returned this turn. Omit line if none.}
 
-{...repeat per part...}
+{...repeat per part, incrementing "Part i of N" in both the title and the
+Lens line...}
 """
 
     @staticmethod
@@ -638,8 +665,24 @@ async def researcher_linkedin(state: ResearcherState, profile_context: dict | No
 
     raw = ResearchArtifactParser.extract_text(response.content)
     valid_source_urls = ResearchArtifactParser.extract_sources(messages)
-    artifact = ResearchArtifactParser.parse("strategic_angles", raw, valid_source_urls=valid_source_urls)
     emit_activity(BUILDING_ANGLES_ID, BUILDING_ANGLES_TITLE, "completed", parent_id="researching")
+
+    if ResearchArtifactParser.is_series(raw):
+        # SERIES output has been observed to abandon the Part-i-of-N block
+        # format entirely (freeform prose instead) — no parser can reliably
+        # hang a "pick" UI on that, so it's shown as plain chat text instead
+        # of going through the strict angle parser at all.
+        series_text = ResearchArtifactParser.strip_mode_header(raw)
+        if valid_source_urls:
+            series_text += "\n\nSources:\n" + "\n".join(sorted(valid_source_urls))
+        logger.info("researcher_linkedin: TOTAL %.2fs — SERIES response for user_id=%s",
+                    time.monotonic() - t_start, user_id)
+        return {
+            "series_text": series_text,
+            "research_search_context": ResearchArtifactParser.collect_web_search_context(messages),
+        }
+
+    artifact = ResearchArtifactParser.parse("strategic_angles", raw, valid_source_urls=valid_source_urls)
     logger.info("researcher_linkedin: TOTAL %.2fs — produced %d angles for user_id=%s",
                 time.monotonic() - t_start, len(artifact.items), user_id)
 
@@ -662,9 +705,12 @@ async def researcher_node(state: ResearcherState) -> dict:
     profile_context = await asyncio.to_thread(ProfileContextLoader.load, user_id)
 
     result = await researcher_linkedin(state, profile_context=profile_context)
-    artifact = result["research_artifact"]
-
     emit_node_activity("researcher_node", "completed")
+
+    if "series_text" in result:
+        return {"answer": result["series_text"]}
+
+    artifact = result["research_artifact"]
     return {
         "research_result": {
             "angles": ResearchArtifactParser.to_wire_dicts(artifact),

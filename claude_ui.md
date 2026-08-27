@@ -1,6 +1,6 @@
 # ContentCoach AI — UI State & Design System
 > Single source of truth for all UI decisions. This file describes only the current state of the frontend — no changelog, no history. When a page or component changes, edit its section in place.
-> Last updated: 2026-08-04
+> Last updated: 2026-08-27
 
 ---
 
@@ -122,6 +122,7 @@ All respect `@media (prefers-reduced-motion: reduce)`.
 | `/onboarding` | `pages/OnboardingPage.jsx` | RequireAuth | First-run-only questionnaire |
 | `/my-work`, `/vault` | `pages/MyWorkPage.jsx` | RequireAuth | Both paths render the same component |
 | `/chat` | `pages/ChatPage.jsx` | RequireAuth | App home page (post-login/post-onboarding redirect target) |
+| `/templates` | `pages/TemplatesPage.jsx` | RequireAuth | Gallery of post-structure templates; picking one sets the client-side default `ChatPage.jsx`'s personalize flow pre-selects |
 | `/schedule` | `pages/SchedulePage.jsx` | RequireAuth | Calendar/momentum/content-runway view |
 | `/analytics` | `pages/AnalyticsPage.jsx` | RequireAuth | Performance dashboard — KPIs, best post, topic/type/consistency breakdown, content performance table |
 | `/settings` | `pages/SettingsPage.jsx` | RequireAuth | Account settings |
@@ -273,13 +274,14 @@ view === 'workspace': Refine command assistant | header + Edit/Preview LinkedIn-
 | `HonneSidebar` | Collapsible aside — see § Shared Components below |
 | `MessageBubble` | Renders one message; `ai`-role messages show an agent-icon tile, `ActivityTimeline`, streamed text, and one of `angles`/`draft`/`direct` bodies once `phase==='done'` |
 | `ActivityTimeline`/`ActivityRow` | Collapsible "Working…"/"Done · N steps" panel, driven by real `activity` SSE events from the backend (never renders a raw node/tool/agent name — only whatever label the backend sent) |
-| `AngleCard` | One research angle: tag, title, argument, optional glimpse, audience/source, inline Expand/Refine panel, "Draft for LinkedIn"/"Expand" actions |
+| `PersonalizeModal` | Backdrop dialog shown when "Draft for LinkedIn" is clicked, or when the workspace's "Change template" button is pressed — two-step wizard (`step: 'hook'\|'template'`): step 1 is the optional stat/story/detail textarea for the post's hook (unchanged from before); step 2 is the `data/templates.js` structure picker (`StructureTile` rows with abstract mini-bar previews). Opened from an angle, "Continue"/"Skip" both advance from step 1 to step 2; the step-2 primary button ("Write with {template}") is what actually calls `pickAngle()`. Opened standalone via "Change template" (`tplPickerOpen`, no `personalize` state), there is no step 1 and no Back button — matches the source design's `dismissModal()`/`openTplPicker()` split |
+| `StructureTile` | One row in the step-2 structure picker — 4-bar abstract preview (`templateMiniBars()`) + name/bestFor + an active checkmark |
 | `Composer` | Docked auto-sizing textarea; Enter sends, Shift+Enter newlines |
 | `WorkspaceView` | Full post-draft workspace — see below |
 | `LinkedInGlyph` | Inline LinkedIn "in" SVG mark |
 
-### Research angle cards (`msg.kind === 'angles'`)
-Rendered once the graph pauses at `awaiting_angle_selection`. Two display modes toggled by a header button: expanded (vertical `AngleCard` stack) or collapsed (single row of pill chips). Per-card actions: **Draft for LinkedIn** (`resumeAI(threadId,'pick','',index)` — chains into the writer, opens `WorkspaceView`); **Expand** (`resumeAI(threadId,'expand','',index)` — grounded summary shown inline); once expanded, an inline **Refine** input (`resumeAI(threadId,'modify',text,index)`) revises that angle's summary repeatedly in place. Typing in the composer while the latest message is still an unresolved `angles` message routes through `sendAsAngleGuidance()` → `resumeAI(threadId,'none_fit',text)` on the same paused thread, instead of starting a new one.
+### Angle list (`msg.kind === 'angles'`)
+Rendered once the graph pauses at `awaiting_angle_selection`. Shows **every** angle `researcher_node` returns (up to 5) as its own block in a vertical, left-bordered list — `lens` (small mono label — one of the five named lenses for a single post, `"Part {i} of {N}"` for a series), `title` (EB Garamond serif), `argument`, an expand/collapse-truncated `glimpse` ("Read more"/"Less", local `expandedAngles` state per message), `audience` tag, and `source_url` link — each with its **own independent Draft for LinkedIn** button (no shared "recommended" framing; that single-card treatment was replaced to match the current design canvas). Clicking angle *i*'s CTA opens `PersonalizeModal` on step 1 (hook), scoped to that angle's title; its "Skip"/"Continue" button advances to step 2 (structure), whose primary button then calls `resumeAI(threadId,'pick',content,i)` — `content` is the hook text plus `templateDirective(template)` (see `data/templates.js`) appended, so the chosen structure actually reaches `writer_node` via the same `research_brief.personal_hook_input` channel the hook text already rode, without any new backend field. Typing in the composer while the latest message is still an unresolved `angles` message routes through `sendAsAngleGuidance()` → `resumeAI(threadId,'none_fit',text)` on the same paused thread, instead of starting a new one.
 
 ### Persisted chat history
 The sidebar's chat list is fetched from the backend on mount via `getSessions()` and mapped to `{id, sessionId, title, time}`; `currentSessionId` persists to `localStorage['lastSessionId']` and is restored on reload if still present in the fetched list. `selectChat()` calls `getSessionThreads(sessionId)` and rehydrates the full message list via `threadToMessages()`. **Deleting a chat row calls `deleteSession(sessionId)`** (`DELETE /api/ai/sessions/{id}`) with an optimistic UI removal that reverts on failure — this permanently deletes the backend record and its threads, not just the local list entry.
@@ -291,8 +293,9 @@ Each exchange creates a `user` message and an `ai` message; the AI message's `ph
 Opened via "Open Workspace →" or automatically once a draft exists. Two-column layout:
 - **Left ("Refine") panel** — chat-style command assistant; input wired to `submitWsCmd()` → `refineAI(ws.docText, note)` (single LLM call, no graph) — replaces the draft text in place.
 - **Right (document) panel** — Edit/Preview toggle over a LinkedIn-preview card: 44px avatar, the real logged-in user's name (`localStorage.username`) and `professionLine = profile?.profession || profile?.role || 'Creator on Honne'` (from `getProfile()`, resolved to `null` on 404 instead of throwing). Edit mode is a plain auto-growing `<textarea>`; Preview mode is read-only with a Like/Comment/Repost/Send action row and a "Draft preview" label (not a fabricated post age).
-- **Header** — back-to-chat, title + pills, Approve/Decline (or the decision pill once resolved), Copy, History (fetches `getVersions(postId)`), and a real LinkedIn-branded Connect/Publish button (`getLinkedInStatus()`/`getLinkedInAuthUrl()`/`publishToLinkedIn()`).
+- **Header** — back-to-chat, title + pills, a **Change template** button (shows the active template's name; opens `PersonalizeModal` in standalone structure-only mode), Regenerate/Save (or the decision pill once resolved), Copy, History (fetches `getVersions(postId)`), and a real LinkedIn-branded Connect/Publish button (`getLinkedInStatus()`/`getLinkedInAuthUrl()`/`publishToLinkedIn()`).
 - Approve calls `resumeAI(threadId,'edited',docText)` if the text changed, else `resumeAI(threadId,'approved')`; Decline calls `resumeAI(threadId,'rejected')`.
+- Picking a tile in "Change template" (`pickWorkspaceTemplate()`) persists the new default (`writeSelectedTemplateId()`) and calls `submitWsCmd()` with a synthesized note carrying `templateDirective(id)` — reuses the same real `refineAI()` rewrite path as any other Refine-panel command, so the open draft is actually restructured, not just relabeled.
 
 ### Header account menu (`profileOpen`)
 Top-right circular avatar button toggles a dropdown (click-outside overlay to close): a "My account" header row, then **Settings** (→ `/settings`), **Change my details** (→ `/account-details` — see `AccountDetailsPage.jsx` below), a divider, then **Log out** (`handleLogout()` — clears `localStorage`, navigates to `/login`).
@@ -300,7 +303,7 @@ Top-right circular avatar button toggles a dropdown (click-outside overlay to cl
 ### API calls
 ```js
 streamQuery(text, sessionId, onToken, onDone, onError, onActivity)  // SSE — main composer
-resumeAI(threadId, action, content, angleId)                       // approve/edited/rejected/pick/expand/modify/none_fit
+resumeAI(threadId, action, content, angleId)                       // approve/edited/rejected/pick/none_fit
 refineAI(draft, note)                                              // workspace Refine panel only
 getSessions() / getSessionThreads(sessionId) / deleteSession(sessionId)
 getLinkedInStatus() / getLinkedInAuthUrl() / publishToLinkedIn()   // workspace Connect/Publish
@@ -308,6 +311,30 @@ getVersions(postId)                                                // workspace 
 getProfile()                                                       // workspace card's name/profession line
 ```
 There is no mock/simulated-stream fallback anywhere in this file — an SSE or resume failure surfaces as an inline error on that message (`msg.error`) or the workspace (`ws.error`).
+
+---
+
+## TemplatesPage.jsx (`/templates`)
+
+```
+HonneSidebar | header ("Post structure" / "Templates") + intro line | responsive grid of TemplateCards
+```
+
+Ported from the "Honne Chat v3" design's Templates tab (`ff122375-c3bc-4438-aece-706b0bd557b0`, `Honne Chat v3.dc.html`) — the source design bundles Chat/Vault/Templates/Analytics/Scheduled as tabs inside one sidebar-persisted shell; this app uses real routing instead, so Templates became its own page + `HonneSidebar` nav entry (`SIDE_NAV`, between Vault and Analytics) rather than a `sc-if`-switched section.
+
+### Data
+`data/templates.js` — shared with `ChatPage.jsx`'s structure picker (see below), not page-local. Exports:
+- `TEMPLATES` — 5 hardcoded post structures (Clean Paragraphs, Storytelling, Bullet Breakdown, Before → After, Minimalist), each with `id/name/desc/bestFor` and a `pv` block list (`kind: 'hook'|'para'|'bullet'|'label'|'lesson'|'statement'|'rule'`, `text`, `top`) driving the miniature LinkedIn-post preview.
+- `readSelectedTemplateId()`/`writeSelectedTemplateId()` — the active template is a **client-side preference only** (`localStorage['honne_template']`, default `'clean'`) — there is no backend column for it; `ChatPage.jsx` reads the same key on mount.
+- `templateDirective(id)` — the plain-text structure instruction threaded into the hookInput/refine-note channels that already reach the writer agent (see ChatPage's Angle list / WorkspaceView sections above).
+- `templateMiniBars(t)` — the abstract 4-bar preview used by ChatPage's compact `StructureTile` rows (as opposed to this page's full text preview).
+
+### What's real vs mock
+| Feature | Status |
+|---|---|
+| Sidebar (nav, search, persisted chat list) | ✅ Real — same `HonneSidebar` + `getSessions()`/`deleteSession()` as `ChatPage.jsx` |
+| Template gallery, selection, "In use" badge | ✅ Real client-side state, persisted to `localStorage` and shared with `ChatPage.jsx`'s personalize flow |
+| Template's actual effect on a draft | ✅ Real, but indirect — see `templateDirective()` above; there is no dedicated backend field, the choice rides existing free-text channels |
 
 ---
 
@@ -400,7 +427,7 @@ Static "AI team" overview using `AppSidebar` (the only remaining consumer of tha
 ## Shared Components (`components/shared/`)
 
 ### `HonneSidebar.jsx`
-Used by `ChatPage.jsx`, `SchedulePage.jsx`, `AnalyticsPage.jsx`, `SettingsPage.jsx`. Props: `open, onToggle, chats, activeIndex, onSelect, onDelete, onNewChat, search, onSearch, userName, navigate, activeNav`. Palette: `SIDEBAR_BG='#EFEDE3'`, `ACCENT='#14663B'`, `INK='#1B1C14'`, `BG='#F4F2EA'`; fonts Geist/JetBrains Mono. `SIDE_NAV`: Chats (`/chat`, enabled), Vault (`/my-work`, enabled), Analytics (`/analytics`, enabled), Scheduled (`/schedule`, enabled). Footer button always navigates to `/settings`.
+Used by `ChatPage.jsx`, `TemplatesPage.jsx`, `SchedulePage.jsx`, `AnalyticsPage.jsx`, `SettingsPage.jsx`. Props: `open, onToggle, chats, activeIndex, onSelect, onDelete, onNewChat, search, onSearch, userName, navigate, activeNav`. Palette: `SIDEBAR_BG='#EFEDE3'`, `ACCENT='#14663B'`, `INK='#1B1C14'`, `BG='#F4F2EA'`; fonts Geist/JetBrains Mono. `SIDE_NAV`: Chats (`/chat`, enabled), Vault (`/my-work`, enabled), Templates (`/templates`, enabled), Analytics (`/analytics`, enabled), Scheduled (`/schedule`, enabled). Footer button always navigates to `/settings`.
 
 ### `AppSidebar.jsx`
 Used only by `AgentsPage.jsx` — `MyWorkPage.jsx` no longer imports it; it is a self-contained page with no sidebar of this kind. Exports `NAV_ITEMS` + `AppSidebar({navigate, activeKey, collapsed, onToggle, onCalendarOpen})`. Distinct palette: `INK='#111827'`, `BLUE='#3B82F6'`, `INDIGO='#6366F1'`, `VIOLET='#8B5CF6'`, fonts Hanken Grotesk/Newsreader/JetBrains Mono. Has its own inline mock calendar widget and sign-out button. `NAV_ITEMS`: `content`→`/my-work?new=1`, `agents`→`/agents`, `vault`→`/vault`, `chat`→`/chat`.

@@ -16,17 +16,19 @@ export const queryAI = (prompt, sessionId = null) =>
  * Resumes a paused thread's interrupt (human_approval_node or angle_review_node).
  *
  * @param {string} thread_id
- * @param {string} action    - "approved" | "edited" | "rejected" (human_approval_node) |
- *                             "pick" | "expand" | "modify" | "none_fit" (angle_review_node)
- * @param {string} [content] - free text: edited draft body ("edited"), modify instruction
- *                             ("modify"), fresh guidance ("none_fit"), or a personal
- *                             stat/story/detail to open the hook with ("pick")
- * @param {number|null} [angle_id] - required for "pick" / "expand" / "modify"
- * @returns {Promise<{status?, answer?, draft?, angles?, actions?, summary?,
- *                     expanded_angle_id?, expanded_sections?, error?, post_id?}>}
+ * @param {string} action    - "approved" | "edited" | "rejected" | "regenerate" (human_approval_node) |
+ *                             "pick" | "none_fit" (angle_review_node)
+ * @param {string} [content] - free text: edited draft body ("edited"), fresh guidance
+ *                             ("none_fit"), or a personal stat/story/detail to open the
+ *                             hook with ("pick")
+ * @param {number|null} [angle_id] - required for "pick"
+ * @param {string|null} [template_id] - optional, valid on "pick" and "regenerate" — a
+ *                             frontend/src/data/templates.js id; backend resolves the
+ *                             full structure and threads it into the writer agent
+ * @returns {Promise<{status?, answer?, draft?, angles?, actions?, summary?, error?, post_id?}>}
  */
-export const resumeAI = (thread_id, action, content = '', angle_id = null) =>
-  api.post('/resume', { thread_id, action, content, angle_id }).then(r => r.data);
+export const resumeAI = (thread_id, action, content = '', angle_id = null, template_id = null) =>
+  api.post('/resume', { thread_id, action, content, angle_id, template_id }).then(r => r.data);
 
 export const refineAI = (draft, note) =>
   api.post('/refine', { draft, note }).then(r => r.data);
