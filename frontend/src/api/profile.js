@@ -1,7 +1,8 @@
 import axios from 'axios'
 import { attachAuthHeader } from './attachAuthHeader'
+import { API_BASE } from './apiBase'
 
-const client = axios.create({ baseURL: '/api/profile' })
+const client = axios.create({ baseURL: `${API_BASE}/api/profile` })
 attachAuthHeader(client)
 
 /**

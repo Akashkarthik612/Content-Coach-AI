@@ -2,6 +2,7 @@ import axios from 'axios';
 
 import { supabase } from '../lib/supabaseClient';
 import { localLogin, localRegister } from './localAuth';
+import { API_BASE } from './apiBase';
 
 // Dev-only switch — see AUTH_PROVIDER on the backend (backend/auth_local/).
 // Defaults to Supabase; never set VITE_AUTH_MODE=local outside local dev.
@@ -9,7 +10,7 @@ const IS_LOCAL_AUTH = import.meta.env.VITE_AUTH_MODE === 'local';
 
 // Mounted unconditionally on the backend regardless of AUTH_PROVIDER — see
 // backend/auth/router.py.
-const _authApi = axios.create({ baseURL: '/api/auth' });
+const _authApi = axios.create({ baseURL: `${API_BASE}/api/auth` });
 
 // Pre-signup uniqueness check — lets us reject a taken username/email before
 // ever calling supabase.auth.signUp(), instead of discovering the collision

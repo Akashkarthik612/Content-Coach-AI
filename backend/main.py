@@ -59,6 +59,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+_extra_origins = [o.strip() for o in settings.EXTRA_ALLOWED_ORIGINS.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -66,6 +68,7 @@ app.add_middleware(
         "http://localhost",        # Docker nginx (port 80)
         "http://localhost:80",
         "https://dav1fcmwl68t0.cloudfront.net",   # deployed frontend
+        *_extra_origins,
     ],
     allow_methods=["*"],
     allow_headers=["*"],

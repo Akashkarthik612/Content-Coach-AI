@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     LINKEDIN_REDIRECT_URI: str = "http://localhost:8000/api/linkedin/auth/callback"
     FRONTEND_URL: str = "http://localhost:5173"
 
+    # Comma-separated extra CORS origins (e.g. the deployed Vercel URL) added
+    # on top of the hardcoded localhost/CloudFront list in main.py, so a new
+    # frontend domain is an env var change, not a code change.
+    EXTRA_ALLOWED_ORIGINS: str = ""
+
     # Background scheduler — auto-publishes posts at their scheduled_at time.
     # See backend/scheduler/.
     SCHEDULER_ENABLED: bool = True

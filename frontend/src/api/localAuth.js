@@ -1,10 +1,11 @@
 import axios from 'axios';
+import { API_BASE } from './apiBase';
 
 // Dev-only local auth (VITE_AUTH_MODE=local) — talks to the backend's
 // AUTH_PROVIDER=local password endpoints instead of Supabase. No auth header
 // needed for register/login themselves; downstream calls read X-User-Id from
 // localStorage via attachAuthHeader.js.
-const api = axios.create({ baseURL: '/api/auth' });
+const api = axios.create({ baseURL: `${API_BASE}/api/auth` });
 
 function _classify(err) {
   const detail = err?.response?.data?.detail || 'Something went wrong';

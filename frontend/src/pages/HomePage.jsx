@@ -141,7 +141,7 @@ export default function HomePage({ initialMode = 'login' }) {
       if (data.needsEmailConfirmation) {
         setConfirmMsg(`Check ${data.email} for a confirmation link, then log in.`);
       } else {
-        navigate('/welcome', { state: { next: '/onboarding' } });
+        navigate('/onboarding');
       }
     } catch (err) {
       setError(err.message);
@@ -258,26 +258,30 @@ export default function HomePage({ initialMode = 'login' }) {
             )}
           </form>
 
-          <div style={st.divider}>
-            <span style={st.dividerLine} />
-            <span style={st.dividerText}>or continue with</span>
-            <span style={st.dividerLine} />
-          </div>
+          {isSignup && (
+            <>
+              <div style={st.divider}>
+                <span style={st.dividerLine} />
+                <span style={st.dividerText}>or continue with</span>
+                <span style={st.dividerLine} />
+              </div>
 
-          <button
-            type="button"
-            style={{ ...googleBase, ...(googleHov ? googleHover : {}) }}
-            onMouseEnter={() => setGoogleHov(true)}
-            onMouseLeave={() => setGoogleHov(false)}
-            onClick={handleGoogle}
-          >
-            <GoogleSVG />
-            <span>{AUTH_COPY.google.label}</span>
-          </button>
-          {googleMsg && (
-            <p style={{ textAlign: 'center', fontSize: 13, color: C.muted, marginTop: 10, fontFamily: GEIST }}>
-              {googleMsg}
-            </p>
+              <button
+                type="button"
+                style={{ ...googleBase, ...(googleHov ? googleHover : {}) }}
+                onMouseEnter={() => setGoogleHov(true)}
+                onMouseLeave={() => setGoogleHov(false)}
+                onClick={handleGoogle}
+              >
+                <GoogleSVG />
+                <span>{AUTH_COPY.google.label}</span>
+              </button>
+              {googleMsg && (
+                <p style={{ textAlign: 'center', fontSize: 13, color: C.muted, marginTop: 10, fontFamily: GEIST }}>
+                  {googleMsg}
+                </p>
+              )}
+            </>
           )}
 
           <div style={st.switchLine}>

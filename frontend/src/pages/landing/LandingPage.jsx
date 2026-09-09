@@ -115,7 +115,6 @@ function Nav() {
           <div className="hn-nav-links" style={{ display: 'flex', alignItems: 'center', gap: 22 }}>
             <span style={{ fontFamily: FONT.mono, fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', color: '#5B5F52' }}>How it works</span>
             <span style={{ fontFamily: FONT.mono, fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', color: '#5B5F52' }}>For creators</span>
-            <span style={{ fontFamily: FONT.mono, fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', color: '#5B5F52' }}>Pricing</span>
           </div>
           <button
             onClick={() => navigate('/login')}
@@ -151,7 +150,7 @@ function Hero() {
   }, [])
 
   return (
-    <section className="hn-hero-grid" style={{ maxWidth: 1200, margin: '0 auto', padding: '56px 40px 40px', display: 'grid', gridTemplateColumns: '1.08fr .92fr', gap: 48, alignItems: 'center' }}>
+    <section className="hn-hero-grid" style={{ maxWidth: 1200, margin: '0 auto', padding: '56px 40px 40px', display: 'grid', gridTemplateColumns: '1fr', gap: 48, alignItems: 'center' }}>
       <div>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9, background: '#fff', border: '1.5px solid rgba(20,24,15,.1)', borderRadius: 999, padding: '8px 15px 8px 11px', marginBottom: 26, boxShadow: '0 8px 20px -12px rgba(20,60,30,.35)' }}>
           <span style={{ display: 'inline-flex', gap: 4 }}>
@@ -180,37 +179,7 @@ function Hero() {
           >
             Start writing
           </button>
-          <button style={{ fontFamily: FONT.mono, fontSize: 12, fontWeight: 600, letterSpacing: '.14em', textTransform: 'uppercase', color: C.ink, padding: '16px 26px', borderRadius: 14, border: '1.5px solid rgba(23,24,15,.85)', background: '#fff', cursor: 'pointer', minHeight: 44 }}>
-            Schedule a demo
-          </button>
-        </div>
-      </div>
-
-      <div style={{ position: 'relative' }}>
-        <span style={{ position: 'absolute', top: -18, left: 18, zIndex: 9, display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 11px 0 9px', borderRadius: 999, background: C.greenBright, color: '#fff', fontSize: 12, fontWeight: 700, transform: 'rotate(-4deg)', boxShadow: '0 8px 16px -8px rgba(47,163,91,.9)' }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#fff' }} />Maya ✍️
-        </span>
-        <span style={{ position: 'absolute', bottom: -14, right: 24, zIndex: 9, display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 11px 0 9px', borderRadius: 999, background: C.green, color: '#fff', fontSize: 12, fontWeight: 700, transform: 'rotate(4deg)', boxShadow: '0 8px 16px -8px rgba(20,102,59,.9)' }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: C.greenLight }} />Leo 📓
-        </span>
-        <div style={{ animation: 'hFloat 6s ease-in-out infinite' }}>
-          <div style={{ background: '#fff', border: '1.5px solid rgba(20,24,15,.12)', borderRadius: 22, padding: 24, boxShadow: '0 40px 84px -40px rgba(20,60,30,.5)' }}>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 18 }}>
-              <span style={{ width: 9, height: 9, borderRadius: '50%', border: '1.5px solid rgba(20,24,15,.2)' }} />
-              <span style={{ width: 9, height: 9, borderRadius: '50%', border: '1.5px solid rgba(20,24,15,.2)' }} />
-              <span style={{ width: 9, height: 9, borderRadius: '50%', border: '1.5px solid rgba(20,24,15,.2)' }} />
-            </div>
-            <div style={{ height: 8, width: '100%', background: 'rgba(20,24,15,.12)', borderRadius: 3, marginBottom: 9 }} />
-            <div style={{ height: 8, width: '82%', background: 'rgba(20,24,15,.1)', borderRadius: 3, marginBottom: 9 }} />
-            <div style={{ height: 8, width: '60%', background: 'rgba(20,24,15,.07)', borderRadius: 3 }} />
-            <p style={{ fontFamily: FONT.serif, fontStyle: 'italic', fontSize: 20, lineHeight: 1.42, margin: '24px 0 4px', color: C.ink }}>
-              &quot;The architecture of silence is often louder than the noise of production&hellip;&quot;
-            </p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 18 }}>
-              <span style={{ fontFamily: FONT.serif, color: C.greenBright, fontWeight: 700, fontSize: 18 }}>&#10078;</span>
-              <span style={{ fontFamily: FONT.mono, fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase', color: C.faint }}>Voice sync module</span>
-            </div>
-          </div>
+          
         </div>
       </div>
     </section>
@@ -623,7 +592,7 @@ function Footer() {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 24 }}>
           {[
-            { title: 'Product', items: ['How it works', 'For creators', 'Pricing'] },
+            { title: 'Product', items: ['How it works', 'For creators'] },
             { title: 'Resources', items: ['Docs', 'API Reference', 'Voice Guide'] },
             { title: 'Company', items: ['About', 'Privacy', 'Terms'] },
           ].map((col) => (

@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { attachAuthHeader } from './attachAuthHeader';
+import { API_BASE } from './apiBase';
 
-const BASE = '/api/vault';
+const BASE = `${API_BASE}/api/vault`;
 
 const api = axios.create({ baseURL: BASE });
 attachAuthHeader(api);
