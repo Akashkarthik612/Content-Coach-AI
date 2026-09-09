@@ -31,5 +31,10 @@ async_engine = create_async_engine(
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
+    # Disables psycopg3 server-side prepared statements — required against a
+    # pgbouncer transaction-mode pooler (e.g. Supabase's), which can route a
+    # connection to a different backend per transaction and collide on a
+    # reused prepared-statement name (psycopg.errors.DuplicatePreparedStatement).
+    connect_args={"prepare_threshold": None},
 )
 AsyncSessionLocal = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)

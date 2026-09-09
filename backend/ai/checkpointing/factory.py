@@ -27,11 +27,20 @@ def create_pool(database_url: str) -> AsyncConnectionPool:
     """Shared connection pool — AsyncPostgresSaver.from_conn_string() opens a
     single raw psycopg connection, which isn't safe to use from more than one
     coroutine at once. A pool gives each concurrent request its own
-    connection (max_size=20) instead of every request fighting over one."""
+    connection (max_size=20) instead of every request fighting over one.
+
+    prepare_threshold=None disables psycopg's server-side prepared statements
+    entirely — required against a pgbouncer transaction-mode pooler (e.g.
+    Supabase's), which can route a connection to a different backend per
+    transaction; a prepared statement name from one backend can then collide
+    with another (psycopg.errors.DuplicatePreparedStatement). Note 0 is NOT
+    "disabled" — in psycopg3 it means "prepare on the very first execution,"
+    the opposite of what's needed here.
+    """
     return AsyncConnectionPool(
         conninfo=database_url,
         max_size=20,
-        kwargs={"autocommit": True, "prepare_threshold": 0},
+        kwargs={"autocommit": True, "prepare_threshold": None},
         open=False,
     )
 
