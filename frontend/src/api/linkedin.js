@@ -1,7 +1,8 @@
 import axios from 'axios'
 import { attachAuthHeader } from './attachAuthHeader'
+import { API_BASE } from './apiBase'
 
-const client = axios.create({ baseURL: '/api/linkedin' })
+const client = axios.create({ baseURL: `${API_BASE}/api/linkedin` })
 attachAuthHeader(client)
 
 /** {connected, display_name, profile_image_url, expires_at} */

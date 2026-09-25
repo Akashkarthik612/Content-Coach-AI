@@ -1,12 +1,13 @@
 import axios from 'axios';
 import { attachAuthHeader } from './attachAuthHeader';
 import { supabase } from '../lib/supabaseClient';
+import { API_BASE } from './apiBase';
 
 // Dev-only switch — see AUTH_PROVIDER on the backend (backend/auth_local/).
 // Defaults to Supabase; never set VITE_AUTH_MODE=local outside local dev.
 const IS_LOCAL_AUTH = import.meta.env.VITE_AUTH_MODE === 'local';
 
-const api = axios.create({ baseURL: '/api/ai' });
+const api = axios.create({ baseURL: `${API_BASE}/api/ai` });
 attachAuthHeader(api);
 
 export const queryAI = (prompt, sessionId = null) =>
@@ -110,7 +111,7 @@ export function streamQuery(prompt, sessionId, onToken, onDone, onError, onActiv
         }
       }
 
-      const response = await fetch('/api/ai/stream', {
+      const response = await fetch(`${API_BASE}/api/ai/stream`, {
         method:  'POST',
         headers,
         body:   JSON.stringify({ prompt, session_id: sessionId }),

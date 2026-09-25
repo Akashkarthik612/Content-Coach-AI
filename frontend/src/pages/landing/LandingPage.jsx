@@ -420,7 +420,7 @@ function Hero() {
               </h1>
               <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '28px 40px', marginTop: 36 }}>
                 <motion.p variants={fadeUp} className="hn-hero-sub" style={{ margin: 0, maxWidth: 540, lineHeight: 1.5, fontWeight: 300, color: 'rgba(255,255,255,.88)' }}>
-                  Honne reads your knowledge sources, Google Docs, Notion and more, finds the ideas worth sharing, and turns them into posts for LinkedIn, X and Reddit that sound like you. 
+                  Honne reads your knowledge sources, Google Docs, Notion and more, finds the ideas worth sharing, and turns them into posts for LinkedIn, X and Reddit that sound like you. You focus on the content quality; Honne&apos;s agents take care of the admin, research and repeated tasks.
                 </motion.p>
                 <motion.div variants={fadeUp} style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                   <button
