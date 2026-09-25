@@ -62,11 +62,11 @@ export function AppSidebar({ navigate, activeKey = 'content', collapsed, onToggl
             boxShadow: '0 6px 16px -6px rgba(59,130,246,.6)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-            <span style={{ fontFamily: SERIF, fontSize: 20, color: WHITE, marginTop: -2 }}>C</span>
+            <span style={{ fontFamily: SERIF, fontSize: 20, color: WHITE, marginTop: -2 }}>H</span>
           </div>
           {!collapsed && (
             <span style={{ fontSize: 15.5, fontWeight: 600, letterSpacing: '-0.01em', color: INK, whiteSpace: 'nowrap' }}>
-              ContentCoach<span style={{ color: BLUE }}> AI</span>
+              Honne<span style={{ color: BLUE }}> AI</span>
             </span>
           )}
         </div>
