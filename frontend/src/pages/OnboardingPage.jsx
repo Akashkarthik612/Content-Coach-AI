@@ -144,7 +144,7 @@ export default function OnboardingPage() {
       topics: answers.topics,
     }).catch(err => console.error('Failed to save onboarding profile:', err));
 
-    navigate('/chat');
+    navigate('/home');
   }
 
   const answered = isAnswered(q);

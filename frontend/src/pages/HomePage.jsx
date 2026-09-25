@@ -139,7 +139,7 @@ export default function HomePage({ initialMode = 'login' }) {
     setError(''); setLoading(true);
     try {
       await login(form.email, form.password);
-      navigate('/welcome', { state: { next: '/chat' } });
+      navigate('/welcome', { state: { next: '/home' } });
     } catch (err) {
       setError(err.message);
     } finally { setLoading(false); }
