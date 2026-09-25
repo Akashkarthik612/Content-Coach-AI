@@ -21,7 +21,7 @@ from backend.ai._log_setup import log_style_json
 from backend.ai.llm_retry import invoke_with_retry_sync
 from backend.core.config import settings
 from backend.core.database import SessionLocal
-from backend.vault.models import Post, PostStatus, PostVersion
+from backend.vault.models import Post, PostStatus
 
 logger = logging.getLogger(__name__)
 
@@ -111,13 +111,8 @@ def _fetch_posts_and_count(user_id: str, limit: int) -> tuple[list[str], int]:
             .scalar() or 0
         )
         rows = (
-            db.query(PostVersion.content)
-            .join(Post, Post.id == PostVersion.post_id)
-            .filter(
-                Post.user_id == uid,
-                Post.status == PostStatus.published,
-                PostVersion.version_number == Post.current_version,
-            )
+            db.query(Post.content)
+            .filter(Post.user_id == uid, Post.status == PostStatus.published)
             .order_by(Post.updated_at.desc())
             .limit(limit)
             .all()

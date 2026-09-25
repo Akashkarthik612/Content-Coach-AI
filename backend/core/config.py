@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     # Supabase's public JWKS endpoint (SUPABASE_URL + "/auth/v1/.well-known/jwks.json")
     SUPABASE_URL: str = ""
 
+    # Service-role key for Supabase's Admin API (e.g. deleting an auth identity on
+    # account deletion). Bypasses RLS — server-side only, never expose to the frontend.
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
+
     # Auth provider switch — "supabase" (default, used in prod) or "local" (dev-only
     # bcrypt + X-User-Id auth, see backend/auth_local/). Never set to "local" outside
     # a local dev environment.
@@ -33,6 +37,11 @@ class Settings(BaseSettings):
     LINKEDIN_CLIENT_SECRET: str = ""
     LINKEDIN_REDIRECT_URI: str = "http://localhost:8000/api/linkedin/auth/callback"
     FRONTEND_URL: str = "http://localhost:5173"
+
+    # Comma-separated extra CORS origins (e.g. the deployed Vercel URL) added
+    # on top of the hardcoded localhost/CloudFront list in main.py, so a new
+    # frontend domain is an env var change, not a code change.
+    EXTRA_ALLOWED_ORIGINS: str = ""
 
     # Background scheduler — auto-publishes posts at their scheduled_at time.
     # See backend/scheduler/.

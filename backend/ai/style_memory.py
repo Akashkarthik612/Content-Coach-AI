@@ -171,15 +171,13 @@ def _count_published_posts(db, user_id: str) -> int:
 
 def _fetch_published_post_contents(db, user_id: str, limit: int) -> list[str]:
     """Returns list of content strings, most recent first."""
-    from backend.vault.models import Post, PostVersion, PostStatus
+    from backend.vault.models import Post, PostStatus
     from uuid import UUID
     rows = (
-        db.query(PostVersion.content)
-        .join(Post, Post.id == PostVersion.post_id)
+        db.query(Post.content)
         .filter(
             Post.user_id == UUID(user_id),
             Post.status.in_([PostStatus.published, PostStatus.scheduled]),
-            PostVersion.version_number == Post.current_version,
         )
         .order_by(Post.updated_at.desc())
         .limit(limit)

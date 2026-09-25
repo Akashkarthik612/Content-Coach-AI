@@ -1,6 +1,8 @@
+from typing import Generator
+
 from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from backend.core.config import settings
 
@@ -9,12 +11,26 @@ engine = create_engine(
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
+    # Disables psycopg3 server-side prepared statements — required against a
+    # pgbouncer transaction-mode pooler (e.g. Supabase's), which can route a
+    # connection to a different backend per transaction and collide on a
+    # reused prepared-statement name (psycopg.errors.DuplicatePreparedStatement).
+    connect_args={"prepare_threshold": None},
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 class Base(DeclarativeBase):
     pass
+
+
+def get_db() -> Generator[Session, None, None]:
+    """FastAPI dependency: one session per request, always closed."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 def _to_async_url(url: str) -> str:
@@ -31,5 +47,6 @@ async_engine = create_async_engine(
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
+    connect_args={"prepare_threshold": None},
 )
 AsyncSessionLocal = async_sessionmaker(async_engine, class_=AsyncSession, expire_on_commit=False)
