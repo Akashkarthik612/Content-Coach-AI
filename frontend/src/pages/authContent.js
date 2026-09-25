@@ -2,10 +2,9 @@
 // copy in HomePage.jsx.
 export const AUTH_COPY = {
   brand: 'Honne',
-  brandTagline: 'The art of true voice.',
-  brandQuote: 'Stop competing with generic AI spam. Build an authority engine that scales your thinking, not just your post count.',
-  brandFootLabel: 'Voice-native workspace',
-  brandNote: '© 2026 Honne',
+  builtBy: 'A project built by Akash Balamurugan',
+  brandHeading: 'Your knowledge, to publishable posts.',
+  brandSub: "You focus on the content quality. Honne's agents take care of the admin, research and repeated tasks.",
 
   tabs: {
     signup: 'Sign up',
