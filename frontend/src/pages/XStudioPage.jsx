@@ -1,0 +1,649 @@
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
+
+/* ─── X Studio ("Honne X" design) ───────────────────────────────────────────
+   Same shell as LinkedIn Studio: chat on the left, an X-styled (dark) post
+   editor on the right. Generation, chat history, schedule and publish are
+   simulated on the client — the supervisor/writer agents aren't exposed by
+   the backend yet (see CLAUDE.md §3). */
+
+const CFG = {
+  name: 'X', kind: 'X Post', chip: '#0F1419', accent: '#1D9BF0', pubBg: '#EFF3F4',
+  publish: 'Post', publishedToast: 'Your post was sent', scheduledToast: 'Scheduled on X',
+  cardDesc: 'Short, sharp post that fits in 280 characters.',
+  greeting: 'What should we post on X?',
+  placeholder: 'Describe the post you want on X…',
+  suggestions: ['Turn my Q3 launch notes into a post', 'A spicy take on AI-written content', "Share one lesson from this week's customer calls"],
+  steps: ['Searching your knowledge', 'Reading 3 notes from Google Docs', 'Matching your voice from past posts', 'Fitting it in 280 characters'],
+  reply: 'Short and direct. One idea, no hashtags spam, ending on something people want to reply to.',
+  done: 'Done. The post is on the right and you can edit it directly. Want a thread version or a punchier first line?',
+  drafts: [
+    "Shipped this quarter at Honne:\n\n→ Google Docs as a live knowledge source\n→ One prompt, drafts for LinkedIn, X and Reddit\n→ Voice matching from your past posts\n\nYour best content is already written. It's just stuck in your docs.",
+    "Hot take: AI content isn't bad because it's AI.\n\nIt's bad because it has nothing to say.\n\nFeed it your real notes, calls and docs and it gets interesting fast.",
+    "12 customer calls this week. The line I keep thinking about:\n\n\"I don't need help writing. I need help remembering what I already know.\"\n\nThat's the whole product.",
+  ],
+  history: [
+    { id: 'h1', group: 'Today', title: 'Q3 launch post', prompt: 'Turn my Q3 launch notes into a post', d: 0 },
+    { id: 'h2', group: 'Yesterday', title: 'Take on AI content', prompt: 'A spicy take on AI-written content', d: 1 },
+    { id: 'h3', group: 'Previous 7 days', title: 'Customer call quote', prompt: "Share one lesson from this week's customer calls", d: 2 },
+  ],
+}
+
+const GROUPS = ['Today', 'Yesterday', 'Previous 7 days']
+const sleep = ms => new Promise(r => setTimeout(r, ms))
+const SPRING = { type: 'spring', stiffness: 380, damping: 30 }
+const MO = {
+  msg: { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, transition: SPRING },
+  card: { initial: { opacity: 0, y: 18, scale: 0.985 }, animate: { opacity: 1, y: 0, scale: 1 }, transition: { type: 'spring', stiffness: 240, damping: 26 }, style: { width: '100%' } },
+  pop: { initial: { opacity: 0, y: 8, scale: 0.96 }, animate: { opacity: 1, y: 0, scale: 1 }, transition: { type: 'spring', stiffness: 440, damping: 30 }, style: { position: 'absolute', right: 0, bottom: 'calc(100% + 10px)', zIndex: 20, transformOrigin: 'bottom right' } },
+  toast: { initial: { opacity: 0, y: 24, scale: 0.96 }, animate: { opacity: 1, y: 0, scale: 1 }, transition: { type: 'spring', stiffness: 360, damping: 26 }, style: { position: 'absolute', left: 0, right: 0, bottom: 28, display: 'flex', justifyContent: 'center', zIndex: 30, pointerEvents: 'none' } },
+  btn: { whileHover: { scale: 1.03 }, whileTap: { scale: 0.95 }, transition: { type: 'spring', stiffness: 500, damping: 28 } },
+}
+const sugMo = i => ({ initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, whileHover: { x: 3 }, whileTap: { scale: 0.98 }, transition: { ...SPRING, delay: 0.08 + i * 0.06 } })
+const doneMsgs = prompt => [
+  { k: 'user', text: prompt },
+  { k: 'steps', steps: CFG.steps.map(l => ({ l, st: 'done' })), open: false, running: false },
+  { k: 'text', text: CFG.reply },
+  { k: 'card', st: 'done' },
+  { k: 'text', text: CFG.done },
+  { k: 'actions' },
+]
+const tomorrow = () => new Date(Date.now() + 864e5).toISOString().slice(0, 10)
+const initialChats = () => CFG.history.map(h => ({
+  id: h.id, title: h.title, group: h.group, msgs: doneMsgs(h.prompt), post: CFG.drafts[h.d],
+  img: null, status: 'draft', sched: null, busy: false, di: h.d + 1,
+}))
+
+/* Brand tiles in the rail: the active platform pulses with a ring in its colour. */
+const BRAND = { li: ['10,102,194', '#0A66C2'], x: ['15,20,25', '#0F1419'], rd: ['255,69,0', '#FF4500'] }
+function tileProps(k, active) {
+  const [rgb, bg] = BRAND[k]
+  const sh = (r, b, o) => `0 0 0 2px #F2F0EC, 0 0 0 ${r}px rgba(${rgb},${active ? 1 : 0}), 0 0 ${b}px rgba(${rgb},${o})`
+  return {
+    initial: false,
+    animate: active ? { scale: 1, y: 0, boxShadow: [sh(3.5, 12, 0.4), sh(3.5, 26, 0.8), sh(3.5, 12, 0.4)] } : { scale: 1, y: 0, boxShadow: sh(2, 10, 0.22) },
+    transition: active ? { boxShadow: { duration: 2.6, repeat: Infinity, ease: 'easeInOut' }, default: { type: 'spring', stiffness: 500, damping: 28 } } : { type: 'spring', stiffness: 500, damping: 28 },
+    whileHover: { scale: 1.09, y: -1, boxShadow: sh(active ? 3.5 : 2, 24, 0.75) },
+    whileTap: { scale: 0.93 },
+    style: { width: 34, height: 34, borderRadius: k === 'rd' ? 17 : 10, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 0, padding: 0, cursor: 'pointer', background: `linear-gradient(180deg, rgba(255,255,255,.22), rgba(255,255,255,0) 60%), ${bg}` },
+  }
+}
+
+/* ─── Icons ──────────────────────────────────────────────────────────────── */
+const LI_PATH = 'M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 1 1 0-4.125 2.062 2.062 0 0 1 0 4.125zM7.119 20.452H3.555V9h3.564v11.452z'
+const X_PATH = 'M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z'
+function Icon({ size = 16, sw = 1.75, children, style }) {
+  return <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none', ...style }}>{children}</svg>
+}
+function RedditGlyph({ size }) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size}>
+      <path d="M12.4 8.2 13.5 3.8l3.6.8" fill="none" stroke="#FFFFFF" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="18.3" cy="4.9" r="1.6" fill="#FFFFFF" /><circle cx="5.2" cy="11" r="2.1" fill="#FFFFFF" /><circle cx="18.8" cy="11" r="2.1" fill="#FFFFFF" />
+      <ellipse cx="12" cy="14.6" rx="7.6" ry="5.4" fill="#FFFFFF" /><circle cx="9" cy="13.6" r="1.25" fill="#FF4500" /><circle cx="15" cy="13.6" r="1.25" fill="#FF4500" />
+      <path d="M9.3 16.7c1.6 1.1 3.8 1.1 5.4 0" fill="none" stroke="#FF4500" strokeWidth="1.1" strokeLinecap="round" />
+    </svg>
+  )
+}
+const SidebarIcon = () => <Icon><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M9 3v18" /></Icon>
+const DbIcon = ({ size = 17 }) => <Icon size={size}><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5V19A9 3 0 0 0 21 19V5" /><path d="M3 12A9 3 0 0 0 21 12" /></Icon>
+const CheckIcon = ({ size, color = '#2F8F5B', sw = 2.2 }) => <Icon size={size} sw={sw} style={{ stroke: color }}><path d="M20 6 9 17l-5-5" /></Icon>
+const Spin = ({ size, ring, top, w = 1.5 }) => <span style={{ width: size, height: size, borderRadius: '50%', border: `${w}px solid ${ring}`, borderTopColor: top, animation: 'hn-x-spin .7s linear infinite', flex: 'none', display: 'block' }} />
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+export default function XStudioPage() {
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  const userName = localStorage.getItem('display_name') ?? localStorage.getItem('username') ?? 'You'
+  const initials = userName.split(/\s+/).filter(Boolean).map(p => p[0]).join('').slice(0, 2).toUpperCase() || 'U'
+  const handle = (localStorage.getItem('username') ?? userName).toLowerCase().replace(/[^a-z0-9_]/g, '') || 'you'
+
+  const [w, setW] = useState(() => (typeof window === 'undefined' ? 1400 : window.innerWidth))
+  const [input, setInput] = useState('')
+  const [activeId, setActiveId] = useState(null)
+  const [histCollapsed, setHistCollapsed] = useState(false)
+  const [histOpen, setHistOpen] = useState(false)
+  const [tab, setTab] = useState('chat')
+  const [pop, setPop] = useState(false)
+  const [sd, setSd] = useState(tomorrow)
+  const [stm, setStm] = useState('09:00')
+  const [toast, setToast] = useState(null)
+  const [chats, setChats] = useState(initialChats)
+
+  const rootRef = useRef(null)
+  const scrollRef = useRef(null)
+  const postRef = useRef(null)
+  const fileRef = useRef(null)
+  const alive = useRef(true)
+  const wRef = useRef(w)
+  const toastTimer = useRef(null)
+  const handedOff = useRef(false)
+
+  useEffect(() => { wRef.current = w }, [w])
+  useEffect(() => {
+    alive.current = true
+    const el = rootRef.current
+    const ro = el && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(e => setW(e[0].contentRect.width)) : null
+    if (ro) ro.observe(el)
+    return () => { alive.current = false; ro && ro.disconnect(); clearTimeout(toastTimer.current) }
+  }, [])
+
+  const c = chats.find(x => x.id === activeId) || null
+
+  // Keep the streaming chat pinned to the bottom, and the editor sized to its text.
+  useEffect(() => {
+    if (scrollRef.current && c && c.busy) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+  })
+  useLayoutEffect(() => {
+    const t = postRef.current
+    if (t) { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px' }
+  }, [c?.post, tab, w])
+
+  const upd = useCallback((id, fn) => setChats(cs => cs.map(x => (x.id === id ? fn(x) : x))), [])
+  const updMsg = useCallback((id, i, fn) => upd(id, x => ({ ...x, msgs: x.msgs.map((m, j) => (j === i ? fn(m) : m)) })), [upd])
+  const toastMsg = useCallback(t => {
+    clearTimeout(toastTimer.current)
+    setToast(t)
+    toastTimer.current = setTimeout(() => setToast(null), 2600)
+  }, [])
+
+  // Simulated supervisor run: steps → reply → draft typed into the editor → wrap-up.
+  const run = useCallback(async (id, prompt, n0, curDi) => {
+    let n = n0
+    const push = m => { const i = n++; upd(id, x => ({ ...x, msgs: [...x.msgs, m] })); return i }
+    const streamText = async (i, full) => {
+      const words = full.split(' ')
+      let t = ''
+      for (let j = 0; j < words.length; j++) {
+        if (!alive.current) return
+        t += (j ? ' ' : '') + words[j]
+        const tt = t
+        updMsg(id, i, m => ({ ...m, text: tt }))
+        await sleep(22 + Math.random() * 34)
+      }
+      updMsg(id, i, m => ({ ...m, caret: false }))
+    }
+    upd(id, x => ({ ...x, busy: true }))
+    push({ k: 'user', text: prompt })
+    await sleep(420)
+    const si = push({ k: 'steps', steps: CFG.steps.map(l => ({ l, st: 'wait' })), open: true, running: true })
+    for (let j = 0; j < CFG.steps.length; j++) {
+      if (!alive.current) return
+      updMsg(id, si, m => ({ ...m, steps: m.steps.map((x, k) => (k === j ? { ...x, st: 'run' } : x)) }))
+      await sleep(560 + Math.random() * 420)
+      updMsg(id, si, m => ({ ...m, steps: m.steps.map((x, k) => (k === j ? { ...x, st: 'done' } : x)) }))
+    }
+    await sleep(220)
+    updMsg(id, si, m => ({ ...m, running: false, open: false }))
+    const ti = push({ k: 'text', text: '', caret: true })
+    await streamText(ti, CFG.reply)
+    await sleep(260)
+    const ci = push({ k: 'card', st: 'writing' })
+    const sIdx = CFG.suggestions.indexOf(prompt)
+    const di = sIdx >= 0 ? sIdx : curDi % CFG.drafts.length
+    const body = CFG.drafts[di]
+    upd(id, x => ({ ...x, status: 'writing', post: '', sched: null, di: di + 1 }))
+    if (wRef.current < 880) setTab('post')
+    for (let k = 0; k <= body.length; k += 3) {
+      if (!alive.current) return
+      const v = body.slice(0, k)
+      upd(id, x => ({ ...x, post: v }))
+      await sleep(14)
+    }
+    upd(id, x => ({ ...x, post: body, status: 'draft' }))
+    updMsg(id, ci, m => ({ ...m, st: 'done' }))
+    await sleep(320)
+    const di2 = push({ k: 'text', text: '', caret: true })
+    await streamText(di2, CFG.done)
+    push({ k: 'actions' })
+    upd(id, x => ({ ...x, busy: false }))
+  }, [upd, updMsg])
+
+  const send = useCallback(txt => {
+    const text = (typeof txt === 'string' ? txt : input).trim()
+    if (!text) return
+    if (c && c.busy) return
+    setInput('')
+    if (!c) {
+      const nc = { id: 'c' + Date.now(), title: text.length > 40 ? text.slice(0, 38) + '…' : text, group: 'Today', msgs: [], post: '', img: null, status: 'empty', sched: null, busy: false, di: 0 }
+      setChats(cs => [nc, ...cs])
+      setActiveId(nc.id)
+      run(nc.id, text, 0, 0)
+    } else {
+      run(c.id, text, c.msgs.length, c.di)
+    }
+  }, [c, input, run])
+
+  // A prompt handed over from the Home composer starts a new chat straight away.
+  useEffect(() => {
+    const prompt = location.state?.prompt
+    if (!prompt || handedOff.current) return
+    handedOff.current = true
+    navigate(location.pathname, { replace: true, state: null })
+    send(prompt)
+  }, [location, navigate, send])
+
+  const wide = w >= 1180
+  const narrow = w < 880
+  const writing = !!c && c.status === 'writing'
+  const hasPost = !!c && (!!c.post || writing)
+  const st = c ? c.status : 'empty'
+  const canPub = hasPost && !writing && st !== 'published' && st !== 'publishing'
+  const histVisible = wide ? !histCollapsed : histOpen
+  const pill = {
+    empty: { label: 'No draft yet', bg: 'rgba(255,255,255,.08)', fg: '#71767B' },
+    writing: { label: 'Writing…', bg: 'rgba(240,102,42,.14)', fg: '#FF8A57' },
+    draft: { label: 'Draft', bg: 'rgba(255,255,255,.08)', fg: '#E7E9EA' },
+    scheduled: { label: 'Scheduled · ' + (c && c.sched), bg: CFG.accent + '1F', fg: CFG.accent },
+    publishing: { label: 'Publishing…', bg: CFG.accent + '1F', fg: CFG.accent },
+    published: { label: 'Published', bg: 'rgba(34,160,90,.14)', fg: '#4ADE80' },
+  }[st]
+  const pubBg = st === 'published' ? '#3A3F44' : canPub || st === 'publishing' ? CFG.pubBg : '#3A3F44'
+  const pubLabel = st === 'publishing' ? 'Posting…' : st === 'published' ? 'Posted' : CFG.publish
+  const whenLabel = st === 'scheduled' ? c.sched : st === 'published' ? 'Just now' : 'Now'
+  const footNote = st === 'published' ? 'Live on ' + CFG.name : st === 'scheduled' ? 'Goes live ' + c.sched : writing ? 'Honne is writing…' : hasPost ? 'Draft saved' : ''
+  const chatW = narrow ? 'auto' : w < 1040 ? 340 : 400
+
+  const toggleHist = () => (wide ? setHistCollapsed(x => !x) : setHistOpen(x => !x))
+  const newChat = () => { setActiveId(null); setInput(''); setTab('chat'); setPop(false); setHistOpen(false) }
+  const fmtSched = () => {
+    const d = new Date(sd + 'T' + stm)
+    return isNaN(d) ? `${sd} ${stm}` : d.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  }
+  const confirmSched = () => {
+    const l = fmtSched()
+    if (c) upd(c.id, x => ({ ...x, status: 'scheduled', sched: l }))
+    setPop(false)
+    toastMsg(CFG.scheduledToast + ' · ' + l)
+  }
+  const publish = () => {
+    if (!canPub || !c) return
+    const id = c.id
+    setPop(false)
+    upd(id, x => ({ ...x, status: 'publishing' }))
+    setTimeout(() => {
+      if (!alive.current) return
+      upd(id, x => ({ ...x, status: 'published' }))
+      toastMsg(CFG.publishedToast)
+    }, 1100)
+  }
+  const onFile = e => {
+    const f = e.target.files && e.target.files[0]
+    if (f && c) { const u = URL.createObjectURL(f); upd(c.id, x => ({ ...x, img: u })) }
+    e.target.value = ''
+  }
+  const removeImg = () => {
+    if (!c) return
+    if (c.img) URL.revokeObjectURL(c.img)
+    upd(c.id, x => ({ ...x, img: null }))
+  }
+  const copyPost = () => {
+    try { navigator.clipboard.writeText(c.post) } catch { /* clipboard unavailable */ }
+    toastMsg('Copied to clipboard')
+  }
+
+  const groups = GROUPS.map(g => ({ label: g, items: chats.filter(x => x.group === g) })).filter(g => g.items.length)
+  const iconBtn = { width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 0, borderRadius: 7, background: 'transparent', color: '#77726A', cursor: 'pointer', flex: 'none' }
+  const actBtn = { width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 0, borderRadius: 7, background: 'transparent', color: '#8A857C', cursor: 'pointer' }
+  const railLink = { width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 0, borderRadius: 8, background: 'transparent', color: '#57534C', cursor: 'pointer' }
+  const darkInput = { height: 36, padding: '0 10px', border: '1px solid #333639', background: '#000000', color: '#E7E9EA', colorScheme: 'dark', borderRadius: 8, font: 'inherit', fontSize: 14, fontWeight: 400 }
+
+  return (
+    <div ref={rootRef} className="hn-x" style={{ height: '100vh', width: '100%', display: 'flex', overflow: 'hidden', position: 'relative', background: '#F8F7F4', fontFamily: "Geist, ui-sans-serif, system-ui, sans-serif", color: '#1C1A17' }}>
+      <style>{`
+        .hn-x { -webkit-font-smoothing: antialiased; }
+        .hn-x * { box-sizing: border-box; }
+        .hn-x button { font: inherit; color: inherit; }
+        .hn-x textarea::placeholder, .hn-x input::placeholder { color: #9A958C; }
+        @keyframes hn-x-spin { to { transform: rotate(360deg); } }
+        @keyframes hn-x-blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+        @keyframes hn-x-shim { 0% { background-position: -300px 0; } 100% { background-position: 300px 0; } }
+        @keyframes hn-x-pulse { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
+        .hn-x-ghost:hover { background: rgba(28,26,23,.06) !important; color: #1C1A17 !important; }
+        .hn-x-hist:hover { background: rgba(28,26,23,.05) !important; color: #1C1A17 !important; }
+        .hn-x-newchat:hover { border-color: rgba(28,26,23,.2) !important; }
+        .hn-x-sug:hover { border-color: rgba(240,102,42,.4) !important; background: #FFFFFF !important; }
+        .hn-x-img:hover { border-color: #1D9BF0 !important; }
+        .hn-x-dghost:hover { background: rgba(239,243,244,.1) !important; }
+      `}</style>
+
+      {/* Rail */}
+      <aside style={{ width: 56, flex: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '12px 0', background: '#F2F0EC', borderRight: '1px solid rgba(28,26,23,.07)', zIndex: 5 }}>
+        <button onClick={() => navigate('/home')} title="Honne home" style={{ ...railLink, marginBottom: 12 }}>
+          <span style={{ position: 'relative', width: 22, height: 22, borderRadius: 6, background: '#1C1A17', display: 'block' }}>
+            <span style={{ position: 'absolute', right: 4, bottom: 4, width: 7, height: 7, borderRadius: '50%', background: '#F0662A', display: 'block' }} />
+          </span>
+        </button>
+        <button onClick={() => navigate('/home')} title="Home" className="hn-x-ghost" style={railLink}>
+          <Icon size={17}><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" /><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></Icon>
+        </button>
+        <button onClick={() => navigate('/home')} title="Sources" className="hn-x-ghost" style={railLink}>
+          <DbIcon />
+        </button>
+        <div style={{ width: 24, height: 1, background: 'rgba(28,26,23,.1)', margin: '10px 0' }} />
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '4px 0' }}>
+          <motion.button title="LinkedIn" onClick={() => navigate('/linkedin')} {...tileProps('li', false)}>
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="#FFFFFF" style={{ display: 'block' }}><path d={LI_PATH} /></svg>
+          </motion.button>
+          <motion.button title="X" onClick={() => navigate('/x')} {...tileProps('x', true)}>
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="#FFFFFF" style={{ display: 'block' }}><path d={X_PATH} /></svg>
+          </motion.button>
+          <motion.button title="Reddit" onClick={() => navigate('/reddit')} {...tileProps('rd', false)}>
+            <RedditGlyph size={26} />
+          </motion.button>
+        </div>
+        <div style={{ flex: 1 }} />
+        <div title={userName} style={{ width: 30, height: 30, borderRadius: '50%', background: '#E4DFD6', color: '#3D3933', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600 }}>{initials}</div>
+      </aside>
+
+      {!wide && histOpen && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.22 }} onClick={() => setHistOpen(false)}
+          style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 56, background: 'rgba(20,18,15,.24)', zIndex: 8 }} />
+      )}
+
+      {/* Chat history */}
+      <motion.div
+        initial={false} animate={{ opacity: histVisible ? 1 : 0 }} transition={{ opacity: { duration: 0.2 } }}
+        style={{ width: histVisible ? 252 : 0, minWidth: 0, transition: 'width .32s cubic-bezier(.32,.72,0,1)', position: wide ? 'relative' : 'absolute', left: wide ? 'auto' : 56, top: 0, bottom: 0, height: '100%', zIndex: 9, flex: 'none', overflow: 'hidden', boxShadow: !wide && histVisible ? '0 20px 50px -10px rgba(20,18,15,.3)' : 'none' }}
+      >
+        <nav style={{ width: 252, height: '100%', display: 'flex', flexDirection: 'column', background: '#F5F3EF', borderRight: '1px solid rgba(28,26,23,.07)' }}>
+          <div style={{ height: 56, flex: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: '0 14px' }}>
+            <span style={{ width: 24, height: 24, borderRadius: 6, background: '#0F1419', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,.14), 0 3px 12px rgba(15,20,25,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="#FFFFFF"><path d={X_PATH} /></svg>
+            </span>
+            <span style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap' }}>{CFG.name}</span>
+            <span style={{ fontSize: 12, color: '#8A857C', whiteSpace: 'nowrap' }}>Studio</span>
+            <span style={{ flex: 1 }} />
+            <button onClick={toggleHist} title="Close sidebar" className="hn-x-ghost" style={{ ...iconBtn, width: 30, height: 30 }}>
+              <Icon><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M9 3v18" /><path d="m16 15-3-3 3-3" /></Icon>
+            </button>
+          </div>
+          <div style={{ padding: '0 10px 10px' }}>
+            <motion.div {...MO.btn}>
+              <button onClick={newChat} className="hn-x-newchat" style={{ width: '100%', height: 36, display: 'flex', alignItems: 'center', gap: 9, padding: '0 11px', border: '1px solid rgba(28,26,23,.1)', borderRadius: 9, background: '#FFFFFF', cursor: 'pointer', fontSize: 13, fontWeight: 500, boxShadow: '0 1px 2px rgba(28,26,23,.05)' }}>
+                <Icon size={15}><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" /></Icon>
+                New chat
+              </button>
+            </motion.div>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: '4px 10px 10px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {groups.map(g => (
+              <div key={g.label} style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <div style={{ fontSize: 11.5, fontWeight: 500, color: '#8A857C', padding: '0 8px 6px' }}>{g.label}</div>
+                {g.items.map(x => {
+                  const a = x.id === activeId
+                  return (
+                    <button key={x.id} onClick={() => { setActiveId(x.id); setHistOpen(false); setPop(false) }} className="hn-x-hist"
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', height: 32, padding: '0 9px', border: 0, borderRadius: 7, cursor: 'pointer', textAlign: 'left', fontSize: 13, background: a ? '#FFFFFF' : 'transparent', boxShadow: a ? '0 1px 2px rgba(28,26,23,.07), 0 0 0 1px rgba(28,26,23,.05)' : 'none', color: a ? '#1C1A17' : '#57534C' }}>
+                      <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.title}</span>
+                      {x.busy && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#F0662A', animation: 'hn-x-pulse 1s ease-in-out infinite', flex: 'none' }} />}
+                    </button>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+          <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '12px 18px', borderTop: '1px solid rgba(28,26,23,.07)', fontSize: 11.5, color: '#8A857C' }}>
+            <Icon size={13}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></Icon>
+            Chats are kept for 7 days
+          </div>
+        </nav>
+      </motion.div>
+
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        {narrow && (
+          <div style={{ height: 48, flex: 'none', display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px', borderBottom: '1px solid rgba(28,26,23,.07)', background: '#F8F7F4' }}>
+            <button onClick={toggleHist} title="History" style={{ ...iconBtn, width: 36, height: 36, borderRadius: 8, color: '#57534C' }}>
+              <Icon><path d="M4 6h16" /><path d="M4 12h16" /><path d="M4 18h16" /></Icon>
+            </button>
+            <div style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 9, background: 'rgba(28,26,23,.06)' }}>
+              {['chat', 'post'].map(t => (
+                <button key={t} onClick={() => setTab(t)} style={{ height: 30, padding: '0 14px', border: 0, borderRadius: 7, cursor: 'pointer', fontSize: 13, fontWeight: 500, background: tab === t ? '#FFFFFF' : 'transparent', boxShadow: tab === t ? '0 1px 2px rgba(28,26,23,.1)' : 'none' }}>
+                  {t === 'chat' ? 'Chat' : 'Post'}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+          {/* Chat panel */}
+          <div style={{ display: narrow && tab === 'post' ? 'none' : 'flex', width: chatW, flex: narrow ? 1 : 'none', minWidth: 0, flexDirection: 'column', background: '#FBFAF8', borderRight: '1px solid rgba(28,26,23,.07)' }}>
+            <div style={{ height: 56, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 10px 0 12px', borderBottom: '1px solid rgba(28,26,23,.06)' }}>
+              {!narrow && !histVisible && (
+                <button onClick={toggleHist} title="Toggle history" className="hn-x-ghost" style={iconBtn}><SidebarIcon /></button>
+              )}
+              <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c ? c.title : 'New chat'}</span>
+              <button onClick={newChat} title="New chat" className="hn-x-ghost" style={iconBtn}>
+                <Icon><path d="M12 5v14" /><path d="M5 12h14" /></Icon>
+              </button>
+            </div>
+
+            <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '20px 18px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {!c && (
+                <div style={{ margin: 'auto 0', display: 'flex', flexDirection: 'column', gap: 18, padding: '8px 4px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontSize: 30, lineHeight: 1.08, letterSpacing: '-0.01em', textWrap: 'pretty' }}>{CFG.greeting}</div>
+                    <div style={{ fontSize: 13, lineHeight: 1.5, color: '#77726A', textWrap: 'pretty' }}>Honne drafts from your connected knowledge and writes in your voice.</div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {CFG.suggestions.map((t, i) => (
+                      <motion.div key={t} {...sugMo(i)}>
+                        <button onClick={() => send(t)} className="hn-x-sug" style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px', border: '1px solid rgba(28,26,23,.09)', borderRadius: 11, background: 'rgba(255,255,255,.7)', cursor: 'pointer', textAlign: 'left', fontSize: 13, lineHeight: 1.4, color: '#2E2B27' }}>
+                          <span style={{ flex: 1, textWrap: 'pretty' }}>{t}</span>
+                          <Icon size={14} sw={2} style={{ stroke: '#B5B0A7' }}><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></Icon>
+                        </button>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {c && c.msgs.map((m, i) => (
+                <motion.div key={i} {...MO.msg}>
+                  {m.k === 'user' && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <div style={{ maxWidth: '86%', padding: '10px 13px', borderRadius: '14px 14px 4px 14px', background: '#EEEAE3', fontSize: 13.5, lineHeight: 1.5, whiteSpace: 'pre-wrap', textWrap: 'pretty' }}>{m.text}</div>
+                    </div>
+                  )}
+                  {m.k === 'steps' && (
+                    <div style={{ border: '1px solid rgba(28,26,23,.08)', borderRadius: 11, background: '#FFFFFF', overflow: 'hidden' }}>
+                      <button onClick={() => updMsg(c.id, i, x => ({ ...x, open: !x.open }))} style={{ width: '100%', height: 38, display: 'flex', alignItems: 'center', gap: 9, padding: '0 12px', border: 0, background: 'transparent', cursor: 'pointer', textAlign: 'left', fontSize: 12.5 }}>
+                        {m.running ? <Spin size={13} w={1.75} ring="rgba(240,102,42,.25)" top="#F0662A" /> : <CheckIcon size={14} />}
+                        <span style={{ flex: 1, fontWeight: 500, color: '#3D3933' }}>{m.running ? 'Reading your knowledge' : 'Retrieved Honne context'}</span>
+                        <span style={{ fontSize: 11.5, color: '#9A958C' }}>{m.running ? '' : CFG.steps.length + ' steps'}</span>
+                        <Icon size={14} sw={2} style={{ stroke: '#9A958C', transform: m.open ? 'rotate(180deg)' : 'none', transition: 'transform .25s' }}><path d="m6 9 6 6 6-6" /></Icon>
+                      </button>
+                      {m.open && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 9, padding: '4px 12px 12px 34px' }}>
+                          {m.steps.map(x => (
+                            <div key={x.l} style={{ display: 'flex', alignItems: 'center', gap: 9, fontSize: 12.5, color: x.st === 'wait' ? '#A8A39A' : '#3D3933', transition: 'color .3s' }}>
+                              {x.st === 'run' && <Spin size={11} ring="rgba(28,26,23,.15)" top="#3D3933" />}
+                              {x.st === 'done' && <CheckIcon size={12} sw={2.4} />}
+                              {x.st === 'wait' && <span style={{ width: 11, height: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}><span style={{ width: 4, height: 4, borderRadius: '50%', background: '#C9C4BB' }} /></span>}
+                              <span>{x.l}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {m.k === 'text' && (
+                    <div style={{ fontSize: 13.5, lineHeight: 1.6, color: '#2E2B27', whiteSpace: 'pre-wrap', textWrap: 'pretty' }}>
+                      {m.text}
+                      {m.caret && <span style={{ display: 'inline-block', width: 7, height: 14, marginLeft: 2, verticalAlign: -2, borderRadius: 1, background: '#F0662A', animation: 'hn-x-blink 1s steps(2) infinite' }} />}
+                    </div>
+                  )}
+                  {m.k === 'card' && (
+                    <div style={{ border: '1px solid rgba(28,26,23,.08)', borderRadius: 12, background: '#FFFFFF', overflow: 'hidden' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '13px 14px 12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ width: 22, height: 22, borderRadius: 6, background: CFG.chip, color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
+                            <Icon size={12} sw={2}><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /></Icon>
+                          </span>
+                          <span style={{ fontSize: 13, fontWeight: 600 }}>{CFG.kind}</span>
+                        </div>
+                        <div style={{ fontSize: 12, lineHeight: 1.45, color: '#77726A' }}>{CFG.cardDesc}</div>
+                      </div>
+                      <div style={{ height: 38, display: 'flex', alignItems: 'center', gap: 8, padding: '0 8px 0 14px', borderTop: '1px solid rgba(28,26,23,.06)', background: '#FBFAF8' }}>
+                        {m.st === 'writing' && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#F0662A', animation: 'hn-x-pulse 1s ease-in-out infinite' }} />}
+                        <span style={{ flex: 1, fontSize: 12, color: '#57534C' }}>{m.st === 'writing' ? 'Writing in the editor…' : 'Content generated'}</span>
+                        <button onClick={() => { setTab('post'); setTimeout(() => postRef.current && postRef.current.focus(), 0) }} className="hn-x-ghost" style={{ height: 28, display: 'flex', alignItems: 'center', gap: 6, padding: '0 9px', border: 0, borderRadius: 7, background: 'transparent', cursor: 'pointer', fontSize: 12, fontWeight: 500, color: '#1C1A17' }}>
+                          Open in editor
+                          <Icon size={12} sw={2}><path d="M7 17 17 7" /><path d="M7 7h10v10" /></Icon>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {m.k === 'actions' && (
+                    <div style={{ display: 'flex', gap: 2, marginTop: -6 }}>
+                      <button onClick={copyPost} title="Copy post" className="hn-x-ghost" style={actBtn}>
+                        <Icon size={14}><rect width="14" height="14" x="8" y="8" rx="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></Icon>
+                      </button>
+                      <button onClick={() => { if (!c.busy) run(c.id, 'Try a different angle', c.msgs.length, c.di) }} title="Regenerate" className="hn-x-ghost" style={actBtn}>
+                        <Icon size={14}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" /></Icon>
+                      </button>
+                      <button title="Good response" className="hn-x-ghost" style={actBtn}>
+                        <Icon size={14}><path d="M7 10v12" /><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" /></Icon>
+                      </button>
+                      <button title="Bad response" className="hn-x-ghost" style={actBtn}>
+                        <Icon size={14}><path d="M17 14V2" /><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" /></Icon>
+                      </button>
+                    </div>
+                  )}
+                </motion.div>
+              ))}
+            </div>
+
+            <div style={{ flex: 'none', padding: '0 14px 14px' }}>
+              <div style={{ border: '1px solid rgba(28,26,23,.1)', borderRadius: 14, background: '#FFFFFF', boxShadow: '0 1px 2px rgba(28,26,23,.04), 0 8px 24px -16px rgba(28,26,23,.2)' }}>
+                <textarea
+                  value={input} onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+                  placeholder={CFG.placeholder} rows={2}
+                  style={{ display: 'block', width: '100%', border: 0, outline: 'none', resize: 'none', background: 'transparent', padding: '12px 14px 4px', font: 'inherit', fontSize: 13.5, lineHeight: 1.5, color: '#1C1A17', maxHeight: 140 }}
+                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px 8px 10px' }}>
+                  <div style={{ height: 28, display: 'flex', alignItems: 'center', gap: 6, padding: '0 9px', borderRadius: 999, background: '#F5F3EF', fontSize: 12, color: '#57534C' }}>
+                    <DbIcon size={12} />
+                    Honne Knowledge · 3
+                  </div>
+                  <div style={{ flex: 1 }} />
+                  <motion.div {...MO.btn}>
+                    <button onClick={() => send()} title="Send" style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 0, borderRadius: '50%', background: input.trim() && !(c && c.busy) ? '#1C1A17' : '#D3CEC6', color: '#FFFFFF', cursor: 'pointer', transition: 'background .2s' }}>
+                      <Icon size={15} sw={2.2}><path d="m5 12 7-7 7 7" /><path d="M12 19V5" /></Icon>
+                    </button>
+                  </motion.div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Post canvas (X dark theme) */}
+          <section style={{ flex: 1, minWidth: 0, display: narrow && tab === 'chat' ? 'none' : 'flex', flexDirection: 'column', position: 'relative', background: '#000000', fontFamily: "-apple-system, system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" }}>
+            <div style={{ height: 56, flex: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: '0 18px', background: 'rgba(0,0,0,.65)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #2F3336' }}>
+              <span style={{ fontSize: 13.5, fontWeight: 700, color: '#E7E9EA' }}>Post</span>
+              <span style={{ height: 22, display: 'flex', alignItems: 'center', gap: 6, padding: '0 9px', borderRadius: 999, fontSize: 11.5, fontWeight: 600, whiteSpace: 'nowrap', flex: 'none', background: pill.bg, color: pill.fg }}>{pill.label}</span>
+            </div>
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '36px 20px 60px' }}>
+              <div style={{ maxWidth: 600, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <motion.div {...MO.card}>
+                  <div style={{ background: '#000000', borderRadius: 16, border: '1px solid #2F3336', boxShadow: '0 0 0 1px rgba(255,255,255,.02), 0 30px 60px -30px rgba(29,155,240,.18)' }}>
+                    <div style={{ display: 'flex', gap: 12, padding: '14px 16px 0' }}>
+                      <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#1D9BF0', color: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, flex: 'none' }}>{initials}</div>
+                      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 4, fontSize: 15, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+                        <span style={{ fontWeight: 700, color: '#E7E9EA' }}>{userName}</span>
+                        <span style={{ color: '#71767B' }}>@{handle} · {whenLabel}</span>
+                      </div>
+                    </div>
+
+                    {!hasPost ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '14px 16px 20px 68px' }}>
+                        {['92%', '76%', '60%'].map(wd => (
+                          <div key={wd} style={{ height: 10, width: wd, borderRadius: 5, background: 'linear-gradient(90deg,#16181C 0,#25282D 50%,#16181C 100%)', backgroundSize: '600px 100%', animation: 'hn-x-shim 1.6s linear infinite' }} />
+                        ))}
+                        <div style={{ marginTop: 6, fontSize: 13, color: '#71767B' }}>Your draft appears here as Honne writes it.</div>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ padding: '2px 16px 8px 68px' }}>
+                          <textarea
+                            ref={postRef} value={c.post} readOnly={writing} spellCheck={false} placeholder="What's happening?"
+                            onChange={e => { const v = e.target.value; upd(c.id, x => ({ ...x, post: v })) }}
+                            style={{ display: 'block', width: '100%', minHeight: 80, border: 0, outline: 'none', resize: 'none', overflow: 'hidden', background: 'transparent', padding: 0, font: 'inherit', fontSize: 15, lineHeight: 1.35, color: '#E7E9EA', caretColor: '#1D9BF0' }}
+                          />
+                        </div>
+                        {c.img ? (
+                          <div style={{ position: 'relative', padding: '4px 16px 8px 68px' }}>
+                            <div role="img" style={{ display: 'block', width: '100%', height: 320, backgroundSize: 'cover', backgroundPosition: 'center', borderRadius: 16, border: '1px solid #2F3336', backgroundImage: `url(${c.img})` }} />
+                            <button onClick={removeImg} title="Remove image" style={{ position: 'absolute', top: 10, right: 26, width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 0, borderRadius: '50%', background: 'rgba(15,20,25,.75)', color: '#FFFFFF', cursor: 'pointer' }}>
+                              <Icon size={14} sw={2}><path d="M18 6 6 18" /><path d="m6 6 12 12" /></Icon>
+                            </button>
+                          </div>
+                        ) : !writing && (
+                          <div style={{ padding: '4px 16px 8px 68px' }}>
+                            <button onClick={() => fileRef.current && fileRef.current.click()} className="hn-x-img" style={{ width: '100%', height: 84, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, border: '1px dashed #2F3336', borderRadius: 16, background: 'transparent', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#1D9BF0' }}>
+                              <Icon size={18}><rect width="18" height="18" x="3" y="3" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></Icon>
+                              Add image
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px 12px 16px', borderTop: '1px solid #2F3336', marginTop: 6 }}>
+                      <span style={{ flex: 1, fontSize: 12, color: '#71767B' }}>{footNote}</span>
+                      <div style={{ position: 'relative' }}>
+                        <motion.div {...MO.btn}>
+                          <button onClick={() => { if (canPub || pop) setPop(x => !x) }} className="hn-x-dghost" style={{ height: 34, display: 'flex', alignItems: 'center', gap: 6, padding: '0 14px', border: '1px solid #536471', background: 'transparent', color: '#EFF3F4', borderRadius: 999, cursor: 'pointer', fontSize: 14, fontWeight: 700, opacity: canPub ? 1 : 0.45 }}>
+                            <Icon size={15} sw={2}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></Icon>
+                            Schedule
+                          </button>
+                        </motion.div>
+                        {pop && (
+                          <motion.div {...MO.pop}>
+                            <div style={{ width: 280, display: 'flex', flexDirection: 'column', gap: 12, padding: 16, borderRadius: 14, background: '#000000', border: '1px solid #2F3336', boxShadow: '0 0 18px rgba(255,255,255,.14)' }}>
+                              <div style={{ fontSize: 15, fontWeight: 700, color: '#E7E9EA' }}>Schedule post</div>
+                              <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, fontWeight: 600, color: '#71767B' }}>Date
+                                <input type="date" value={sd} onChange={e => setSd(e.target.value)} style={darkInput} />
+                              </label>
+                              <label style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, fontWeight: 600, color: '#71767B' }}>Time
+                                <input type="time" value={stm} onChange={e => setStm(e.target.value)} style={darkInput} />
+                              </label>
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 2 }}>
+                                <button onClick={() => setPop(false)} className="hn-x-dghost" style={{ height: 32, padding: '0 14px', border: 0, borderRadius: 999, background: 'transparent', cursor: 'pointer', fontSize: 14, fontWeight: 700, color: '#71767B' }}>Cancel</button>
+                                <button onClick={confirmSched} style={{ height: 32, padding: '0 16px', border: 0, borderRadius: 999, background: '#1D9BF0', cursor: 'pointer', fontSize: 14, fontWeight: 700, color: '#FFFFFF' }}>Schedule</button>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </div>
+                      <motion.div {...MO.btn}>
+                        <button onClick={publish} style={{ height: 34, display: 'flex', alignItems: 'center', gap: 7, padding: '0 18px', border: 0, borderRadius: 999, background: pubBg, cursor: canPub ? 'pointer' : 'default', fontSize: 14, fontWeight: 700, color: '#0F1419', transition: 'background .2s' }}>
+                          {st === 'publishing' && <Spin size={13} w={2} ring="rgba(15,20,25,.25)" top="#0F1419" />}
+                          {pubLabel}
+                        </button>
+                      </motion.div>
+                    </div>
+                  </div>
+                </motion.div>
+                <div style={{ textAlign: 'center', fontSize: 12, color: '#71767B' }}>Click the text to edit. Changes save to this chat.</div>
+              </div>
+            </div>
+            <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: 'none' }} />
+            {toast && (
+              <motion.div {...MO.toast}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 9, height: 44, padding: '0 16px', borderRadius: 10, background: '#1D9BF0', color: '#FFFFFF', fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', boxShadow: '0 14px 34px -14px rgba(0,0,0,.5)' }}>
+                  <CheckIcon size={16} color="#FFFFFF" sw={2.4} />
+                  {toast}
+                </div>
+              </motion.div>
+            )}
+          </section>
+        </div>
+      </div>
+    </div>
+  )
+}

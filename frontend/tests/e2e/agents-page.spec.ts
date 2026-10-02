@@ -4,7 +4,7 @@ import { makeCallLog } from './fixtures/mockRouter';
 /** AgentsPage.jsx — static "AI team" overview, zero API calls, per CLAUDE.md. */
 
 test('renders 4 hardcoded agent cards with correct active/coming-soon states, and makes zero API calls', async ({ supabaseAuthPage: page }) => {
-  // supabaseAuthPage lands on /chat first, whose own mount effects
+  // supabaseAuthPage lands on /home first, whose own mount effects
   // (getSessions/getProfile/getLinkedInStatus) can still be scheduled (not
   // yet dispatched) at the moment we navigate away — a hard page.goto()
   // doesn't reliably cancel them, so they can land just after the new
@@ -42,18 +42,18 @@ test('renders 4 hardcoded agent cards with correct active/coming-soon states, an
   expect(callsAfterNavigation).toBe(0);
 });
 
-test('Research/Writer CTAs navigate to /chat; SEO/Analytics cards are disabled', async ({ supabaseAuthPage: page }) => {
+test('Research/Writer CTAs navigate to /linkedin; SEO/Analytics cards are disabled', async ({ supabaseAuthPage: page }) => {
   await page.goto('/agents');
 
   await expect(page.getByRole('button', { name: 'Coming soon' }).first()).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Coming soon' }).last()).toBeDisabled();
 
   await page.getByRole('button', { name: 'Ask a research question →' }).click();
-  await expect(page).toHaveURL(/\/chat$/);
+  await expect(page).toHaveURL(/\/linkedin$/);
 });
 
-test('Writer CTA also navigates to /chat', async ({ supabaseAuthPage: page }) => {
+test('Writer CTA also navigates to /linkedin', async ({ supabaseAuthPage: page }) => {
   await page.goto('/agents');
   await page.getByRole('button', { name: 'Write a post →' }).click();
-  await expect(page).toHaveURL(/\/chat$/);
+  await expect(page).toHaveURL(/\/linkedin$/);
 });

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
 
 /* ─── Design tokens (Honne Home) ─────────────────────────────────────────── */
 const C = {
@@ -28,7 +29,7 @@ const FONT = {
   mono: "'Geist Mono', ui-monospace, monospace",
 }
 
-/* ─── Mock content (knowledge sources, agents and recent work aren't wired to
+/* ─── Mock content (knowledge sources and agents aren't wired to
      a backend yet — see CLAUDE.md's knowledge_sources table, not designed) ── */
 const SRC = [
   { id: 'drive', name: 'Google Drive', desc: 'Docs and Sheets', count: '8 docs', mono: 'G' },
@@ -46,31 +47,14 @@ const AGENTS = [
 ]
 const ACTIONS = {
   ideas: { tag: 'Find content ideas', agent: 'angles', prompt: 'Find content ideas in what I wrote this month' },
-  linkedin: { tag: 'LinkedIn post', agent: 'writer', prompt: 'Write a LinkedIn post about ' },
   series: { tag: 'Content series', agent: 'series', prompt: 'Turn my notes on building Honne into a 5-post series for this week' },
   research: { tag: 'Research', agent: 'researcher', prompt: 'Research what people are saying about ' },
   repurpose: { tag: 'Repurpose', agent: 'writer', prompt: 'Repurpose "Lessons from building Honne" as a thread for X' },
 }
-const RECENTS_INITIAL = [
-  { id: 'r1', title: "AI agents aren't the hard part", status: 'draft', date: 'Today', platform: 'linkedin' },
-  { id: 'r2', title: 'Lessons from building Honne', status: 'published', date: 'Yesterday', platform: 'linkedin' },
-  { id: 'r3', title: 'Content ideas from my research', status: 'draft', date: 'Sep 22', platform: null },
-  { id: 'r4', title: 'A week of building in public', status: 'scheduled', date: 'Sep 26', platform: 'x' },
-  { id: 'r5', title: 'Why my notes became my best content', status: 'draft', date: 'Sep 19', platform: 'reddit' },
-]
-const STATUS = { draft: { label: 'Draft', dot: '#A8A298' }, published: { label: 'Published', dot: C.green }, scheduled: { label: 'Scheduled', dot: C.amber } }
-const PLATFORM = { linkedin: { mono: 'in', name: 'LinkedIn' }, x: { mono: 'X', name: 'X' }, reddit: { mono: 'r/', name: 'Reddit' } }
-const ANGLE_SETS = [
-  [
-    { mono: 'N', src: 'Notion · Build log', title: "AI agents aren't the hard part. Knowing what they can see is." },
-    { mono: 'Gh', src: 'GitHub · README', title: 'Why I split one agent into five, and what broke first' },
-    { mono: 'G', src: 'Drive · Roadmap', title: 'Three weeks on retrieval before a single prompt' },
-  ],
-  [
-    { mono: 'F', src: 'Upload · Talk notes', title: 'The question every beginner asks me about posting' },
-    { mono: 'N', src: 'Notion · Ideas', title: 'What building in public cost me, and what it paid back' },
-    { mono: 'Gh', src: 'GitHub · Commits', title: 'A week of commits, told as one story' },
-  ],
+const PLATS = [
+  { id: 'linkedin', title: 'LinkedIn Post & Marketing', desc: 'Thought leadership and launch posts in your voice.', tint: 'rgba(10,102,194,.55)', glow: 'rgba(10,102,194,.16)', bdHover: 'rgba(10,102,194,.35)', iconBg: '#0A66C2', ink: '#0A66C2' },
+  { id: 'reddit', title: 'Reddit Post & Marketing', desc: 'Community-first posts that read native to the subreddit.', tint: 'rgba(255,69,0,.5)', glow: 'rgba(255,69,0,.15)', bdHover: 'rgba(255,69,0,.35)', iconBg: '#FF4500', ink: '#D23A00', prompt: 'Write a Reddit post for r/ about ' },
+  { id: 'x', title: 'X Post & Marketing', desc: 'Sharp posts and threads built from your notes.', tint: 'rgba(28,26,23,.4)', glow: 'rgba(28,26,23,.1)', bdHover: 'rgba(28,26,23,.3)', iconBg: '#1C1A17', ink: '#1C1A17', prompt: 'Write an X thread about ' },
 ]
 const NAV_ITEMS = [
   { id: 'home', label: 'Home', icon: 'M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8|M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
@@ -133,9 +117,6 @@ function MenuIcon({ size = 18 }) {
 function IdeaIcon({ size = 15 }) {
   return <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="#8A857C" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" /><path d="M9 18h6" /><path d="M10 22h4" /></svg>
 }
-function PenIcon({ size = 15 }) {
-  return <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="#8A857C" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" /></svg>
-}
 function SeriesIcon({ size = 15 }) {
   return <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="#8A857C" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" /><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" /><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" /></svg>
 }
@@ -145,11 +126,19 @@ function ResearchIcon({ size = 15 }) {
 function RepurposeIcon({ size = 15 }) {
   return <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="#8A857C" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="m17 2 4 4-4 4" /><path d="M3 11v-1a4 4 0 0 1 4-4h14" /><path d="m7 22-4-4 4-4" /><path d="M21 13v1a4 4 0 0 1-4 4H3" /></svg>
 }
-function RefreshIcon({ size = 13, deg = 0 }) {
-  return <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ transform: `rotate(${deg}deg)`, transition: 'transform .6s cubic-bezier(.2,.7,.2,1)' }}><path d="M21 12a9 9 0 1 1-3-6.7L21 8" /><path d="M21 3v5h-5" /></svg>
-}
 function ArrowRight({ size = 13, x = 0 }) {
   return <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: `translateX(${x}px)`, transition: 'transform .3s' }}><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
+}
+function PlatformLogo({ id }) {
+  if (id === 'linkedin') return <svg viewBox="0 0 24 24" width="18" height="18" fill="#FFFFFF"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 1 1 0-4.125 2.062 2.062 0 0 1 0 4.125zM7.119 20.452H3.555V9h3.564v11.452z" /></svg>
+  if (id === 'reddit') return (
+    <svg viewBox="0 0 24 24" width="22" height="22">
+      <circle cx="18.5" cy="4.5" r="1.6" fill="#FFFFFF" /><path d="M12 8.5 13.2 3.6l5.3 1" fill="none" stroke="#FFFFFF" strokeWidth="1.3" strokeLinecap="round" />
+      <ellipse cx="12" cy="14.5" rx="8" ry="5.6" fill="#FFFFFF" /><circle cx="4.6" cy="10.6" r="1.9" fill="#FFFFFF" /><circle cx="19.4" cy="10.6" r="1.9" fill="#FFFFFF" />
+      <circle cx="9" cy="13.6" r="1.25" fill="#FF4500" /><circle cx="15" cy="13.6" r="1.25" fill="#FF4500" /><path d="M9.2 16.8c1.6 1.1 4 1.1 5.6 0" fill="none" stroke="#FF4500" strokeWidth="1.1" strokeLinecap="round" />
+    </svg>
+  )
+  return <svg viewBox="0 0 24 24" width="16" height="16" fill="#FFFFFF"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z" /></svg>
 }
 function BackArrow({ size = 15 }) {
   return <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7" /><path d="M19 12H5" /></svg>
@@ -210,20 +199,12 @@ export default function HomeDashboardPage() {
   const [agent, setAgent] = useState('auto')
   const [pop, setPop] = useState(null) // 'knowledge' | 'agent' | null
 
-  const [connected, setConnected] = useState({ drive: 1, notion: 1, github: 1 })
+  const [connected, setConnected] = useState({ drive: 1, notion: 1, github: 1, files: 1 })
   const [connecting, setConnecting] = useState({})
   const [promptDismissed, setPromptDismissed] = useState(false)
 
-  const [angleSet, setAngleSet] = useState(0)
-  const [angleIn, setAngleIn] = useState(true)
-  const [angleHover, setAngleHover] = useState(null)
-  const [spin, setSpin] = useState(0)
-
-  const [recents, setRecents] = useState(RECENTS_INITIAL)
-  const [hoverRow, setHoverRow] = useState(null)
-  const [moreOpenId, setMoreOpenId] = useState(null)
-  const [renaming, setRenaming] = useState(null)
-  const [renameText, setRenameText] = useState('')
+  const [platHover, setPlatHover] = useState(null)
+  const [platGlow, setPlatGlow] = useState({}) // card index → { x, y } cursor position in %
 
   const taRef = useRef(null)
   const rootRef = useRef(null)
@@ -236,19 +217,6 @@ export default function HomeDashboardPage() {
     setCollapsed(tablet)
   }
 
-  // Close popovers on outside click / Escape.
-  useEffect(() => {
-    const onDoc = e => {
-      if ((pop || moreOpenId) && !(e.target.closest && e.target.closest('[data-pop]'))) { setPop(null); setMoreOpenId(null) }
-    }
-    const onKey = e => {
-      if (e.key === 'Escape') { setPop(null); setMobileNavOpen(false); setMoreOpenId(null); setRenaming(null) }
-    }
-    document.addEventListener('mousedown', onDoc)
-    document.addEventListener('keydown', onKey)
-    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey) }
-  }, [pop, moreOpenId])
-
   const autosize = useCallback(() => {
     const t = taRef.current
     if (!t) return
@@ -259,13 +227,28 @@ export default function HomeDashboardPage() {
     setTimeout(() => { const t = taRef.current; if (!t) return; t.focus(); const n = t.value.length; t.setSelectionRange(n, n); autosize() }, 0)
   }, [autosize])
 
+  // Close popovers on outside click / Escape; ⌘K focuses the composer, ⌘\ toggles the sidebar.
+  useEffect(() => {
+    const onDoc = e => {
+      if (pop && !(e.target.closest && e.target.closest('[data-pop]'))) setPop(null)
+    }
+    const onKey = e => {
+      const mod = e.metaKey || e.ctrlKey
+      if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); setStub(null); setActiveNav('home'); focusTa() }
+      if (mod && e.key === '\\') { e.preventDefault(); if (mobile) setMobileNavOpen(o => !o); else setCollapsed(c => !c) }
+      if (e.key === 'Escape') { setPop(null); setMobileNavOpen(false) }
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey) }
+  }, [pop, mobile, focusTa])
+
   const connectedIds = SRC.filter(x => connected[x.id]).map(x => x.id)
   const anyConnected = connectedIds.length > 0
   const hasUnconnected = SRC.length > connectedIds.length
   const focused = taFocus || pop === 'knowledge' || pop === 'agent'
   const hasText = text.trim().length > 0
   const showKnowledgePrompt = !anyConnected && !promptDismissed
-  const showAngles = anyConnected
 
   function connectSource(id) {
     if (connecting[id]) return
@@ -283,47 +266,22 @@ export default function HomeDashboardPage() {
     setSelectedAction(null); setText(''); setAgent('auto')
     focusTa()
   }
-  function applyAngle(g) {
-    setText('Draft a LinkedIn post from this angle: ' + g.title)
-    setAgent('writer'); setSelectedAction('linkedin'); setPop(null)
+  function startPlatform(p) {
+    if (p.id === 'linkedin') { navigate('/linkedin'); return }
+    if (p.id === 'x') { navigate('/x'); return }
+    if (p.id === 'reddit') { navigate('/reddit'); return }
+    setText(p.prompt); setAgent('writer'); setSelectedAction(null); setPop(null)
     focusTa()
-  }
-  function refreshAngles() {
-    setAngleIn(false); setSpin(s => s + 360)
-    setTimeout(() => { setAngleSet(s => (s + 1) % ANGLE_SETS.length); setAngleIn(true) }, 260)
   }
   function submit() {
     const t = text.trim()
     if (!t) return
-    navigate('/chat')
+    navigate('/linkedin', { state: { prompt: t } })
   }
-  function openRecent(r) {
-    if (renaming === r.id) return
-    navigate('/chat')
-  }
-  function commitRename() {
-    if (!renaming) return
-    const v = renameText.trim()
-    if (v) setRecents(rs => rs.map(r => r.id === renaming ? { ...r, title: v } : r))
-    setRenaming(null)
-  }
-  function duplicateRecent(r) {
-    setRecents(rs => {
-      const i = rs.findIndex(y => y.id === r.id)
-      const copy = { ...r, id: r.id + '-' + Date.now(), title: r.title + ' (copy)', status: 'draft', date: 'Just now' }
-      const list = rs.slice(); list.splice(i + 1, 0, copy); return list
-    })
-    setMoreOpenId(null)
-  }
-  function archiveRecent(r) {
-    setRecents(rs => rs.filter(y => y.id !== r.id))
-    setMoreOpenId(null)
-  }
-
   function goNav(id) {
     setPop(null); setMobileNavOpen(false)
     if (id === 'home') { setStub(null); setActiveNav('home'); return }
-    if (id === 'create') { navigate('/chat'); return }
+    if (id === 'create') { navigate('/linkedin'); return }
     if (id === 'posts') { navigate('/my-work'); return }
     if (id === 'agents') { navigate('/agents'); return }
     if (id === 'analytics') { navigate('/analytics'); return }
@@ -346,7 +304,6 @@ export default function HomeDashboardPage() {
   const kOpts = anyConnected ? [{ id: 'all', name: 'All sources', mono: '∗', count: `${connectedIds.length} ${connectedIds.length === 1 ? 'source' : 'sources'}` }].concat(SRC.filter(x => connected[x.id])) : []
   const kConnect = SRC.filter(x => !connected[x.id])
   const agentName = AGENTS.find(a => a.id === agent).name
-  const angles = ANGLE_SETS[angleSet]
 
   const sbWidth = mobile ? 272 : collapsed ? 60 : 248
   const showSidebarLabels = !collapsed
@@ -367,7 +324,6 @@ export default function HomeDashboardPage() {
         .hn-home-navbtn:hover { background: rgba(28,26,23,.045); }
         .hn-home-iconbtn:hover { background: rgba(28,26,23,.06); color: ${C.ink}; }
         .hn-home-qa:hover { background: #FFFFFF !important; border-color: rgba(28,26,23,.18) !important; }
-        .hn-home-recent:hover .hn-home-recent-actions { opacity: 1 !important; pointer-events: auto !important; }
       `}</style>
 
       {mobile && mobileNavOpen && (
@@ -467,18 +423,6 @@ export default function HomeDashboardPage() {
                   {greeting}, <span style={{ fontStyle: 'italic', color: C.orangeDeep }}>{displayName}.</span>
                 </h1>
                 <p style={{ margin: '8px 0 0', fontSize: 16, lineHeight: 1.5, color: C.muted }}>What are you creating today?</p>
-                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginTop: 18 }}>
-                  <button onClick={() => setPop(p => p === 'knowledge' ? null : 'knowledge')} data-pop="hdr" style={{ display: 'flex', alignItems: 'center', gap: 8, height: 36, padding: '0 14px 0 12px', border: 0, borderRadius: 9, background: C.ink, color: '#FAF9F7', fontSize: 13.5, fontWeight: 500, cursor: 'pointer' }}>
-                    <NavIcon d="E:9,12,5,5,3" size={15} color="#FAF9F7" />
-                    {anyConnected ? 'Add another source' : 'Connect knowledge'}
-                  </button>
-                  {anyConnected && (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: C.greenDeep }}>
-                      <CheckIcon size={14} />
-                      {connectedIds.map(id => SRC.find(x => x.id === id).name).join(', ')} connected
-                    </span>
-                  )}
-                </div>
               </header>
 
               {/* Composer */}
@@ -620,10 +564,9 @@ export default function HomeDashboardPage() {
               {/* Quick actions */}
               <section style={{ marginTop: 26 }}>
                 <div style={{ fontSize: 12.5, color: C.faint, marginBottom: 10 }}>Try asking Honne</div>
-                <div className="hn-home-qa-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <div className="hn-home-qa-row" style={{ display: 'flex', flexDirection: mobile ? 'column' : 'row', flexWrap: 'wrap', gap: 8 }}>
                   {[
                     { id: 'ideas', icon: <IdeaIcon />, label: 'Find content ideas' },
-                    { id: 'linkedin', icon: <PenIcon />, label: 'Create a LinkedIn post' },
                     { id: 'series', icon: <SeriesIcon />, label: 'Turn my knowledge into a content series' },
                     { id: 'research', icon: <ResearchIcon />, label: 'Research a topic' },
                     { id: 'repurpose', icon: <RepurposeIcon />, label: 'Repurpose existing content' },
@@ -636,120 +579,65 @@ export default function HomeDashboardPage() {
                 </div>
               </section>
 
-              {/* Angles */}
-              {showAngles && (
-                <section style={{ marginTop: 44 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                    <h2 style={{ margin: 0, whiteSpace: 'nowrap', fontSize: 13.5, fontWeight: 600 }}>Angles from your knowledge</h2>
-                    <button onClick={refreshAngles} className="hn-home-iconbtn" style={{ display: 'flex', alignItems: 'center', gap: 6, height: 28, padding: '0 8px', marginRight: -8, border: 0, borderRadius: 7, background: 'transparent', fontSize: 12.5, color: C.muted, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                      <RefreshIcon deg={spin} />
-                      New angles
-                    </button>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(3, minmax(0,1fr))', gap: 10 }}>
-                    {angles.map((g, i) => {
-                      const hv = angleHover === i
-                      return (
+              {/* Create for a platform */}
+              <section style={{ marginTop: 36 }}>
+                <h2 style={{ margin: '0 0 12px 0', whiteSpace: 'nowrap', fontSize: 13.5, fontWeight: 600 }}>Create for a platform</h2>
+                <div style={{ display: 'grid', gridTemplateColumns: mobile ? '1fr' : 'repeat(3, minmax(0,1fr))', gap: 12 }}>
+                  {PLATS.map((p, i) => {
+                    const hv = platHover === i
+                    const g = platGlow[i] || { x: 50, y: 30 }
+                    return (
+                      <motion.div
+                        key={p.id} style={{ height: '100%' }}
+                        initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
+                        whileHover={{ y: -4, scale: 1.015 }} whileTap={{ scale: 0.975 }}
+                        transition={{ type: 'spring', stiffness: 320, damping: 24, delay: i * 0.06 }}
+                      >
                         <button
-                          key={g.title} onClick={() => applyAngle(g)} onMouseEnter={() => setAngleHover(i)} onMouseLeave={() => setAngleHover(null)}
+                          onClick={() => startPlatform(p)}
+                          onMouseEnter={() => setPlatHover(i)} onMouseLeave={() => setPlatHover(null)}
+                          onMouseMove={e => {
+                            const r = e.currentTarget.getBoundingClientRect()
+                            const x = Math.round((e.clientX - r.left) / r.width * 100), y = Math.round((e.clientY - r.top) / r.height * 100)
+                            setPlatGlow(gl => ({ ...gl, [i]: { x, y } }))
+                          }}
                           style={{
-                            position: 'relative', display: 'flex', flexDirection: 'column', gap: 14, minHeight: 148, padding: 16, borderRadius: 14,
-                            border: `1px solid ${hv ? 'rgba(240,102,42,.35)' : 'rgba(28,26,23,.08)'}`, background: '#FFFFFF', textAlign: 'left', cursor: 'pointer',
-                            transform: !angleIn ? 'translateY(8px)' : hv ? 'translateY(-3px)' : 'none',
-                            boxShadow: hv ? '0 18px 40px -22px rgba(196,80,30,.4)' : '0 1px 2px rgba(28,26,23,.03)',
-                            opacity: angleIn ? 1 : 0, transitionDelay: angleIn ? `${i * 0.07}s` : '0s',
-                            transition: 'transform .35s cubic-bezier(.2,.7,.2,1), box-shadow .35s, border-color .25s, opacity .35s ease',
+                            position: 'relative', width: '100%', height: '100%', minHeight: 168, display: 'flex', flexDirection: 'column', gap: 14, padding: 18,
+                            borderRadius: 16, overflow: 'hidden', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', color: C.ink,
+                            background: 'rgba(255,255,255,.52)', backdropFilter: 'blur(18px) saturate(160%)', WebkitBackdropFilter: 'blur(18px) saturate(160%)',
+                            border: `1px solid ${hv ? p.bdHover : 'rgba(255,255,255,.75)'}`,
+                            boxShadow: hv ? `0 22px 48px -24px ${p.tint}, 0 0 0 1px rgba(255,255,255,.6)` : '0 1px 2px rgba(28,26,23,.04), 0 10px 28px -20px rgba(28,26,23,.25)',
+                            transition: 'box-shadow .35s, border-color .3s',
                           }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: C.faint }}>
-                            <span style={{ height: 20, minWidth: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px', borderRadius: 5, background: C.chipBg, fontSize: 10, fontWeight: 600, color: '#3D3933' }}>{g.mono}</span>
-                            {g.src}
+                          <div style={{ position: 'absolute', width: 180, height: 180, right: -60, top: -70, borderRadius: '50%', background: p.tint, filter: 'blur(40px)', opacity: hv ? 0.55 : 0.22, transition: 'opacity .4s', pointerEvents: 'none' }} />
+                          <div style={{ position: 'absolute', inset: 0, background: `radial-gradient(220px circle at ${g.x}% ${g.y}%, ${p.glow}, transparent 70%)`, opacity: hv ? 1 : 0, transition: 'opacity .3s', pointerEvents: 'none' }} />
+                          <div style={{ position: 'absolute', inset: 0, borderRadius: 16, boxShadow: 'inset 0 1px 0 rgba(255,255,255,.9)', pointerEvents: 'none' }} />
+                          <div style={{ position: 'relative', width: 38, height: 38, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', background: p.iconBg, boxShadow: `0 6px 16px -8px ${p.tint}` }}>
+                            <PlatformLogo id={p.id} />
                           </div>
-                          <div style={{ fontFamily: FONT.serif, fontSize: 20, lineHeight: 1.18, letterSpacing: '-0.01em', color: C.ink }}>{g.title}</div>
+                          <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                            <div style={{ fontFamily: FONT.serif, fontSize: 22, lineHeight: 1.1, letterSpacing: '-0.01em' }}>{p.title}</div>
+                            <div style={{ fontSize: 12.5, lineHeight: 1.45, color: C.muted, textWrap: 'pretty' }}>{p.desc}</div>
+                          </div>
                           <div style={{ flex: 1 }} />
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 500, color: hv ? C.orangeDeep : C.faint, transition: 'color .2s' }}>
-                            Draft this <ArrowRight x={hv ? 3 : 0} />
+                          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 500, color: hv ? p.ink : C.faint, transition: 'color .2s' }}>
+                            Start <ArrowRight x={hv ? 3 : 0} />
                           </div>
                         </button>
-                      )
-                    })}
-                  </div>
-                </section>
-              )}
-
-              {/* Recent work */}
-              <section style={{ marginTop: 44 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <h2 style={{ margin: 0, whiteSpace: 'nowrap', fontSize: 13.5, fontWeight: 600, letterSpacing: '-0.005em' }}>Recent work</h2>
-                  {recents.length > 0 && (
-                    <button onClick={() => goNav('posts')} className="hn-home-iconbtn" style={{ height: 28, padding: '0 8px', marginRight: -8, border: 0, borderRadius: 7, background: 'transparent', fontSize: 12.5, color: C.muted, cursor: 'pointer', whiteSpace: 'nowrap' }}>View all</button>
-                  )}
+                      </motion.div>
+                    )
+                  })}
                 </div>
+              </section>
 
-                {recents.length > 0 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    {recents.map(r => {
-                      const moreOpen = moreOpenId === r.id
-                      const hov = hoverRow === r.id || moreOpen || renaming === r.id
-                      const pl = r.platform ? PLATFORM[r.platform] : null
-                      const st = STATUS[r.status]
-                      const isRenaming = renaming === r.id
-                      return (
-                        <div key={r.id} onMouseEnter={() => setHoverRow(r.id)} onMouseLeave={() => setHoverRow(x => x === r.id ? null : x)} onClick={() => openRecent(r)}
-                          className="hn-home-recent"
-                          style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12, padding: 10, margin: '0 -10px', borderRadius: 10, cursor: 'pointer', background: hov ? 'rgba(28,26,23,.04)' : 'transparent', transition: 'background .12s' }}
-                        >
-                          <div title={pl ? pl.name : 'Ideas session'} style={{ width: 32, height: 32, borderRadius: 8, border: '1px solid rgba(28,26,23,.08)', background: '#FFFFFF', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', fontSize: 11.5, fontWeight: 600, color: '#3D3933', letterSpacing: '-0.01em' }}>
-                            {pl ? pl.mono : <IdeaIcon size={15} />}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            {!isRenaming ? (
-                              <div style={{ fontSize: 14, fontWeight: 500, color: C.ink, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.title}</div>
-                            ) : (
-                              <input
-                                data-pop="rename" value={renameText} autoFocus
-                                onChange={e => setRenameText(e.target.value)}
-                                onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') { e.stopPropagation(); setRenaming(null) } }}
-                                onBlur={commitRename} onClick={e => e.stopPropagation()}
-                                style={{ width: '100%', height: 24, margin: '-2px 0 -2px -6px', padding: '0 6px', border: '1px solid rgba(28,26,23,.22)', borderRadius: 6, outline: 0, background: '#FFFFFF', fontFamily: 'inherit', fontSize: 14, fontWeight: 500, color: C.ink, boxShadow: '0 0 0 3px rgba(240,102,42,.12)' }}
-                              />
-                            )}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, fontSize: 12.5, color: C.faint, whiteSpace: 'nowrap' }}>
-                              <span style={{ width: 6, height: 6, borderRadius: '50%', background: st.dot, flex: 'none' }} />
-                              <span>{st.label}</span><span style={{ color: '#B5B0A7' }}>·</span><span>{r.date}</span>
-                            </div>
-                          </div>
-                          <div className="hn-home-recent-actions" style={{ display: 'flex', alignItems: 'center', gap: 2, opacity: hov || mobile ? 1 : 0, pointerEvents: hov || mobile ? 'auto' : 'none', transition: 'opacity .12s' }}>
-                            {!mobile && (
-                              <button onClick={e => { e.stopPropagation(); openRecent(r) }} style={{ display: 'flex', alignItems: 'center', height: 28, padding: '0 10px', border: '1px solid rgba(28,26,23,.10)', borderRadius: 7, background: '#FFFFFF', fontSize: 12, fontWeight: 500, color: C.ink, cursor: 'pointer', marginRight: 4 }}>Open</button>
-                            )}
-                            {!mobile && (
-                              <button onClick={e => { e.stopPropagation(); setRenaming(r.id); setRenameText(r.title); setMoreOpenId(null) }} title="Rename" className="hn-home-iconbtn" style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 0, borderRadius: 7, background: 'transparent', color: C.muted, cursor: 'pointer' }}>
-                                <PenIcon size={14} />
-                              </button>
-                            )}
-                            <button data-pop="more" onClick={e => { e.stopPropagation(); setMoreOpenId(x => x === r.id ? null : r.id) }} title="More" className="hn-home-iconbtn" style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 0, borderRadius: 7, background: moreOpen ? 'rgba(28,26,23,.06)' : 'transparent', color: C.muted, cursor: 'pointer' }}>
-                              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /></svg>
-                            </button>
-                          </div>
-                          {moreOpen && (
-                            <div data-pop="menu" onClick={e => e.stopPropagation()} style={{ position: 'absolute', right: 8, top: 'calc(100% - 2px)', width: 180, background: '#FFFFFF', border: '1px solid rgba(28,26,23,.10)', borderRadius: 10, boxShadow: '0 16px 40px -16px rgba(28,26,23,.28), 0 2px 6px rgba(28,26,23,.05)', padding: 5, zIndex: 20 }}>
-                              <button onClick={() => { setRenaming(r.id); setRenameText(r.title); setMoreOpenId(null) }} style={{ display: 'flex', alignItems: 'center', width: '100%', height: 32, padding: '0 10px', border: 0, borderRadius: 6, background: 'transparent', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}>Rename</button>
-                              <button onClick={() => duplicateRecent(r)} style={{ display: 'flex', alignItems: 'center', width: '100%', height: 32, padding: '0 10px', border: 0, borderRadius: 6, background: 'transparent', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}>Duplicate</button>
-                              <div style={{ height: 1, background: 'rgba(28,26,23,.07)', margin: '4px 2px' }} />
-                              <button onClick={() => archiveRecent(r)} style={{ display: 'flex', alignItems: 'center', width: '100%', height: 32, padding: '0 10px', border: 0, borderRadius: 6, background: 'transparent', fontSize: 13, color: '#A6452A', cursor: 'pointer', textAlign: 'left' }}>Archive</button>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <div style={{ padding: '22px 20px', border: '1px dashed rgba(28,26,23,.14)', borderRadius: 12 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 500, color: '#3D3933' }}>Nothing here yet</div>
-                    <div style={{ fontSize: 13, color: C.faint, marginTop: 3 }}>Drafts and published posts you make with Honne will show up here.</div>
-                  </div>
-                )}
+              {/* Recent work — not wired to posts yet */}
+              <section style={{ marginTop: 44 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                  <h2 style={{ margin: 0, whiteSpace: 'nowrap', fontSize: 13.5, fontWeight: 600, letterSpacing: '-0.005em' }}>Recent work</h2>
+                  <span style={{ height: 20, display: 'flex', alignItems: 'center', padding: '0 8px', borderRadius: 999, background: 'rgba(240,102,42,.1)', fontSize: 11, fontWeight: 500, color: C.orangeDeep }}>Coming soon</span>
+                </div>
+                <div style={{ padding: '22px 20px', border: '1px dashed rgba(28,26,23,.14)', borderRadius: 12, fontSize: 13, color: C.faint }}>Your drafts and published posts will show up here.</div>
               </section>
             </div>
           </div>

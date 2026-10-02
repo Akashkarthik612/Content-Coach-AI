@@ -8,9 +8,7 @@ import type { Page, Route } from '@playwright/test';
  *
  * Nothing in this file ever lets a real request reach a network — every
  * mocked route ends in route.fulfill() (or, for `hang`, a promise that never
- * resolves so the request stays pending forever). See sseHelper.ts for the
- * one exception (SSE streaming), which needs a real local server instead of
- * a canned body.
+ * resolves so the request stays pending forever).
  */
 
 // ── Call log ────────────────────────────────────────────────────────────────
@@ -135,23 +133,9 @@ export async function mockDeleteSession(page: Page, handler: Handler = preset.no
   await mockEndpoint(page, /\/api\/ai\/sessions\/[^/]+$/, 'DELETE', handler, log);
 }
 
-export async function mockSessionThreads(page: Page, handler: Handler | Record<string, unknown>, log?: CallLog) {
-  const h = typeof handler === 'function' ? handler : preset.success(handler as JsonBody);
-  await mockEndpoint(page, /\/api\/ai\/sessions\/[^/]+\/threads$/, 'GET', h, log);
-}
-
-export async function mockResumeAI(page: Page, handler: Handler, log?: CallLog) {
-  await mockEndpoint(page, '**/api/ai/resume', 'POST', handler, log);
-}
-
 export async function mockQueryAI(page: Page, handler: Handler | Record<string, unknown>, log?: CallLog) {
   const h = typeof handler === 'function' ? handler : preset.success(handler as JsonBody);
   await mockEndpoint(page, '**/api/ai/query', 'POST', h, log);
-}
-
-export async function mockRefineAI(page: Page, handler: Handler | Record<string, unknown>, log?: CallLog) {
-  const h = typeof handler === 'function' ? handler : preset.success(handler as JsonBody);
-  await mockEndpoint(page, '**/api/ai/refine', 'POST', h, log);
 }
 
 export async function mockDraftFromTopic(page: Page, handler: Handler | Record<string, unknown>, log?: CallLog) {

@@ -48,7 +48,7 @@ test('full wizard flow: forward navigation through all 7 questions to Done', asy
   await expect(page.getByText('Conversational')).toBeVisible();
 
   await page.getByRole('button', { name: 'Start writing →' }).click();
-  await expect(page).toHaveURL(/\/chat$/);
+  await expect(page).toHaveURL(/\/home$/);
 });
 
 test('"Skip for now" from the first screen jumps straight to Done with no answers', async ({ supabaseAuthPage: page }) => {
@@ -74,7 +74,7 @@ test('"Skip for now" mid-wizard preserves whatever was answered so far', async (
   await expect(page.getByText('Founder / Owner')).toBeVisible();
 });
 
-test('finish() navigates to /chat even when submitOnboarding fails', async ({ supabaseAuthPage: page }) => {
+test('finish() navigates to /home even when submitOnboarding fails', async ({ supabaseAuthPage: page }) => {
   const log = makeCallLog();
   await mockSubmitOnboarding(page, preset.error(500, { detail: 'boom' }), log);
   await page.goto('/onboarding');
@@ -83,7 +83,7 @@ test('finish() navigates to /chat even when submitOnboarding fails', async ({ su
   await page.getByRole('button', { name: 'Start writing →' }).click();
 
   // Fire-and-forget per CLAUDE.md — a failed save never blocks navigation.
-  await expect(page).toHaveURL(/\/chat$/);
+  await expect(page).toHaveURL(/\/home$/);
 });
 
 test('finish() sets both localStorage keys', async ({ supabaseAuthPage: page }) => {
@@ -94,7 +94,7 @@ test('finish() sets both localStorage keys', async ({ supabaseAuthPage: page }) 
   await page.getByRole('button', { name: 'Continue' }).click();
   await page.getByRole('button', { name: 'Skip for now →' }).click();
   await page.getByRole('button', { name: 'Start writing →' }).click();
-  await expect(page).toHaveURL(/\/chat$/);
+  await expect(page).toHaveURL(/\/home$/);
 
   const userId = await page.evaluate(() => localStorage.getItem('user_id'));
   const onboardedFlag = await page.evaluate((uid) => localStorage.getItem(`cc_onboarded_${uid}`), userId);
@@ -103,7 +103,7 @@ test('finish() sets both localStorage keys', async ({ supabaseAuthPage: page }) 
   expect(answers && JSON.parse(answers)).toMatchObject({ profession: 'Founder / Owner' });
 });
 
-test('no server-side enforcement — a user can reach /chat without visiting /onboarding at all', async ({ supabaseAuthPage: page }) => {
-  await page.goto('/chat');
-  await expect(page).toHaveURL(/\/chat$/);
+test('no server-side enforcement — a user can reach /linkedin without visiting /onboarding at all', async ({ supabaseAuthPage: page }) => {
+  await page.goto('/linkedin');
+  await expect(page).toHaveURL(/\/linkedin$/);
 });
