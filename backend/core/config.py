@@ -1,5 +1,6 @@
 import os
 from functools import lru_cache
+
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,6 +16,9 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     OPENAI_API_KEY: str = ""
     LANGCHAIN_API_KEY_GEMINI: str = ""
+    # Points the Gemini client at another host. Only the smoke tests set it
+    # (tests/smoke/fake_gemini.py); leave it unset everywhere else.
+    GEMINI_BASE_URL: str = ""
     TAVILY_API_KEY: str = ""
     APP_NAME: str = "LinkedIn Coach"
     ENV: str = "development"
@@ -42,6 +46,12 @@ class Settings(BaseSettings):
     # on top of the hardcoded localhost/CloudFront list in main.py, so a new
     # frontend domain is an env var change, not a code change.
     EXTRA_ALLOWED_ORIGINS: str = ""
+
+    # Independent agents' chat threads (backend/ai/independent_agents/threads.py).
+    # A thread ends after THREAD_TURN_LIMIT turns and the user is asked to start
+    # a new chat; threads idle longer than THREAD_RETENTION_DAYS are deleted.
+    THREAD_TURN_LIMIT: int = 15
+    THREAD_RETENTION_DAYS: int = 7
 
     # Background scheduler — auto-publishes posts at their scheduled_at time.
     # See backend/scheduler/.

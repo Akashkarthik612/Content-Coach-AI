@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import HomePage from './pages/HomePage';
+import HomeDashboardPage from './pages/HomeDashboardPage';
 import LandingPage from './pages/landing/LandingPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
-import WelcomeSplashPage from './pages/WelcomeSplashPage';
 import OnboardingPage from './pages/OnboardingPage';
 import MyWorkPage from './pages/MyWorkPage';
-import ChatPage from './pages/ChatPage';
+import LinkedInStudioPage from './pages/LinkedInStudioPage';
+import RedditStudioPage from './pages/RedditStudioPage';
+import XStudioPage from './pages/XStudioPage';
 import TemplatesPage from './pages/TemplatesPage';
 import SchedulePage from './pages/SchedulePage';
 import AnalyticsPage from './pages/AnalyticsPage';
@@ -47,11 +49,15 @@ export default function App() {
         <Route path="/register" element={<HomePage initialMode="register" />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="/welcome"    element={<RequireAuth><WelcomeSplashPage /></RequireAuth>} />
         <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
+        <Route path="/home"      element={<RequireAuth><HomeDashboardPage /></RequireAuth>} />
         <Route path="/my-work"    element={<RequireAuth><MyWorkPage /></RequireAuth>} />
         <Route path="/vault"      element={<RequireAuth><MyWorkPage /></RequireAuth>} />
-        <Route path="/chat"       element={<RequireAuth><ChatPage /></RequireAuth>} />
+        <Route path="/linkedin"   element={<RequireAuth><LinkedInStudioPage /></RequireAuth>} />
+        <Route path="/reddit"     element={<RequireAuth><RedditStudioPage /></RequireAuth>} />
+        <Route path="/x"          element={<RequireAuth><XStudioPage /></RequireAuth>} />
+        {/* ChatPage was removed; older links into it land on Home. */}
+        <Route path="/chat"       element={<Navigate to="/home" replace />} />
         <Route path="/templates"  element={<RequireAuth><TemplatesPage /></RequireAuth>} />
         <Route path="/schedule"   element={<RequireAuth><SchedulePage /></RequireAuth>} />
         <Route path="/analytics"  element={<RequireAuth><AnalyticsPage /></RequireAuth>} />

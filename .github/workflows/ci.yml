@@ -1,0 +1,129 @@
+# CI for the rebuilt Honne AI — currently the LinkedIn independent agent.
+# Green here means the Render deploy works once the real Gemini key is set;
+# the one thing CI can't check (Google accepting that key) is
+# scripts/prod_check.py, run once after deploying.
+#
+# No secrets: Gemini and Supabase Auth are faked (tests/smoke/fake_upstream.py)
+# and every database is a throwaway pgvector container.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12" # matches the Dockerfile
+  NODE_VERSION: "22"
+  TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/honne_test
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install "ruff>=0.6"
+      # Scoped to the rebuilt code; old modules (e.g. backend/core/cache.py)
+      # join as they are rebuilt.
+      - run: ruff check backend/main.py backend/ai backend/auth backend/core/config.py backend/core/database.py tests scripts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npx eslint src/pages/LinkedInStudioPage.jsx src/api/independentAgents.js
+        working-directory: frontend
+
+  backend-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: honne_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-test.txt
+      # unit + integration + in-process smoke; conftest fails if anything would skip.
+      - run: pytest tests -v -o log_cli=false
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: honne_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements.txt
+      # The same image Render builds; its CMD runs the migrations.
+      - run: docker build -t honne-backend .
+      - run: python -m tests.smoke.container_check honne-backend
+
+  browser-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: honne_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-test.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: npm run test:smoke
+        working-directory: frontend
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-smoke
+          path: frontend/playwright-report-smoke
+          retention-days: 7

@@ -27,7 +27,7 @@ test.describe('with a valid session (getSession() fallback path)', () => {
     await page.getByPlaceholder('you@example.com').fill(TEST_USER.email);
     await page.getByPlaceholder('••••••••').fill(TEST_USER.password);
     await page.locator('form button[type="submit"]').click();
-    await expect(page).toHaveURL(/\/chat$/);
+    await expect(page).toHaveURL(/\/home$/);
     await page.goto('/reset-password');
   }
 

@@ -1,0 +1,13 @@
+# Keep the image identical to Render's build (a clean git clone) and keep
+# local secrets out of it.
+.env
+.env.*
+google_oauth_key.json
+venv/
+.git/
+frontend/
+pgvector/
+tests/
+**/__pycache__/
+*.pdf
+*.pptx

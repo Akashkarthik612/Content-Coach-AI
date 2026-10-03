@@ -77,7 +77,7 @@ export const register = async (username, email, password) => {
 export const googleSignIn = async () => {
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo: `${window.location.origin}/chat` },
+    options: { redirectTo: `${window.location.origin}/home` },
   });
   if (error) throw _classify(error);
   // Browser redirects away on success — nothing more to do here.

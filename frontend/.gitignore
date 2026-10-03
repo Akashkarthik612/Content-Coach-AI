@@ -12,11 +12,13 @@ dist
 dist-ssr
 dist-e2e-supabase
 dist-e2e-local
+dist-smoke
 *.local
 
 # Playwright
 /test-results/
 /playwright-report/
+/playwright-report-smoke/
 /blob-report/
 /playwright/.cache/
 

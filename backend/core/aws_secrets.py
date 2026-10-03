@@ -1,4 +1,5 @@
 import json
+
 import boto3
 from botocore.exceptions import ClientError
 
@@ -22,4 +23,4 @@ def get_secret(secret_name: str, region_name: str):
         return json.loads(response["SecretString"])
 
     except ClientError as e:
-        raise Exception(f"Unable to retrieve secret: {e}")
+        raise RuntimeError(f"Unable to retrieve secret: {e}") from e

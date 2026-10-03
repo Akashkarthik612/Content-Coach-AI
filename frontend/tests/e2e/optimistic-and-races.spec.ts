@@ -2,10 +2,9 @@ import { expect } from '@playwright/test';
 import { test, mockSupabaseAuthSurface, TEST_USER } from './fixtures/authFixtures';
 import {
   mockVaultFolders, mockPostsInFolder, mockGetVersions, mockSaveVersion, mockRenamePost,
-  mockGetSessions, mockGetProfile, mockLinkedInStatus, mockRefineAI, mockAccountSettings, mockRaw,
+  mockGetSessions, mockAccountSettings, mockRaw,
   preset, makeCallLog,
 } from './fixtures/mockRouter';
-import { startSseServer, routeStreamTo } from './fixtures/sseHelper';
 
 /** Two-tab conflicts, and an audit of other single-click-should-mean-single-request buttons. */
 
@@ -30,7 +29,7 @@ test('two tabs editing the same post: last write wins silently — no conflict U
     await page.getByPlaceholder('you@example.com').fill(TEST_USER.email);
     await page.getByPlaceholder('••••••••').fill(TEST_USER.password);
     await page.locator('form button[type="submit"]').click();
-    await expect(page).toHaveURL(/\/chat$/);
+    await expect(page).toHaveURL(/\/home$/);
 
     await page.goto('/my-work');
     await page.getByText('Shared draft').click();
@@ -59,45 +58,6 @@ test('two tabs editing the same post: last write wins silently — no conflict U
 });
 
 test.describe('other single-click-should-mean-single-request buttons', () => {
-  test('WorkspaceView Refine submit — rapid double-click behavior is pinned as-observed', async ({ supabaseAuthPage: page }) => {
-    await mockGetSessions(page, []);
-    await mockGetProfile(page, null);
-    await mockLinkedInStatus(page, { connected: false });
-    await page.goto('/chat');
-
-    const sse = await startSseServer();
-    await routeStreamTo(page, sse);
-    await page.getByPlaceholder('Drop a thought, or ask to research and write…').fill('Write a post');
-    await page.getByTitle('Send').click();
-    await sse.firstRequest;
-    sse.sendToken('Draft text.');
-    sse.sendDone({ status: 'awaiting_approval', thread_id: 't1', post_id: 'post-1' });
-    sse.end();
-    await expect(page.getByRole('button', { name: 'Approve' })).toBeVisible();
-
-    const log = makeCallLog();
-    await mockRefineAI(page, async (route) => {
-      await new Promise((r) => setTimeout(r, 200));
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ refined_draft: 'Refined.' }) });
-    }, log);
-
-    // submitWsCmd() clears ws.cmdInput synchronously on the first call,
-    // which drives the send button's `disabled` state — so unlike
-    // WorkspaceView's Approve button (no guard at all, see
-    // chat-workspace.spec.ts), this one is expected to naturally collapse
-    // a double-click into one call once the input is empty. Using a real
-    // dblclick (not two sequential .click()s, which each wait for the
-    // button to be actionable and would hang forever on the second one
-    // once disabled) fires both pointer events before React can re-render.
-    await page.getByPlaceholder('Refine the draft…').fill('Make it punchier');
-    const sendBtn = page.locator('button[title="Send"]').last();
-    await sendBtn.dblclick();
-
-    await expect(page.getByText('Refined.')).toBeVisible();
-    expect(log.calls.length).toBe(1);
-    await sse.close();
-  });
-
   test('Settings email Save button IS correctly guarded — only one updateEmail() call on rapid double-click', async ({ supabaseAuthPage: page }) => {
     await mockGetSessions(page, []);
     await mockAccountSettings(page, { email: 'ada@example.com', username: 'ada' });

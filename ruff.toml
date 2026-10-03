@@ -1,0 +1,6 @@
+line-length = 110
+extend-exclude = ["backend/alembic/versions", "frontend", "venv"]
+
+[lint.flake8-bugbear]
+# FastAPI's dependency-injection markers are meant to be called in defaults.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path", "fastapi.Body"]

@@ -53,7 +53,7 @@ test.describe('Register — Supabase mode', () => {
 });
 
 test.describe('Login — Supabase mode', () => {
-  test('success navigates to /chat', async ({ page }) => {
+  test('success navigates to /home', async ({ page }) => {
     await mockSupabaseAuthSurface(page);
     await mockGetSessions(page, []);
     await mockGetProfile(page, null);
@@ -64,7 +64,7 @@ test.describe('Login — Supabase mode', () => {
     await page.getByPlaceholder('••••••••').fill(TEST_USER.password);
     await page.locator('form button[type="submit"]').click();
 
-    await expect(page).toHaveURL(/\/chat$/);
+    await expect(page).toHaveURL(/\/home$/);
   });
 
   test('failure shows inline error, no navigation', async ({ page }) => {
@@ -87,7 +87,7 @@ test.describe('Login — Supabase mode', () => {
 });
 
 test.describe('RequireAuth', () => {
-  const PROTECTED_ROUTES = ['/chat', '/my-work', '/schedule', '/settings', '/agents'];
+  const PROTECTED_ROUTES = ['/linkedin', '/my-work', '/schedule', '/settings', '/agents'];
 
   for (const route of PROTECTED_ROUTES) {
     test(`anon user hitting ${route} redirects to /`, async ({ page }) => {
@@ -108,7 +108,7 @@ test.describe('RequireAuth', () => {
     await page.getByPlaceholder('you@example.com').fill(TEST_USER.email);
     await page.getByPlaceholder('••••••••').fill(TEST_USER.password);
     await page.locator('form button[type="submit"]').click();
-    await expect(page).toHaveURL(/\/chat$/);
+    await expect(page).toHaveURL(/\/home$/);
 
     // Force the stored session to look near-expiry so the next page load's
     // _recoverAndRefresh() must hit the network before getSession() resolves
@@ -137,8 +137,8 @@ test.describe('RequireAuth', () => {
       });
     });
 
-    const readyText = page.getByText('Ready when you are');
-    await page.goto('/chat', { waitUntil: 'commit' });
+    const readyText = page.getByText('What should we post on LinkedIn?');
+    await page.goto('/linkedin', { waitUntil: 'commit' });
     // Give the app time to mount and reach the "checking" state (RequireAuth
     // renders null there) — the refresh call stays gated shut throughout.
     await page.waitForTimeout(300);

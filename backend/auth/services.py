@@ -149,9 +149,7 @@ class SupabaseAuthService:
         except httpx.HTTPError:
             # Local row is already gone (no duplicate-email risk); the Supabase
             # identity is left for manual/retried cleanup.
-            logger.error(
-                "Failed to delete Supabase identity: user_id=%s", user_id, exc_info=True
-            )
+            logger.exception("Failed to delete Supabase identity: user_id=%s", user_id)
 
 
 class AuthAvailabilityService:

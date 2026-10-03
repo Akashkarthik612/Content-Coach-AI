@@ -139,7 +139,7 @@ export default function HomePage({ initialMode = 'login' }) {
     setError(''); setLoading(true);
     try {
       await login(form.email, form.password);
-      navigate('/welcome', { state: { next: '/chat' } });
+      navigate('/home');
     } catch (err) {
       setError(err.message);
     } finally { setLoading(false); }
@@ -159,7 +159,7 @@ export default function HomePage({ initialMode = 'login' }) {
       if (data.needsEmailConfirmation) {
         setConfirmMsg(`Check ${data.email} for a confirmation link, then log in.`);
       } else {
-        navigate('/welcome', { state: { next: '/onboarding' } });
+        navigate('/onboarding');
       }
     } catch (err) {
       setError(err.message);

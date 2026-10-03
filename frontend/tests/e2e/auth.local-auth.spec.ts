@@ -40,7 +40,7 @@ test.describe('Register — local mode', () => {
 });
 
 test.describe('Login — local mode', () => {
-  test('success navigates to /chat', async ({ page }) => {
+  test('success navigates to /home', async ({ page }) => {
     await mockRaw(page, '**/api/auth/login', 'POST', preset.success({ user_id: 'u1', username: 'ada', email: 'ada@example.com' }));
     await mockGetSessions(page, []);
     await mockGetProfile(page, null);
@@ -51,7 +51,7 @@ test.describe('Login — local mode', () => {
     await page.getByPlaceholder('••••••••').fill('a-secure-password');
     await page.locator('form button[type="submit"]').click();
 
-    await expect(page).toHaveURL(/\/chat$/);
+    await expect(page).toHaveURL(/\/home$/);
     expect(await page.evaluate(() => localStorage.getItem('user_id'))).toBe('u1');
   });
 
@@ -75,12 +75,12 @@ test.describe('RequireAuth — local mode', () => {
     await mockGetProfile(page, null);
     await mockLinkedInStatus(page, { connected: false });
 
-    await page.goto('/chat');
-    await expect(page).toHaveURL(/\/chat$/);
+    await page.goto('/linkedin');
+    await expect(page).toHaveURL(/\/linkedin$/);
   });
 
   test('no user_id redirects to /', async ({ page }) => {
-    await page.goto('/chat');
+    await page.goto('/linkedin');
     await expect(page).toHaveURL('/');
   });
 });

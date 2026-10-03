@@ -3,38 +3,28 @@
 This file guides Claude Code when working with code in this repository.
 > Living reference for Claude. Describes only the current state of the project — no changelog, no history.
 > Edit sections in place when things change. Hard limit: **200 lines**.
-> Status: rebuild complete for v1 scope. Build against this file as-is.
+> Status: schema rebuild and auth are done; the independent platform agents are being built (see §3). Build against this file as-is.
 ---
 
 ## 1. What the project does
 
-Honne AI is the middle layer between where people keep their ideas and where they publish
-them. It is for individuals and companies alike.
+Honne AI is the middle layer between where people keep their ideas and where they publish them. It is for individuals and companies alike.
 
-- **Input: knowledge sources.** Google Drive (Docs, Sheets), Notion, GitHub repos (README),
-  MS Word, local files. Users either connect a source or upload into Honne's own knowledge store.
+- **Input: knowledge sources.** Google Drive (Docs, Sheets), Notion, GitHub repos (README), MS Word, local files. Users either connect a source or upload into Honne's own knowledge store.
 - **Output: distribution platforms.** LinkedIn, X, Reddit.
-- **Middle: Honne AI.** A supervisor coordinates specialized agents that turn raw material
-  into ready-to-publish content, all in one platform.
+- **Middle: Honne AI.** A supervisor coordinates specialized agents that turn raw material into ready-to-publish content, creating a unified knowledge source like Dust and Jasper, once the knowledge source of an organisation has been centralised anyone create any kind of agents on top of this knowledge source and organise and build efficient workflow on top of this, all in one platform.
 
 ### Problems it solves
-Starting set, expected to grow: (1) **no angles** — users have material but get stuck
-deciding what to post; (2) **building in public** — turning what's being built into content
-as it's built; (3) **consistency** — a series generator makes a week's content in one sitting.
+Starting set as of now, expected to grow: (1) **no angles** — users have material but get stuck deciding what to post; (2) **building in public** — turning what's being built into content as it's built; (3) **consistency** — a series generator makes a week's content in one sitting this will grow more as of now for prototype testing we are doing this but the goal is replciate what Dust and Jasper is doing creating a centralised knowldge source and build Agentic Workflows on top of that.
 
 ### Positioning
-Jasper writes marketing copy for agencies; Taplio helps write LinkedIn posts. Honne starts
-from the user's own knowledge sources, reducing the friction between "I have this knowledge
-source" and "I know what to post" so even a beginner can post consistently.
+Jasper writes marketing copy for agencies; Taplio helps write LinkedIn posts. Honne starts from the user's own knowledge sources, reducing the friction between "I have this knowledge source" and "I know what to post" so even a beginner can post consistently.
 
 ### What carries over vs. what is new
-- **Kept:** writer agent, post templates, user style memory extraction, existing UI (landing
-  page will be redesigned; dashboard/main window UI still being designed).
-- **Rebuilt:** the research layer — one agent no longer does everything; split across
-  specialized agents under the supervisor (see §3).
+- **Kept:** writer agent, post templates, user style memory extraction, existing UI (landing page will be redesigned; dashboard/main window UI still being designed).
+- **Rebuilt:** the research layer — one agent no longer does everything; split across specialized agents under the supervisor (see §3).
 
-Portfolio project aimed at recruiters: prefer production-grade, well-tested, explainable
-design over feature breadth. Longer-term, intended to become a product.
+Portfolio project aimed at recruiters: prefer production-grade, well-tested, explainable design over feature breadth. Longer-term, intended to become a product.
 
 ---
 
@@ -47,7 +37,23 @@ design over feature breadth. Longer-term, intended to become a product.
 | Frontend | Vercel | React + Vite build |
 | Database + auth | Supabase | Postgres + pgvector; Supabase Auth (JWT) |
 
-### Tech stack (unchanged from the previous version)
+### Commands
+Backend (repo root, venv active): `pip install -r requirements.txt -r requirements-test.txt` · `uvicorn backend.main:app --reload` · `alembic upgrade head` (migrations) · `ruff check backend` (lint).
+Frontend (`frontend/`): `npm install` · `npm run dev` · `npm run build` · `npm run lint`.
+
+### Tests (LinkedIn agent; Reddit/X will copy the pattern)
+- `pytest tests/` runs `tests/unit/` (fakes only, runs anywhere). `tests/integration/` (real Postgres SQL + checkpointer, LLM faked) and
+  `tests/smoke/` (whole stack over HTTP) need `TEST_DATABASE_URL` pointing at a **local** pgvector Postgres; without it they skip, and any
+  non-local host is refused (the tests truncate tables). On Windows they need the selector event loop (set in `tests/conftest.py`).
+- Smoke tests fake only the outside world, with `tests/smoke/fake_upstream.py` standing in for Gemini (via `GEMINI_BASE_URL`) and
+  Supabase's JWKS (via `SUPABASE_URL`). The Gemini request contract test pins what production sends.
+- Browser smoke: `npm run test:smoke` in `frontend/` (Playwright → real backend via `python -m tests.smoke.serve`). The old `tests/e2e/` specs are not maintained.
+- CI (`.github/workflows/ci.yml`): lint (scoped to the rebuilt code), backend-tests, docker-smoke (boots the real Dockerfile image
+  that Render builds), browser-smoke. No secrets in CI.
+- After a deploy, `python scripts/prod_check.py --api … --origin … --token …` makes the only real Gemini calls.
+  Production refuses to boot on Render (`RENDER` env) without `LANGCHAIN_API_KEY_GEMINI`; `GEMINI_BASE_URL` must stay unset there.
+
+### Tech stack
 | Layer | Technology |
 |---|---|
 | Frontend | React 19, Vite, React Router v7, Axios, Tailwind CSS v4, lucide-react |
@@ -60,81 +66,52 @@ design over feature breadth. Longer-term, intended to become a product.
 | Cache | Redis |
 | Tracing | LangSmith |
 
-### Database
+### Database (Supabase Postgres; Alembic head `0024`)
+The model: a **user** attaches **knowledge sources**, the app generates **posts** from them, and each post's
+**analytics** are tracked regardless of platform. Read `backend/*/models.py` for exact columns.
+- `users`: account row keyed by the Supabase auth id. No password column; Supabase owns credentials (`0023`).
+- `user_profile`: one per user. Onboarding answers (profession, audience, goals, topics, formatting prefs, weekly target).
+- `posts`: generated content. Body lives in `posts.content`; status is draft/published/archived/scheduled/failed, plus pin and scheduling fields.
+- `post_analytics`: one per post. Impressions, reactions, comments.
+- `post_publish_log`: one row per real publish (platform, `published_at`).
+- `user_style_memory`: one per user. Long-term and short-term style JSON extracted from their posts.
+- `linkedin_auth`: one per user. LinkedIn OAuth token and profile.
+- `agent_threads`: one row per independent-agent chat. `id` is the LangGraph `thread_id`; holds owner, agent (linkedin|reddit|x),
+  title, `turn_count`, the `busy_until` lease and `last_message_at`.
+- Checkpoint tables (`checkpoints`, `checkpoint_*`) are created by `AsyncPostgresSaver.setup()` at startup, not by Alembic.
+- **Not designed yet:** `knowledge_sources` (Google Docs/Sheets, Notion, GitHub README, Word, uploads). Don't create it until it's designed here.
 
-Phase 1 of the rebuild is cleaning the database down to the tables the new design needs.
-The model is: a **user** attaches **knowledge sources**, the app generates **posts** from that data,
-and each post's **analytics** are tracked regardless of platform.
-
-#### Tables to keep
-
-```sql
-users(id UUID PK default gen_random_uuid(), username TEXT UNIQUE nullable, email TEXT UNIQUE nullable,
-      password_hash TEXT nullable, created_at TIMESTAMPTZ NOT NULL default now())
-
-user_profile(id UUID PK, user_id UUID UNIQUE NOT NULL FK→users ON DELETE CASCADE,
-             profession TEXT nullable, industry TEXT nullable, role TEXT nullable, target_audience TEXT nullable,
-             writing_style TEXT nullable, goals JSONB NOT NULL default '[]', topics JSONB NOT NULL default '[]',
-             formatting_prefs JSONB NOT NULL default '{}', linkedin_headline TEXT nullable,
-             linkedin_about TEXT nullable, weekly_post_target INT nullable,
-             created_at TIMESTAMPTZ NOT NULL default now(), updated_at TIMESTAMPTZ NOT NULL default now())
-
--- Whatever the user generates in the app.
-posts(id UUID PK, user_id UUID NOT NULL FK→users, title TEXT NOT NULL,
-      content TEXT NOT NULL,                                  -- replaces post_versions (dropped)
-      status post_status_enum NOT NULL default 'draft' (draft|published|archived|scheduled|failed),
-      is_pinned BOOLEAN NOT NULL default false,
-      scheduled_at TIMESTAMPTZ nullable, schedule_attempts INT NOT NULL default 0, last_schedule_error TEXT nullable,
-      created_at TIMESTAMPTZ NOT NULL default now(), updated_at TIMESTAMPTZ NOT NULL default now())
-
--- Performance of a post, irrespective of platform.
-post_analytics(id UUID PK, post_id UUID UNIQUE NOT NULL FK→posts ON DELETE CASCADE,
-               user_id UUID NOT NULL FK→users ON DELETE CASCADE,
-               impressions INT NOT NULL default 0, reactions INT NOT NULL default 0,
-               updated_at TIMESTAMPTZ NOT NULL default now())
-
-post_publish_log(id UUID PK, post_id UUID NOT NULL FK→posts ON DELETE CASCADE,
-                 platform TEXT NOT NULL default 'linkedin', published_at TIMESTAMPTZ NOT NULL default now())
-
-user_style_memory(id UUID PK, user_id UUID UNIQUE NOT NULL FK→users ON DELETE CASCADE,
-                  long_term JSONB nullable, long_term_post_count INT NOT NULL default 0,
-                  long_term_updated_at TIMESTAMPTZ nullable,
-                  short_term JSONB nullable, short_term_post_count INT NOT NULL default 0,
-                  short_term_updated_at TIMESTAMPTZ nullable)
-
-linkedin_auth(id UUID PK, user_id UUID UNIQUE NOT NULL FK→users ON DELETE CASCADE,
-              linkedin_id TEXT NOT NULL, linkedin_urn TEXT NOT NULL, access_token TEXT NOT NULL,
-              token_type VARCHAR(32) NOT NULL default 'Bearer', expires_at TIMESTAMPTZ NOT NULL, scope TEXT NOT NULL,
-              display_name TEXT NOT NULL, email TEXT nullable, profile_image_url TEXT nullable,
-              created_at TIMESTAMPTZ NOT NULL default now(), updated_at TIMESTAMPTZ NOT NULL default now())
-```
-
-#### Table to add (not designed yet)
-`knowledge_sources` — material a user attaches so the app can generate content from it.
-Planned source types: Google Docs, GitHub repos (README is enough), MS Word, Notion, local
-file upload. Columns not decided; do not create this table until designed here.
-
-#### Tables to remove
-`folders` (drop `posts.folder_id`), `post_versions` (content moves to `posts.content`; drop
-`posts.current_version`, `post_publish_log.version_id`), `post_tags`, `post_embeddings` (drop
-`idx_post_embeddings_user_id`, `idx_post_embeddings_hnsw`), `thread_registry`.
-
-#### Indexes kept
-`idx_posts_user_id`, `idx_post_analytics_user_id`, `idx_user_style_memory_user_id`,
-`ix_linkedin_auth_user_id`, `ix_user_profile_user_id`.
-
-#### Rules
-Every table carries `user_id` (directly or via `posts`); ownership enforced in the service
-layer. A post's real publish history comes from `post_publish_log.published_at`, never from
-`posts.scheduled_at` (future intent only). The cleanup is migration `0022_rebuild_schema_cleanup`
-(head; irreversible, not yet applied to any DB). `post_analytics` also has `comments INT` from
-`0021`. Never edit existing migrations.
+**Rules:** every table carries `user_id` (directly or via `posts`), and ownership is enforced in the service layer. Real publish
+history comes from `post_publish_log.published_at`, never `posts.scheduled_at` (that's future intent). Never edit existing migrations;
+`0022` (schema cleanup) is irreversible.
 
 ---
 
 ## 3. How work gets done
 
-### Agent graph — single supervisor, everything else is a tool
+### Build order
+| Step | What | Status |
+|---|---|---|
+| 1 | Three independent platform agents (LinkedIn, Reddit, X), each with its own endpoint and studio page | Done |
+| 1b | Thread memory for those agents | Done for LinkedIn; Reddit and X still stateless |
+| 2 | Unified knowledge source: retrieve, chunk, embed and semantically search all connected sources, shared by every agent | Next. Not built |
+| 3 | Supervisor/worker graph (below) | Later. `backend/ai/agents/*.py`, `graph.py` and `llm.py` are empty stubs; `state.py`/`schemas.py` are drafted |
+
+### Independent platform agents (`backend/ai/independent_agents/`, Steps 1–1b)
+- Each agent is **one LLM call per turn** (Gemini `gemini-3.5-flash`) with its own system prompt. No tools, no routing, no supervisor.
+  Keep these separate from the Step 3 supervisor graph: don't route through it or change it for this work.
+- Routes live under `/api/independent-agents`: `POST /linkedin` (chat turn), `GET /linkedin/threads`, `GET`/`DELETE /linkedin/threads/{id}`,
+  and stateless `POST /reddit` and `POST /x`. Every endpoint returns a draft and nothing is written to `posts`.
+- **Thread memory:** one chat is one thread. The conversation lives in the LangGraph `AsyncPostgresSaver` (a single-node graph built at
+  startup in `main.py`). `AgentThreadService` (`threads.py`) owns the `agent_threads` row, and every lookup matches id, user and agent.
+  A new chat starts with empty memory; there is no memory across chats (long-term context will come from Step 2).
+- **Limits:** a thread ends after `THREAD_TURN_LIMIT` (15) turns, and the UI tells the user to start a new chat; history is never trimmed silently.
+  A `busy_until` lease allows one turn at a time. Its length is derived in `limits.py` from Gemini attempts × timeout, so never hardcode it.
+  Threads idle longer than `THREAD_RETENTION_DAYS` (7) are hidden right away and removed by a daily purge task in `main.py`.
+- Frontend: `HomeDashboardPage` (`/home`) plus `LinkedInStudioPage`, `RedditStudioPage` and `XStudioPage` (`/linkedin`, `/reddit`, `/x`),
+  via `src/api/independentAgents.js`. LinkedIn studio uses the thread endpoints; Reddit studio calls the stateless endpoint; X studio is still simulated. Tests: see §2 Tests.
+
+### Agent graph (Step 3): single supervisor, everything else is a tool
 
 ```
 User → Frontend (React/Vite) → FastAPI ⇄ Database (Supabase)

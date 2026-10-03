@@ -1,38 +1,12 @@
 import axios from 'axios';
 import { attachAuthHeader } from './attachAuthHeader';
-import { supabase } from '../lib/supabaseClient';
 import { API_BASE } from './apiBase';
-
-// Dev-only switch — see AUTH_PROVIDER on the backend (backend/auth_local/).
-// Defaults to Supabase; never set VITE_AUTH_MODE=local outside local dev.
-const IS_LOCAL_AUTH = import.meta.env.VITE_AUTH_MODE === 'local';
 
 const api = axios.create({ baseURL: `${API_BASE}/api/ai` });
 attachAuthHeader(api);
 
 export const queryAI = (prompt, sessionId = null) =>
   api.post('/query', { prompt, session_id: sessionId }).then(r => r.data);
-
-/**
- * Resumes a paused thread's interrupt (human_approval_node or angle_review_node).
- *
- * @param {string} thread_id
- * @param {string} action    - "approved" | "edited" | "rejected" | "regenerate" (human_approval_node) |
- *                             "pick" | "none_fit" (angle_review_node)
- * @param {string} [content] - free text: edited draft body ("edited"), fresh guidance
- *                             ("none_fit"), or a personal stat/story/detail to open the
- *                             hook with ("pick")
- * @param {number|null} [angle_id] - required for "pick"
- * @param {string|null} [template_id] - optional, valid on "pick" and "regenerate" — a
- *                             frontend/src/data/templates.js id; backend resolves the
- *                             full structure and threads it into the writer agent
- * @returns {Promise<{status?, answer?, draft?, angles?, actions?, summary?, error?, post_id?}>}
- */
-export const resumeAI = (thread_id, action, content = '', angle_id = null, template_id = null) =>
-  api.post('/resume', { thread_id, action, content, angle_id, template_id }).then(r => r.data);
-
-export const refineAI = (draft, note) =>
-  api.post('/refine', { draft, note }).then(r => r.data);
 
 /**
  * Draft a full post from ONE picked research topic card (not the whole brief).
@@ -46,17 +20,6 @@ export const refineAI = (draft, note) =>
  */
 export const draftFromTopic = (topic, platform = 'linkedin', sessionId = null) =>
   api.post('/draft-from-topic', { topic, platform, session_id: sessionId }).then(r => r.data);
-
-/**
- * Fetch the full stored history for one frontend "chat" — every thread_id
- * grouped under this session_id, oldest first, each shaped by the backend's
- * shape_thread_state(). Powers sidebar-switch/reload rehydration.
- *
- * @param {string} sessionId
- * @returns {Promise<{session_id, threads: Array}>}
- */
-export const getSessionThreads = (sessionId) =>
-  api.get(`/sessions/${sessionId}/threads`).then(r => r.data);
 
 /**
  * List the current user's live (not-yet-expired, 7-day TTL) chat sessions,
@@ -78,88 +41,3 @@ export const getSessions = () =>
  */
 export const deleteSession = (sessionId) =>
   api.delete(`/sessions/${sessionId}`).then(() => {});
-
-/**
- * SSE streaming query. Calls /stream and fires callbacks as events arrive.
- *
- * @param {string}   prompt
- * @param {string}   sessionId  - groups this thread with earlier ones from the same chat
- * @param {function} onToken    - called with each text chunk: (chunk: string) => void
- * @param {function} onDone     - called once at end: ({ status, thread_id?, session_id? }) => void
- * @param {function} onError    - called on network/parse error: (message: string) => void
- * @param {function} [onActivity] - called per semantic progress event:
- *                                  ({ id, parentId, title, description, status }) => void
- *                                  Never a node/tool/agent name — see backend/ai/activity.py.
- * @returns {function} abort  - call to cancel the stream mid-flight
- */
-export function streamQuery(prompt, sessionId, onToken, onDone, onError, onActivity) {
-  const controller = new AbortController();
-
-  (async () => {
-    try {
-      // raw fetch() can't use axios interceptors, so attachAuthHeader's
-      // logic (attach Bearer <supabase_token>, or X-User-Id in local dev)
-      // is replicated inline here.
-      const headers = { 'Content-Type': 'application/json' };
-      if (IS_LOCAL_AUTH) {
-        const userId = localStorage.getItem('user_id');
-        if (userId) headers['X-User-Id'] = userId;
-      } else {
-        const { data } = await supabase.auth.getSession();
-        if (data.session) {
-          headers['Authorization'] = `Bearer ${data.session.access_token}`;
-        }
-      }
-
-      const response = await fetch(`${API_BASE}/api/ai/stream`, {
-        method:  'POST',
-        headers,
-        body:   JSON.stringify({ prompt, session_id: sessionId }),
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        onError(`Server error ${response.status}`);
-        return;
-      }
-
-      const reader  = response.body.getReader();
-      const decoder = new TextDecoder();
-      let   buffer  = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        // SSE events are separated by \n\n
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop(); // keep incomplete trailing chunk
-
-        for (const part of parts) {
-          const line = part.trim();
-          if (!line.startsWith('data: ')) continue;
-          try {
-            const data = JSON.parse(line.slice(6));
-            if (data.type === 'token') {
-              onToken(data.content);
-            } else if (data.type === 'activity') {
-              onActivity?.(data);
-            } else if (data.type === 'done') {
-              onDone(data);
-            } else if (data.type === 'error') {
-              onError(data.message);
-            }
-          } catch {
-            // malformed JSON — ignore
-          }
-        }
-      }
-    } catch (err) {
-      if (err.name !== 'AbortError') onError(err.message);
-    }
-  })();
-
-  return () => controller.abort();
-}

@@ -139,7 +139,7 @@ export const test = base.extend<Fixtures>({
     // Scoped to the form — the tab segment above it also renders a "Log in"
     // button (HomePage.jsx's tab copy and submit copy collide on this string).
     await page.locator('form button[type="submit"]').click();
-    await expect(page).toHaveURL(/\/chat$/);
+    await expect(page).toHaveURL(/\/home$/);
 
     await use(page);
   },
