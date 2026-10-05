@@ -355,6 +355,7 @@ function HeroWord({ children, style }) {
 }
 
 const glassCard = { borderRadius: 18, background: 'rgba(12,31,38,.5)', border: '1px solid rgba(255,255,255,.16)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' }
+const logoChip = { display: 'inline-flex', alignItems: 'center', height: 24, padding: '0 6px', borderRadius: 6, background: '#FFFFFF' }
 const ycChip = { height: 28, display: 'flex', alignItems: 'center', gap: 8, padding: '0 10px', borderRadius: 999, background: 'rgba(242,101,34,.18)', border: '1px solid rgba(246,161,91,.5)', fontSize: 12, color: '#FFE3CC', whiteSpace: 'nowrap' }
 
 function Hero() {
@@ -455,11 +456,11 @@ function Hero() {
               <motion.div variants={fadeUp} style={{ ...glassCard, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '16px 18px', fontSize: 13, lineHeight: 1.5, color: 'rgba(255,255,255,.72)' }}>
                 <span style={{ height: 22, display: 'flex', alignItems: 'center', padding: '0 8px', borderRadius: 6, border: '1px solid rgba(255,255,255,.24)', fontFamily: FONT.mono, fontSize: 10, letterSpacing: '.08em', color: '#FFFFFF' }}>PROTOTYPE</span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', textWrap: 'pretty' }}>
-                  Inspired by
-                  <span style={{ display: 'inline-flex', alignItems: 'center', height: 24, padding: '0 6px', borderRadius: 6, background: '#FFFFFF' }}>
-                    <span style={{ fontFamily: FONT.sans, fontSize: 14, fontWeight: 700, letterSpacing: '-0.03em', color: '#111418' }}>Dust</span>
-                  </span>
-                  AI: a GenAI layer over enterprise knowledge, starting with marketing and sales.
+                  Inspired by Multiplayer AI companies like
+                  <span style={logoChip}><img src="/dust-logo.png" alt="Dust" style={{ height: 14, display: 'block' }} /></span>
+                  and
+                  <span style={{ display: 'inline-flex', alignItems: 'center' }}><span style={logoChip}><img src="/jasper-logo.png" alt="Jasper AI" style={{ height: 14, display: 'block' }} /></span>:</span>
+                  a GenAI layer over enterprise knowledge, starting with marketing and sales.
                 </span>
               </motion.div>
             </div>
