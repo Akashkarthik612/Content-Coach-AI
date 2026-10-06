@@ -28,6 +28,8 @@ class ThreadStatus(BaseModel):
 
 class LinkedInChatResponse(BaseModel):
     content: str
+    # Agent's message to the user (what it left out, or a question); not part of the post.
+    note: str | None = None
     thread: ThreadStatus
 
 
@@ -43,6 +45,7 @@ class ThreadSummary(BaseModel):
 class ThreadMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
+    note: str | None = None
 
 
 class ThreadDetail(BaseModel):

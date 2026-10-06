@@ -196,7 +196,7 @@ export default function RedditStudioPage() {
     await streamText(ti, revising ? CFG.revise : CFG.reply)
     await sleep(260)
 
-    const { title, content, suggested_subreddit: sub } = res.ok
+    const { title, content, suggested_subreddit: sub, note } = res.ok
     const community = sub ? `r/${sub.replace(/^r\//, '')}` : (before?.community || CFG.defaultCommunity)
     const ci = push({ k: 'card', st: 'writing' })
     upd(id, x => ({ ...x, status: 'writing', post: '', ptitle: '', sched: null, community }))
@@ -219,6 +219,8 @@ export default function RedditStudioPage() {
     await sleep(320)
     const di = push({ k: 'text', text: '', caret: true })
     await streamText(di, CFG.done(community))
+    // The agent's note (subreddit-rules reminder, what it left out) stays out of the post.
+    if (note) push({ k: 'text', text: note })
     push({ k: 'actions' })
     upd(id, x => ({ ...x, busy: false }))
   }, [upd, updMsg])

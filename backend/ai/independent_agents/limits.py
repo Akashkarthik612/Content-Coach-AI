@@ -1,5 +1,5 @@
-"""Gemini call limits for the independent agents, and the thread lease derived
-from them.
+"""Gemini call limits for the independent agents, the thread lease derived
+from them, and platform post limits shared by prompts and validators.
 
 The lease (threads.py) must outlast the slowest possible turn, otherwise a
 second turn or a delete could start while the first is still running. So it
@@ -20,6 +20,9 @@ BACKOFF_S = 5  # google-genai's exponential backoff between the attempts (~1s + 
 SAVE_BUFFER_S = 15  # loading/saving the checkpoint + the agent_threads updates
 
 LEASE = timedelta(seconds=GEMINI_ATTEMPTS * GEMINI_TIMEOUT_S + BACKOFF_S + SAVE_BUFFER_S)
+
+# X rejects longer posts. Used by the X prompt and the post-call check in x.py.
+X_POST_MAX_CHARS = 280
 
 # The status codes google-genai retries; still failing after the last attempt
 # means "timed out / overloaded", not "bad request".

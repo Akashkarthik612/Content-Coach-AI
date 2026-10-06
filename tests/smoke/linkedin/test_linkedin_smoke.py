@@ -11,7 +11,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from backend.ai.independent_agents.limits import GEMINI_ATTEMPTS, GEMINI_TIMEOUT_S
-from backend.ai.independent_agents.linkedin import SYSTEM_PROMPT
+from backend.ai.independent_agents.prompts.builder import SystemPromptBuilder
+from backend.ai.independent_agents.prompts.platform_specs import LINKEDIN_PROMPT
 from backend.auth.models import User
 from backend.main import app
 from tests.conftest import SMOKE_ORIGIN
@@ -80,7 +81,7 @@ def test_gemini_request_contract(client, upstream, user):
     assert req.headers["x-goog-api-key"] == "smoke-key"
     assert req.headers["x-server-timeout"] == str(GEMINI_TIMEOUT_S)
     body = req.body
-    assert body["systemInstruction"]["parts"][0]["text"] == SYSTEM_PROMPT
+    assert body["systemInstruction"]["parts"][0]["text"] == SystemPromptBuilder.build(LINKEDIN_PROMPT).text
     assert _texts(body) == [("user", "write about our launch")]
     config = body["generationConfig"]
     assert config["responseMimeType"] == "application/json"

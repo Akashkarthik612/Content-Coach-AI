@@ -18,7 +18,7 @@ from langchain_core.messages import HumanMessage, RemoveMessage
 from langgraph.graph.state import CompiledStateGraph
 from sqlalchemy.orm import Session
 
-from backend.ai.independent_agents.limits import is_transient_llm_error
+from backend.ai.independent_agents.limits import X_POST_MAX_CHARS, is_transient_llm_error
 from backend.ai.independent_agents.linkedin import AGENT as LINKEDIN
 from backend.ai.independent_agents.reddit import RedditAgent, RedditPostRequest, RedditPostResponse
 from backend.ai.independent_agents.schemas import (
@@ -35,7 +35,7 @@ from backend.ai.independent_agents.threads import (
     ThreadLimitReachedError,
     ThreadNotFoundError,
 )
-from backend.ai.independent_agents.x import XAgent, XPostRequest, XPostResponse
+from backend.ai.independent_agents.x import XAgent, XPostRequest, XPostResponse, XPostTooLongError
 from backend.auth.models import User
 from backend.auth.services import get_current_user
 from backend.core.config import settings
@@ -132,8 +132,10 @@ async def chat_linkedin(
         raise HTTPException(
             status.HTTP_409_CONFLICT, "This chat was deleted while replying. Start a new chat."
         ) from exc
+    reply = result["messages"][-1]
     return LinkedInChatResponse(
-        content=result["messages"][-1].content,
+        content=reply.content,
+        note=reply.additional_kwargs.get("note"),
         thread=_thread_status(thread_id, turn_count),
     )
 
@@ -175,7 +177,11 @@ async def get_linkedin_thread(
         raise _thread_error(ThreadNotFoundError())
     snapshot = await graph.aget_state(_config(thread_id))
     messages = [
-        ThreadMessage(role="user" if m.type == "human" else "assistant", content=m.content)
+        ThreadMessage(
+            role="user" if m.type == "human" else "assistant",
+            content=m.content,
+            note=m.additional_kwargs.get("note"),
+        )
         for m in snapshot.values.get("messages", [])
         if m.type in ("human", "ai")
     ]
@@ -213,7 +219,7 @@ async def generate_reddit_post(
     req: RedditPostRequest, user: User = Depends(get_current_user)
 ) -> RedditPostResponse:
     try:
-        return await RedditAgent.run(req)
+        return await RedditAgent.run(req, user.id)
     except Exception as exc:
         raise _llm_failed("Reddit", exc) from exc
 
@@ -221,6 +227,12 @@ async def generate_reddit_post(
 @router.post("/x", response_model=XPostResponse)
 async def generate_x_post(req: XPostRequest, user: User = Depends(get_current_user)) -> XPostResponse:
     try:
-        return await XAgent.run(req)
+        return await XAgent.run(req, user.id)
+    except XPostTooLongError as exc:
+        # Already logged with index and length in XAgent.check_lengths.
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            f"The X agent wrote a post over {X_POST_MAX_CHARS} characters. Please try again.",
+        ) from exc
     except Exception as exc:
         raise _llm_failed("X", exc) from exc

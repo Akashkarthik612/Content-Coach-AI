@@ -23,6 +23,7 @@ class FakeLLM:
         self.fail = False
         self.error: Exception = RuntimeError("gemini down")
         self.on_call = None  # hook to simulate something happening mid-turn
+        self.note: str | None = None  # note returned alongside the post
 
     async def ainvoke(self, messages):
         if self.fail:
@@ -30,7 +31,7 @@ class FakeLLM:
         if self.on_call:
             self.on_call()
         self.calls.append(messages)
-        return linkedin.LinkedInPost(content=f"post {len(self.calls)}")
+        return linkedin.LinkedInPost(content=f"post {len(self.calls)}", note=self.note)
 
 
 class FakeThreads:

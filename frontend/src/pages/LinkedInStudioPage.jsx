@@ -159,7 +159,10 @@ export default function LinkedInStudioPage() {
         let post = ''
         for (const m of d.messages) {
           if (m.role === 'user') msgs.push({ k: 'user', text: m.content })
-          else { msgs.push({ k: 'card', st: 'done' }); post = m.content }
+          else {
+            msgs.push({ k: 'card', st: 'done' }); post = m.content
+            if (m.note) msgs.push({ k: 'text', text: m.note })
+          }
         }
         if (post) msgs.push({ k: 'actions' })
         upd(id, x => ({ ...x, msgs, post, status: post ? 'draft' : 'empty', loaded: true, busy: false, limit: d.thread.limit_reached }))
@@ -187,7 +190,11 @@ export default function LinkedInStudioPage() {
       const tid = res.thread.thread_id
       setChats(cs => cs.map(x => (x.id !== id ? x : {
         ...x, id: tid, busy: false, status: 'draft', post: res.content, sched: null, limit: res.thread.limit_reached,
-        msgs: [...x.msgs.slice(0, -1), { k: 'card', st: 'done' }, { k: 'actions' }],
+        // The agent's note (what it left out, or a question) is a chat message, never part of the post.
+        msgs: [
+          ...x.msgs.slice(0, -1), { k: 'card', st: 'done' },
+          ...(res.note ? [{ k: 'text', text: res.note }] : []), { k: 'actions' },
+        ],
       })))
       if (isNew) setActiveId(a => (a === id ? tid : a))
       if (wRef.current < 880) setTab('post')

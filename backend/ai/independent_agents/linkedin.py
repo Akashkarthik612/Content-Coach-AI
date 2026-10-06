@@ -11,6 +11,7 @@ from functools import lru_cache
 from typing import Annotated, TypedDict
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
@@ -19,23 +20,12 @@ from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel, Field
 
 from backend.ai.independent_agents.limits import GEMINI_ATTEMPTS, GEMINI_TIMEOUT_S
+from backend.ai.independent_agents.prompts.builder import SystemPromptBuilder, log_prompt_built
+from backend.ai.independent_agents.prompts.platform_specs import LINKEDIN_PROMPT
 from backend.core.config import settings
 
 AGENT = "linkedin"
 MODEL_NAME = "gemini-3.5-flash"
-
-SYSTEM_PROMPT = """You write LinkedIn posts.
-
-Rules:
-- Open with a hook line that makes someone stop scrolling. No "I'm excited to announce".
-- Short paragraphs (1-2 sentences), generous line breaks, readable on mobile.
-- Concrete over generic: specific details, numbers, lessons learned.
-- 120-250 words unless the user asks otherwise.
-- End with a question or clear takeaway that invites comments.
-- At most 3 relevant hashtags, on the last line. No emoji walls.
-- When the user asks to change a post from earlier in this conversation, revise
-  that post instead of starting over.
-- Write only the post. No preamble, no explanation."""
 
 
 class LinkedInState(TypedDict):
@@ -50,6 +40,9 @@ class LinkedInPost(BaseModel):
     """Structured output of the one LLM call."""
 
     content: str = Field(description="The full LinkedIn post, ready to paste.")
+    note: str | None = Field(
+        default=None, description="Short message to the user, shown apart from the post. Usually empty."
+    )
 
 
 @lru_cache
@@ -65,15 +58,35 @@ def _structured_llm():
     ).with_structured_output(LinkedInPost)
 
 
-async def generate(state: LinkedInState) -> dict:
+async def generate(state: LinkedInState, config: RunnableConfig | None = None) -> dict:
     messages = state["messages"]
     # Gemini rejects a request ending on a model turn. The route always appends
     # the user's message before this node runs, so this only fires on a bug.
     if not messages or not isinstance(messages[-1], HumanMessage):
         raise ValueError("LinkedIn agent: conversation must end on a user message")
 
-    post: LinkedInPost = await _structured_llm().ainvoke([SystemMessage(SYSTEM_PROMPT), *messages])
-    return {"messages": [AIMessage(content=post.content)]}
+    prompt = SystemPromptBuilder.build(LINKEDIN_PROMPT)
+    thread_id = (config or {}).get("configurable", {}).get("thread_id")
+    log_prompt_built(prompt, user_id=state["user_id"], thread_id=thread_id)
+
+    post: LinkedInPost = await _structured_llm().ainvoke(
+        [SystemMessage(prompt.text), *_with_notes(messages)]
+    )
+    # The note rides in additional_kwargs, so `content` stays the clean post
+    # for the checkpoint, the UI and the API.
+    return {"messages": [AIMessage(content=post.content, additional_kwargs={"note": post.note})]}
+
+
+def _with_notes(messages: list[AnyMessage]) -> list[AnyMessage]:
+    """The request copy of the history: earlier notes appended to their post so
+    the model sees what it asked. Gemini only reads `content`; the checkpoint
+    is not changed."""
+    return [
+        AIMessage(content=f"{m.content}\n\n[Note to user: {m.additional_kwargs['note']}]")
+        if isinstance(m, AIMessage) and m.additional_kwargs.get("note")
+        else m
+        for m in messages
+    ]
 
 
 def build_linkedin_graph(checkpointer: BaseCheckpointSaver) -> CompiledStateGraph:

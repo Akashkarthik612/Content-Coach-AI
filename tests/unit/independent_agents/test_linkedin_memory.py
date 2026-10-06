@@ -117,6 +117,35 @@ def test_chat_remembers_within_thread(client, llm):
     assert [m.content for m in llm.calls[1][1:]] == ["write about launches", "post 1", "make it shorter"]
 
 
+def test_note_is_returned_and_kept_out_of_the_post(client, llm):
+    llm.note = "Left out the hashtags you asked for."
+    first = _send(client, "write about launches").json()
+    assert first["note"] == llm.note
+    assert first["content"] == "post 1"
+
+    # Stored beside the post in the checkpoint, so a reloaded thread can show it.
+    tid = first["thread"]["thread_id"]
+    reply = app.state.linkedin_graph.get_state({"configurable": {"thread_id": tid}}).values["messages"][-1]
+    assert reply.content == "post 1"
+    assert reply.additional_kwargs["note"] == llm.note
+
+
+def test_next_turn_model_sees_its_note_but_checkpoint_stays_clean(client, llm):
+    llm.note = "What was the latency drop?"
+    tid = _send(client, "write about our migration").json()["thread"]["thread_id"]
+    llm.note = None
+    _send(client, "about 40%", tid)
+
+    sent = [m.content for m in llm.calls[1][1:]]
+    assert sent == [
+        "write about our migration",
+        "post 1\n\n[Note to user: What was the latency drop?]",
+        "about 40%",
+    ]
+    stored = app.state.linkedin_graph.get_state({"configurable": {"thread_id": tid}}).values["messages"]
+    assert stored[1].content == "post 1"
+
+
 def test_no_thread_id_starts_new_empty_chat(client, llm):
     a = _send(client, "chat A").json()
     b = _send(client, "chat B").json()
