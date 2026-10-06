@@ -120,7 +120,7 @@ export default function ResetPasswordPage() {
               <span style={{ fontSize: 16, fontWeight: 600 }}>Password updated</span>
             </div>
             <p style={{ fontSize: 14, color: MUTED, lineHeight: 1.5, marginBottom: 18 }}>Your password has been changed successfully.</p>
-            <button style={primaryBtn} onClick={() => navigate('/settings')}>Continue to Settings</button>
+            <button style={primaryBtn} onClick={() => navigate('/home')}>Continue to Home</button>
           </>
         )}
       </div>

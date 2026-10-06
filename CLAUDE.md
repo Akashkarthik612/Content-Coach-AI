@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file guides Claude Code when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 > Living reference for Claude. Describes only the current state of the project — no changelog, no history.
 > Edit sections in place when things change. Hard limit: **200 lines**.
 > Status: schema rebuild and auth are done; the independent platform agents are being built (see §3). Build against this file as-is.
@@ -39,7 +39,11 @@ Portfolio project aimed at recruiters: prefer production-grade, well-tested, exp
 
 ### Commands
 Backend (repo root, venv active): `pip install -r requirements.txt -r requirements-test.txt` · `uvicorn backend.main:app --reload` · `alembic upgrade head` (migrations) · `ruff check backend` (lint).
+CI lints only the rebuilt code; to match it run `ruff check backend/main.py backend/ai backend/auth backend/core/config.py backend/core/database.py tests scripts`
+(legacy modules outside that set still have known lint errors).
 Frontend (`frontend/`): `npm install` · `npm run dev` · `npm run build` · `npm run lint`.
+Single test: `pytest tests/unit/independent_agents/<file>.py::<test_name>`; by layer: `pytest -m integration` / `pytest -m smoke` (markers in `pytest.ini`).
+`README.md` still describes the old "Content Coach" product; trust this file over it.
 
 ### Tests (LinkedIn agent; Reddit/X will copy the pattern)
 - `pytest tests/` runs `tests/unit/` (fakes only, runs anywhere). `tests/integration/` (real Postgres SQL + checkpointer, LLM faked) and
@@ -47,7 +51,7 @@ Frontend (`frontend/`): `npm install` · `npm run dev` · `npm run build` · `np
   non-local host is refused (the tests truncate tables). On Windows they need the selector event loop (set in `tests/conftest.py`).
 - Smoke tests fake only the outside world, with `tests/smoke/fake_upstream.py` standing in for Gemini (via `GEMINI_BASE_URL`) and
   Supabase's JWKS (via `SUPABASE_URL`). The Gemini request contract test pins what production sends.
-- Browser smoke: `npm run test:smoke` in `frontend/` (Playwright → real backend via `python -m tests.smoke.serve`). The old `tests/e2e/` specs are not maintained.
+- Browser smoke: `npm run test:smoke` in `frontend/` (Playwright → real backend via `python -m tests.smoke.serve`).
 - CI (`.github/workflows/ci.yml`): lint (scoped to the rebuilt code), backend-tests, docker-smoke (boots the real Dockerfile image
   that Render builds), browser-smoke. No secrets in CI.
 - After a deploy, `python scripts/prod_check.py --api … --origin … --token …` makes the only real Gemini calls.
@@ -108,7 +112,7 @@ history comes from `post_publish_log.published_at`, never `posts.scheduled_at` (
 - **Limits:** a thread ends after `THREAD_TURN_LIMIT` (15) turns, and the UI tells the user to start a new chat; history is never trimmed silently.
   A `busy_until` lease allows one turn at a time. Its length is derived in `limits.py` from Gemini attempts × timeout, so never hardcode it.
   Threads idle longer than `THREAD_RETENTION_DAYS` (7) are hidden right away and removed by a daily purge task in `main.py`.
-- Frontend: `HomeDashboardPage` (`/home`) plus `LinkedInStudioPage`, `RedditStudioPage` and `XStudioPage` (`/linkedin`, `/reddit`, `/x`),
+- Frontend: the only app pages are landing, auth (`/login`, `/register`, password reset), `/onboarding`, `HomeDashboardPage` (`/home`) and `LinkedInStudioPage`, `RedditStudioPage` and `XStudioPage` (`/linkedin`, `/reddit`, `/x`),
   via `src/api/independentAgents.js`. LinkedIn studio uses the thread endpoints; Reddit studio calls the stateless endpoint; X studio is still simulated. Tests: see §2 Tests.
 
 ### Agent graph (Step 3): single supervisor, everything else is a tool

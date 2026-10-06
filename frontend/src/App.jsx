@@ -5,18 +5,10 @@ import HomeDashboardPage from './pages/HomeDashboardPage';
 import LandingPage from './pages/landing/LandingPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import OnboardingPage from './pages/OnboardingPage';
-import MyWorkPage from './pages/MyWorkPage';
 import LinkedInStudioPage from './pages/LinkedInStudioPage';
 import RedditStudioPage from './pages/RedditStudioPage';
 import XStudioPage from './pages/XStudioPage';
-import TemplatesPage from './pages/TemplatesPage';
-import SchedulePage from './pages/SchedulePage';
-import AnalyticsPage from './pages/AnalyticsPage';
-import SettingsPage from './pages/SettingsPage';
-import AccountDetailsPage from './pages/AccountDetailsPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
-import AgentsPage from './pages/AgentsPage';
-import { ReviewQueueProvider } from './context/ReviewQueueContext';
 import { supabase } from './lib/supabaseClient';
 
 // Dev-only switch — see AUTH_PROVIDER on the backend (backend/auth_local/).
@@ -24,13 +16,14 @@ import { supabase } from './lib/supabaseClient';
 const IS_LOCAL_AUTH = import.meta.env.VITE_AUTH_MODE === 'local';
 
 function RequireAuth({ children }) {
-  const [status, setStatus] = useState('checking'); // checking | authed | anon
+  // checking | authed | anon — local mode can answer synchronously.
+  const [status, setStatus] = useState(() => {
+    if (!IS_LOCAL_AUTH) return 'checking';
+    return localStorage.getItem('user_id') ? 'authed' : 'anon';
+  });
 
   useEffect(() => {
-    if (IS_LOCAL_AUTH) {
-      setStatus(localStorage.getItem('user_id') ? 'authed' : 'anon');
-      return;
-    }
+    if (IS_LOCAL_AUTH) return;
     supabase.auth.getSession().then(({ data }) => {
       setStatus(data.session ? 'authed' : 'anon');
     });
@@ -42,30 +35,18 @@ function RequireAuth({ children }) {
 
 export default function App() {
   return (
-    <ReviewQueueProvider>
-      <Routes>
-        <Route path="/"         element={<LandingPage />} />
-        <Route path="/login"    element={<HomePage initialMode="login" />} />
-        <Route path="/register" element={<HomePage initialMode="register" />} />
-        <Route path="/reset-password" element={<ResetPasswordPage />} />
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
-        <Route path="/home"      element={<RequireAuth><HomeDashboardPage /></RequireAuth>} />
-        <Route path="/my-work"    element={<RequireAuth><MyWorkPage /></RequireAuth>} />
-        <Route path="/vault"      element={<RequireAuth><MyWorkPage /></RequireAuth>} />
-        <Route path="/linkedin"   element={<RequireAuth><LinkedInStudioPage /></RequireAuth>} />
-        <Route path="/reddit"     element={<RequireAuth><RedditStudioPage /></RequireAuth>} />
-        <Route path="/x"          element={<RequireAuth><XStudioPage /></RequireAuth>} />
-        {/* ChatPage was removed; older links into it land on Home. */}
-        <Route path="/chat"       element={<Navigate to="/home" replace />} />
-        <Route path="/templates"  element={<RequireAuth><TemplatesPage /></RequireAuth>} />
-        <Route path="/schedule"   element={<RequireAuth><SchedulePage /></RequireAuth>} />
-        <Route path="/analytics"  element={<RequireAuth><AnalyticsPage /></RequireAuth>} />
-        <Route path="/settings"   element={<RequireAuth><SettingsPage /></RequireAuth>} />
-        <Route path="/account-details" element={<RequireAuth><AccountDetailsPage /></RequireAuth>} />
-        <Route path="/agents"     element={<RequireAuth><AgentsPage /></RequireAuth>} />
-        <Route path="*"          element={<Navigate to="/" replace />} />
-      </Routes>
-    </ReviewQueueProvider>
+    <Routes>
+      <Route path="/"         element={<LandingPage />} />
+      <Route path="/login"    element={<HomePage initialMode="login" />} />
+      <Route path="/register" element={<HomePage initialMode="register" />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
+      <Route path="/home"      element={<RequireAuth><HomeDashboardPage /></RequireAuth>} />
+      <Route path="/linkedin"   element={<RequireAuth><LinkedInStudioPage /></RequireAuth>} />
+      <Route path="/reddit"     element={<RequireAuth><RedditStudioPage /></RequireAuth>} />
+      <Route path="/x"          element={<RequireAuth><XStudioPage /></RequireAuth>} />
+      <Route path="*"          element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }

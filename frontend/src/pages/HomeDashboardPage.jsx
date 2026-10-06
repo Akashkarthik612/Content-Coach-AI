@@ -188,7 +188,7 @@ export default function HomeDashboardPage() {
   const [collapsed, setCollapsed] = useState(tablet)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [activeNav, setActiveNav] = useState('home')
-  const [stub, setStub] = useState(null) // { name } — in-page placeholder for undesigned sections (Sources)
+  const [stub, setStub] = useState(null) // { name } — in-page placeholder for undesigned sections
 
   const [text, setText] = useState('')
   const [taFocus, setTaFocus] = useState(false)
@@ -282,13 +282,10 @@ export default function HomeDashboardPage() {
     setPop(null); setMobileNavOpen(false)
     if (id === 'home') { setStub(null); setActiveNav('home'); return }
     if (id === 'create') { navigate('/linkedin'); return }
-    if (id === 'posts') { navigate('/my-work'); return }
-    if (id === 'agents') { navigate('/agents'); return }
-    if (id === 'analytics') { navigate('/analytics'); return }
-    // 'sources' has no real page yet — show the same in-app placeholder the
-    // design itself uses for destinations outside this page's scope.
+    // Sources, Posts, Agents and Analytics have no real page yet — show the
+    // in-app placeholder the design uses for destinations outside its scope.
     setActiveNav(id)
-    setStub({ name: 'Sources' })
+    setStub({ name: NAV_ITEMS.find(n => n.id === id)?.label ?? 'Honne' })
   }
   function onLogoClick() {
     if (mobile) { setMobileNavOpen(false); return }
@@ -383,7 +380,7 @@ export default function HomeDashboardPage() {
             <div style={{ fontSize: 13, fontWeight: 500 }}>{displayName}</div>
             <div style={{ fontSize: 12, color: C.faint }}>Personal workspace</div>
           </div>
-          <button title="Settings" onClick={() => navigate('/settings')} className="hn-home-iconbtn" style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 0, borderRadius: 7, background: 'transparent', color: C.faint, cursor: 'pointer', flex: 'none', opacity: showSidebarLabels ? 1 : 0 }}>
+          <button title="Settings" onClick={() => { setActiveNav(null); setStub({ name: 'Settings' }) }} className="hn-home-iconbtn" style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 0, borderRadius: 7, background: 'transparent', color: C.faint, cursor: 'pointer', flex: 'none', opacity: showSidebarLabels ? 1 : 0 }}>
             <SettingsIcon />
           </button>
         </div>

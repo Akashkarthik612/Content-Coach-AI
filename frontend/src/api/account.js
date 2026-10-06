@@ -12,23 +12,6 @@ import { supabase } from '../lib/supabaseClient';
 // since local mode isn't a target for this feature.
 
 /**
- * Change the account email. NOT instant — Supabase emails a confirmation
- * link to the new address and nothing changes until the user clicks it,
- * landing back on /settings (see ResetPasswordPage.jsx's sibling flow for
- * the equivalent password mechanism).
- *
- * @param {string} newEmail
- * @returns {Promise<void>}
- */
-export async function updateEmail(newEmail) {
-  const { error } = await supabase.auth.updateUser(
-    { email: newEmail },
-    { emailRedirectTo: `${window.location.origin}/settings` },
-  );
-  if (error) throw error;
-}
-
-/**
  * Send a password-reset link to the account's registered email (never a
  * user-typed one — always the current session's own address). Clicking it
  * lands the user on /reset-password with a temporary recovery session;
