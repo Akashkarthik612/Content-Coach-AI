@@ -1,5 +1,6 @@
 import axios from 'axios';
 
+import { displayNameOf } from '../lib/authSession';
 import { supabase } from '../lib/supabaseClient';
 import { localLogin, localRegister } from './localAuth';
 import { API_BASE } from './apiBase';
@@ -49,7 +50,7 @@ export const login = async (email, password) => {
   if (error) throw _classify(error);
   return {
     user_id: data.user.id,
-    username: data.user.user_metadata?.username || data.user.email,
+    username: displayNameOf(data.user),
     email: data.user.email,
   };
 };

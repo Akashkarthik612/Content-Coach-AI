@@ -154,13 +154,16 @@ def test_gemini_overloaded_is_504_after_all_attempts_and_thread_stays_usable(cli
 # ── production config ─────────────────────────────────────────────────────────
 
 
-def test_render_without_gemini_key_refuses_to_start(db, monkeypatch):
+@pytest.mark.parametrize("setting", ["LANGCHAIN_API_KEY_GEMINI", "SUPABASE_URL"])
+def test_render_without_required_setting_refuses_to_start(db, monkeypatch, setting):
     from backend.core.config import settings
 
     monkeypatch.setenv("RENDER", "true")
-    monkeypatch.setattr(settings, "LANGCHAIN_API_KEY_GEMINI", "")
+    monkeypatch.setattr(settings, "LANGCHAIN_API_KEY_GEMINI", "set")
+    monkeypatch.setattr(settings, "SUPABASE_URL", "https://set.supabase.co")
+    monkeypatch.setattr(settings, setting, "")
 
-    with pytest.raises(RuntimeError, match="LANGCHAIN_API_KEY_GEMINI"), TestClient(app):
+    with pytest.raises(RuntimeError, match=setting), TestClient(app):
         pass
 
 

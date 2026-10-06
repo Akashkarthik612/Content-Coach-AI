@@ -36,11 +36,19 @@ async def _purge_expired_threads_forever(checkpointer) -> None:
         await asyncio.sleep(PURGE_INTERVAL_SECONDS)
 
 
+# Without these every request fails, and the browser can't even read the
+# error: a crash response skips the CORS middleware.
+_REQUIRED_ON_RENDER = ("LANGCHAIN_API_KEY_GEMINI", "SUPABASE_URL")
+
+
 def _check_production_config() -> None:
     """Render sets RENDER=true on every service. Failing the boot there turns a
-    missing Gemini key into a failed deploy instead of a 502 on the first chat."""
-    if os.getenv("RENDER") and not settings.LANGCHAIN_API_KEY_GEMINI:
-        raise RuntimeError("LANGCHAIN_API_KEY_GEMINI is not set; refusing to start on Render")
+    missing setting into a failed deploy instead of broken requests."""
+    if not os.getenv("RENDER"):
+        return
+    missing = [name for name in _REQUIRED_ON_RENDER if not getattr(settings, name)]
+    if missing:
+        raise RuntimeError(f"{', '.join(missing)} not set; refusing to start on Render")
 
 
 @asynccontextmanager
