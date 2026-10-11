@@ -28,6 +28,7 @@ from backend.knowledge.connectors.base import AuthRevokedError, TransientConnect
 from backend.knowledge.connectors.factory import ConnectorFactory
 from backend.knowledge.connectors.gdrive import (
     DriveClient,
+    DriveHTTPError,
     GDriveConnector,
     StaticTokenProvider,
     drive_account,
@@ -136,6 +137,18 @@ def _fail(code: int, reason: str) -> HTTPException:
     return HTTPException(status_code=code, detail={"reason": reason})
 
 
+# Google's reasons for "the Drive API is off in this Cloud project".
+_API_DISABLED = {"accessNotConfigured", "SERVICE_DISABLED"}
+
+
+def _drive_refused(exc: DriveHTTPError, user: User) -> HTTPException:
+    """A 4xx from Drive the route can't act on: a readable 502, never a 500
+    (a crash response skips CORS, so the browser couldn't read the reason)."""
+    logger.warning("knowledge drive refused user_id=%s status=%s reason=%s", user.id, exc.status, exc.reason)
+    reason = "drive_api_disabled" if exc.reason in _API_DISABLED else "drive_refused"
+    return _fail(status.HTTP_502_BAD_GATEWAY, reason)
+
+
 async def _own_source(db: Session, user: User, source_id: UUID) -> SourceRecord:
     source = await asyncio.to_thread(Repo.get_source, db, user.id, source_id)
     if source is None:
@@ -193,6 +206,8 @@ async def complete_gdrive(
         raise _fail(status.HTTP_400_BAD_REQUEST, "exchange_failed") from None
     except (TransientConnectorError, AuthRevokedError):
         raise _fail(status.HTTP_502_BAD_GATEWAY, "google_unavailable") from None
+    except DriveHTTPError as exc:
+        raise _drive_refused(exc, user) from None
 
     # Same Google account again -> same source; the tokens are replaced.
     source = await asyncio.to_thread(
@@ -256,6 +271,8 @@ async def browse_folders(
         raise _fail(status.HTTP_409_CONFLICT, "auth_revoked") from None
     except TransientConnectorError:
         raise _fail(status.HTTP_502_BAD_GATEWAY, "google_unavailable") from None
+    except DriveHTTPError as exc:
+        raise _drive_refused(exc, user) from None
     return {"parent_id": parent_id, "items": items}
 
 

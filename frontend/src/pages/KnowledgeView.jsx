@@ -79,6 +79,8 @@ const REASONS = {
   oauth_error: 'Google returned an error. Try connecting again.',
   missing_code: 'Google returned no sign-in code. Try connecting again.',
   google_unavailable: "Couldn't reach Google. Try again in a minute.",
+  drive_api_disabled: 'The Google Drive API is turned off in this Google Cloud project. Enable it, wait a minute, and connect again.',
+  drive_refused: 'Google Drive refused the request. Try connecting again.',
   drive_not_configured: "Google Drive isn't configured on the server yet.",
   auth_revoked: 'Google access was revoked. Reconnect Google Drive.',
   source_not_found: 'That source no longer exists.',

@@ -378,3 +378,25 @@ def test_selection_change_keeps_excluded_documents(client, db, signed_in, users)
     client.put(f"/api/knowledge/sources/{source.id}/selection", json={"folder_ids": ["G"]})
     db.expire_all()
     assert Repo.get_source(db, user.id, source.id).config["excluded_ids"] == ["x1"]
+
+
+@pytest.mark.parametrize(
+    ("drive_reason", "reason"),
+    [("accessNotConfigured", "drive_api_disabled"), ("insufficientPermissions", "drive_refused")],
+)
+def test_complete_reports_a_drive_refusal_instead_of_crashing(
+    client, db, signed_in, users, google, monkeypatch, drive_reason, reason
+):
+    from backend.knowledge.connectors.gdrive import DriveHTTPError
+
+    async def refused(client):
+        raise DriveHTTPError(403, drive_reason)
+
+    monkeypatch.setattr(router_module, "drive_account", refused)
+    user = users[0]
+    signed_in.user = user
+    res = client.post(
+        "/api/knowledge/sources/gdrive/complete", json={"state": sign_state(user.id), "code": "c"}
+    )
+    assert (res.status_code, res.json()["detail"]["reason"]) == (502, reason)
+    assert count(db, KnowledgeDocument) == 0 and Repo.list_sources(db, user.id) == []
