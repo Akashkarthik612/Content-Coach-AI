@@ -61,6 +61,10 @@ def run(image: str) -> None:
         "-e", "LANGCHAIN_API_KEY_GEMINI=container-key",
         "-e", f"GEMINI_BASE_URL={fake.url}",
         "-e", f"SUPABASE_URL={fake.url}",
+        "-e", "GOOGLE_OAUTH_CLIENT_ID=container-client",
+        "-e", "GOOGLE_OAUTH_CLIENT_SECRET=container-secret",
+        "-e", "GOOGLE_DRIVE_REDIRECT_URI=http://localhost:5173/connect/gdrive/callback",
+        "-e", "KNOWLEDGE_TOKEN_KEY=ZmFrZS1rZXktZm9yLXRlc3RzLW9ubHktMzItYnl0ZXM=",
         image,
     )  # fmt: skip
     try:

@@ -7,6 +7,8 @@
 - Supabase Auth JWKS: settings.SUPABASE_URL is pointed here, so the real
   PyJWKClient fetches the signing keys and the real jwt.decode verifies them.
   Tokens are minted with the private keys in jwt_keys.py.
+- Google OAuth + Drive, and Gemini embeddings: see fake_google.py
+  (settings.GOOGLE_BASE_URL and GEMINI_BASE_URL point here).
 """
 
 import json
@@ -21,6 +23,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from tests.smoke import jwt_keys
+from tests.smoke.fake_google import ROOT_ID, FakeEmbeddings, FakeGoogle
 
 MODEL_PATH = "/v1beta/models/gemini-3.5-flash:generateContent"
 
@@ -61,11 +64,15 @@ class FakeUpstream:
     queue: deque = field(default_factory=deque)
     always: tuple[int, dict] | None = None
     url: str = ""
+    google: FakeGoogle = field(default_factory=FakeGoogle)
+    embeddings: FakeEmbeddings = field(default_factory=FakeEmbeddings)
 
     def reset(self) -> None:
         self.requests.clear()
         self.queue.clear()
         self.always = None
+        self.google.reset()
+        self.embeddings.reset()
 
     def reply_post(self, content: str) -> None:
         self.queue.append((200, post_reply(content)))
@@ -106,14 +113,44 @@ class FakeUpstream:
         def control_requests():
             return [r.__dict__ for r in self.requests]
 
+        # Drive contents for the browser smoke test (a separate process).
+        @app.post("/__control/drive/folder")
+        async def control_drive_folder(request: Request):
+            body = await request.json()
+            return {"id": self.google.add_folder(body["name"], body.get("parent") or ROOT_ID)}
+
+        @app.post("/__control/drive/doc")
+        async def control_drive_doc(request: Request):
+            body = await request.json()
+            return {"id": self.google.add_doc(body["name"], body["markdown"], body.get("parent") or ROOT_ID)}
+
+        @app.post("/__control/drive/edit/{file_id}")
+        async def control_drive_edit(file_id: str, request: Request):
+            self.google.edit(file_id, (await request.json())["markdown"])
+            return {"ok": True}
+
+        @app.post("/__control/drive/trash/{file_id}")
+        def control_drive_trash(file_id: str):
+            self.google.trash(file_id)
+            return {"ok": True}
+
+        @app.post("/__control/drive/revoke")
+        def control_drive_revoke():
+            self.google.revoke_access()
+            return {"ok": True}
+
         @app.get("/__control/token/{sub}")
         def control_token(sub: str):
             # Same keys as the JWKS above, so the backend verifies it for real.
             return {"access_token": jwt_keys.mint_token(self.url, sub, email=f"{sub}@smoke.local")}
 
+        self.google.mount(app)  # before the catch-all below
+
         @app.post("/{full_path:path}")
         async def generate(full_path: str, request: Request):
             body = await request.json()
+            if FakeEmbeddings.is_embed_path(full_path):
+                return self.embeddings.reply(body)
             self.requests.append(Recorded("/" + full_path, dict(request.headers), body))
             status, payload = self._next()
             return JSONResponse(payload, status_code=status)

@@ -8,6 +8,7 @@ import OnboardingPage from './pages/OnboardingPage';
 import LinkedInStudioPage from './pages/LinkedInStudioPage';
 import RedditStudioPage from './pages/RedditStudioPage';
 import XStudioPage from './pages/XStudioPage';
+import GDriveCallbackPage from './pages/GDriveCallbackPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import { supabase } from './lib/supabaseClient';
 
@@ -43,9 +44,11 @@ export default function App() {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
       <Route path="/home"      element={<RequireAuth><HomeDashboardPage /></RequireAuth>} />
+      <Route path="/knowledge" element={<RequireAuth><HomeDashboardPage initialNav="knowledge" /></RequireAuth>} />
       <Route path="/linkedin"   element={<RequireAuth><LinkedInStudioPage /></RequireAuth>} />
       <Route path="/reddit"     element={<RequireAuth><RedditStudioPage /></RequireAuth>} />
       <Route path="/x"          element={<RequireAuth><XStudioPage /></RequireAuth>} />
+      <Route path="/connect/gdrive/callback" element={<RequireAuth><GDriveCallbackPage /></RequireAuth>} />
       <Route path="*"          element={<Navigate to="/" replace />} />
     </Routes>
   );

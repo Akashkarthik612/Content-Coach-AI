@@ -14,6 +14,12 @@ logger = logging.getLogger(__name__)
 
 HONESTY_RULES: tuple[str, ...] = (
     "Never invent personal experience, client stories, numbers, quotes or results.",
+    ("Never imply the author has experience the user did not give you. That rules out "
+    "first-person history (\"I have built…\", \"we ran…\", \"in my career\", \"over the years\"), "
+    "experience credentials (\"after watching…\", \"after working in…\", \"I've seen…\") and "
+    "narrating what you or your team now do (\"Now I…\", \"We spin up…\")."),
+    ("Without such experience, write about the pattern itself or address the reader as \"you\". "
+    "First person is fine for opinions (\"I think\") and for plans (\"I would\")."),
     ("The persona is a way of writing, not a credential. Never claim years of experience, "
     "a job title or results on the user's behalf."),
     ("With no real detail from the user, write from general reasoning and observable patterns, "

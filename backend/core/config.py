@@ -53,12 +53,47 @@ class Settings(BaseSettings):
     THREAD_TURN_LIMIT: int = 15
     THREAD_RETENTION_DAYS: int = 7
 
-    # Background scheduler — auto-publishes posts at their scheduled_at time.
-    # See backend/scheduler/.
-    SCHEDULER_ENABLED: bool = True
-    SCHEDULER_POLL_INTERVAL_SECONDS: int = 60
-    SCHEDULER_BATCH_SIZE: int = 25
-    SCHEDULER_MAX_ATTEMPTS: int = 3
+    # Knowledge store (backend/knowledge/). EMBEDDING_DIM is fixed in the
+    # knowledge_chunks.embedding column type; changing it needs a migration
+    # and a full re-embed.
+    EMBEDDING_MODEL: str = "gemini-embedding-2"
+    EMBEDDING_DIM: int = 768
+
+    @property
+    def EMBEDDING_MODEL_TAG(self) -> str:
+        """Stored on every chunk; search only compares vectors with this tag."""
+        return f"{self.EMBEDDING_MODEL}@{self.EMBEDDING_DIM}"
+
+    # Google Drive connector (backend/knowledge/connectors/). The redirect URI
+    # is the frontend route that finishes the OAuth flow with the user's JWT.
+    GOOGLE_OAUTH_CLIENT_ID: str = ""
+    GOOGLE_OAUTH_CLIENT_SECRET: str = ""
+    GOOGLE_DRIVE_REDIRECT_URI: str = ""  # local: http://localhost:5173/connect/gdrive/callback
+    # Fernet key: encrypts Drive tokens at rest and seals the OAuth state.
+    KNOWLEDGE_TOKEN_KEY: str = ""
+
+    # Ingestion limits (backend/knowledge/pipeline.py, sync.py).
+    CHUNK_MAX_TOKENS: int = 512
+    MAX_DOCUMENT_CHARS: int = 750_000
+    MAX_DOWNLOAD_BYTES: int = 20 * 1024 * 1024
+    MAX_FILES_PER_SOURCE: int = 2000
+    # One sync run per source at a time; renewed after every file.
+    SYNC_LEASE_SECONDS: int = 900
+
+    # Test-only: point Drive + Google OAuth at a fake (tests/smoke/fake_google.py),
+    # like GEMINI_BASE_URL. Must stay unset in production.
+    GOOGLE_BASE_URL: str = ""
+    # backend.* loggers (configured in main.py).
+    LOG_LEVEL: str = "INFO"
+
+    # Background poller (backend/knowledge/sync_poller.py): every interval,
+    # sync the sources that are due. Tests and CI turn it off.
+    KNOWLEDGE_SYNC_ENABLED: bool = True
+    KNOWLEDGE_SYNC_INTERVAL_SECONDS: int = 300
+    KNOWLEDGE_SYNC_MAX_CONCURRENCY: int = 2
+    KNOWLEDGE_SYNC_SOURCE_TIMEOUT_SECONDS: int = 600  # must stay under SYNC_LEASE_SECONDS
+    KNOWLEDGE_SYNC_BATCH_SIZE: int = 50
+    KNOWLEDGE_SYNC_FIRST_RUN_DELAY_SECONDS: int = 30
 
 
 

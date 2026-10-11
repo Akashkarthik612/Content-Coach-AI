@@ -155,16 +155,34 @@ def test_gemini_overloaded_is_504_after_all_attempts_and_thread_stays_usable(cli
 # ── production config ─────────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("setting", ["LANGCHAIN_API_KEY_GEMINI", "SUPABASE_URL"])
-def test_render_without_required_setting_refuses_to_start(db, monkeypatch, setting):
+_RENDER_SETTINGS = {
+    "LANGCHAIN_API_KEY_GEMINI": "set",
+    "SUPABASE_URL": "https://set.supabase.co",
+    "GOOGLE_OAUTH_CLIENT_ID": "client-id",
+    "GOOGLE_OAUTH_CLIENT_SECRET": "client-secret",
+    "GOOGLE_DRIVE_REDIRECT_URI": "https://app.example/connect/gdrive/callback",
+    "KNOWLEDGE_TOKEN_KEY": "ZmFrZS1rZXktZm9yLXRlc3RzLW9ubHktMzItYnl0ZXM=",
+}
+
+
+def _render_env(monkeypatch, **overrides):
     from backend.core.config import settings
 
     monkeypatch.setenv("RENDER", "true")
-    monkeypatch.setattr(settings, "LANGCHAIN_API_KEY_GEMINI", "set")
-    monkeypatch.setattr(settings, "SUPABASE_URL", "https://set.supabase.co")
-    monkeypatch.setattr(settings, setting, "")
+    for name, value in {**_RENDER_SETTINGS, **overrides}.items():
+        monkeypatch.setattr(settings, name, value)
 
+
+@pytest.mark.parametrize("setting", list(_RENDER_SETTINGS))
+def test_render_without_required_setting_refuses_to_start(db, monkeypatch, setting):
+    _render_env(monkeypatch, **{setting: ""})
     with pytest.raises(RuntimeError, match=setting), TestClient(app):
+        pass
+
+
+def test_render_with_malformed_token_key_refuses_to_start(db, monkeypatch):
+    _render_env(monkeypatch, KNOWLEDGE_TOKEN_KEY="not-a-fernet-key")
+    with pytest.raises(RuntimeError, match="KNOWLEDGE_TOKEN_KEY"), TestClient(app):
         pass
 
 

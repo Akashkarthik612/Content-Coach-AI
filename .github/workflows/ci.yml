@@ -20,6 +20,7 @@ env:
   PYTHON_VERSION: "3.12" # matches the Dockerfile
   NODE_VERSION: "22"
   TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/honne_test
+  KNOWLEDGE_SYNC_ENABLED: "false" # no background Drive syncs inside test jobs
 
 jobs:
   lint:
@@ -32,7 +33,7 @@ jobs:
       - run: pip install "ruff>=0.6"
       # Scoped to the rebuilt code; old modules (e.g. backend/core/cache.py)
       # join as they are rebuilt.
-      - run: ruff check backend/main.py backend/ai backend/auth backend/core/config.py backend/core/database.py tests scripts
+      - run: ruff check backend/main.py backend/ai backend/auth backend/knowledge backend/core/config.py backend/core/database.py tests scripts conftest.py
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -40,7 +41,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
         working-directory: frontend
-      - run: npx eslint src/pages/LinkedInStudioPage.jsx src/api/independentAgents.js
+      - run: npx eslint src/pages/LinkedInStudioPage.jsx src/api/independentAgents.js src/pages/KnowledgeView.jsx src/pages/HomeDashboardPage.jsx src/pages/GDriveCallbackPage.jsx src/api/knowledge.js
         working-directory: frontend
 
   backend-tests:
@@ -63,8 +64,20 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
       - run: pip install -r requirements.txt -r requirements-test.txt
-      # unit + integration + in-process smoke; conftest fails if anything would skip.
-      - run: pytest tests -v -o log_cli=false
+      # unit + integration + in-process smoke, from tests/ and the colocated
+      # backend/**/tests/; the root conftest.py fails if anything would skip.
+      # The only database this job can reach is the throwaway container above:
+      # no Supabase URL or keys are set anywhere in this workflow.
+      - run: pytest -v -o log_cli=false --junitxml=reports/backend.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-test-results
+          path: reports/
+          retention-days: 14
+      - name: Results table (job summary)
+        if: always()
+        run: python scripts/junit_summary.py reports/backend.xml >> "$GITHUB_STEP_SUMMARY"
 
   docker-smoke:
     runs-on: ubuntu-latest

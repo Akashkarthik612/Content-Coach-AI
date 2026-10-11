@@ -46,3 +46,9 @@ frontend/.env.*.local
 
 # Runtime logs — auto-created by _log_setup.py, not source code
 backend/ai/logs/
+
+# Test reports and E2E logs (CI uploads them as artifacts)
+reports/
+
+# Logs downloaded from Render by scripts/fetch_render_logs.py
+logs/

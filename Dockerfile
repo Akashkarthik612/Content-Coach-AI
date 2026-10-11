@@ -15,6 +15,11 @@ RUN apt-get update && \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# The splitter's tokenizer vocabulary, baked in so no sync waits on (or fails
+# at) a runtime download.
+ENV TIKTOKEN_CACHE_DIR=/opt/tiktoken
+RUN python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
+
 # Copy application
 COPY . .
 

@@ -39,22 +39,25 @@ Portfolio project aimed at recruiters: prefer production-grade, well-tested, exp
 
 ### Commands
 Backend (repo root, venv active): `pip install -r requirements.txt -r requirements-test.txt` · `uvicorn backend.main:app --reload` · `alembic upgrade head` (migrations) · `ruff check backend` (lint).
-CI lints only the rebuilt code; to match it run `ruff check backend/main.py backend/ai backend/auth backend/core/config.py backend/core/database.py tests scripts`
+CI lints only the rebuilt code; to match it run `ruff check backend/main.py backend/ai backend/auth backend/knowledge backend/core/config.py backend/core/database.py tests scripts conftest.py`
 (legacy modules outside that set still have known lint errors).
 Frontend (`frontend/`): `npm install` · `npm run dev` · `npm run build` · `npm run lint`.
 Single test: `pytest tests/unit/independent_agents/<file>.py::<test_name>`; by layer: `pytest -m integration` / `pytest -m smoke` (markers in `pytest.ini`).
-`README.md` still describes the old "Content Coach" product; trust this file over it.
 
 ### Tests (LinkedIn agent; Reddit/X will copy the pattern)
-- `pytest tests/` runs `tests/unit/` (fakes only, runs anywhere). `tests/integration/` (real Postgres SQL + checkpointer, LLM faked) and
-  `tests/smoke/` (whole stack over HTTP) need `TEST_DATABASE_URL` pointing at a **local** pgvector Postgres; without it they skip, and any
-  non-local host is refused (the tests truncate tables). On Windows they need the selector event loop (set in `tests/conftest.py`).
+- `pytest` runs `tests/` and colocated `backend/**/tests/` (new features keep tests next to their code, marked `integration`).
+  `tests/unit/` uses fakes only. `tests/integration/`, integration-marked modules and `tests/smoke/` need `TEST_DATABASE_URL` pointing at a
+  **local** pgvector Postgres named `honne_test`; without it they skip (and fail in CI). Guards live in the root `conftest.py` (forces
+  `DATABASE_URL`, refuses non-local hosts, selector loop on Windows) and `tests/fixtures/db.py` (refuses to truncate any other database).
 - Smoke tests fake only the outside world, with `tests/smoke/fake_upstream.py` standing in for Gemini (via `GEMINI_BASE_URL`) and
-  Supabase's JWKS (via `SUPABASE_URL`). The Gemini request contract test pins what production sends.
+  Supabase's JWKS (via `SUPABASE_URL`). The Gemini request contract test pins what production sends. `fake_google.py` fakes Google
+  OAuth + Drive + embeddings via `GOOGLE_BASE_URL` (test-only; Render refuses to boot with it set) for the knowledge E2E tests
+  (`tests/smoke/knowledge/`: Drive auth → chunks stored; Drive edit → poller re-embeds), which append to `reports/knowledge_e2e.log`.
 - Browser smoke: `npm run test:smoke` in `frontend/` (Playwright → real backend via `python -m tests.smoke.serve`).
 - CI (`.github/workflows/ci.yml`): lint (scoped to the rebuilt code), backend-tests, docker-smoke (boots the real Dockerfile image
-  that Render builds), browser-smoke. No secrets in CI.
-- After a deploy, `python scripts/prod_check.py --api … --origin … --token …` makes the only real Gemini calls.
+  that Render builds), browser-smoke. No secrets in CI. backend-tests posts a per-test results table to the job summary.
+- After a deploy, `python scripts/prod_check.py --api … --origin … --token …` makes the only real Gemini calls. Production logs:
+  `python scripts/fetch_render_logs.py --since 2h --text knowledge` (Render API → `logs/`, deletes downloads > 1 day old; nothing stored on Render).
   Production refuses to boot on Render (`RENDER` env) without `LANGCHAIN_API_KEY_GEMINI`; `GEMINI_BASE_URL` must stay unset there.
 
 ### Tech stack
@@ -70,7 +73,7 @@ Single test: `pytest tests/unit/independent_agents/<file>.py::<test_name>`; by l
 | Cache | Redis |
 | Tracing | LangSmith |
 
-### Database (Supabase Postgres; Alembic head `0024`)
+### Database (Supabase Postgres; Alembic head `0027`)
 The model: a **user** attaches **knowledge sources**, the app generates **posts** from them, and each post's
 **analytics** are tracked regardless of platform. Read `backend/*/models.py` for exact columns.
 - `users`: account row keyed by the Supabase auth id. No password column; Supabase owns credentials (`0023`).
@@ -83,7 +86,24 @@ The model: a **user** attaches **knowledge sources**, the app generates **posts*
 - `agent_threads`: one row per independent-agent chat. `id` is the LangGraph `thread_id`; holds owner, agent (linkedin|reddit|x),
   title, `turn_count`, the `busy_until` lease and `last_message_at`.
 - Checkpoint tables (`checkpoints`, `checkpoint_*`) are created by `AsyncPostgresSaver.setup()` at startup, not by Alembic.
-- **Not designed yet:** `knowledge_sources` (Google Docs/Sheets, Notion, GitHub README, Word, uploads). Don't create it until it's designed here.
+- Knowledge store (`backend/knowledge/`, design in `Day_5.md`): `knowledge_sources` (one per connection: provider gdrive|upload,
+  `config`, sync `cursor`, status) → `knowledge_documents` (one per file, `content_hash`) → `knowledge_chunks` (text + `vector(768)`,
+  `embedding_model` tag, HNSW cosine index). Children copy `user_id`/`source_id`; composite FKs keep the copies consistent.
+  All access goes through `KnowledgeRepository`: every method takes `user_id` and every statement filters on it. Search reads the
+  pgvector version at startup: ≥ 0.8 uses `hnsw.iterative_scan`, older scans exactly, so a user always gets k results when they exist.
+  `knowledge_source_credentials` (1:1 with a source) holds Fernet-encrypted OAuth tokens (`KNOWLEDGE_TOKEN_KEY`); source queries
+  never load it. `sync_lease_until`/`sync_lease_owner` on the source allow one sync run at a time (owned, expiring lease).
+- Ingestion (`backend/knowledge/`, plan in `Day_5.md` Part B): `SyncService.sync_source()` takes the lease, then either a full listing
+  (start cursor taken first, then GC of unlisted docs) or Drive `changes.list`. Any folder change forces a full listing.
+  Each file goes through `IngestionPipeline`: normalize → Markdown sections with a `$title:` root prefix → Dust `base_v0` splitter
+  (≤ 512 cl100k tokens) → multiset diff by chunk hash → embed only new chunks (`gemini-embedding-2`, task in the text, no
+  `taskType`) → `apply_document_version`. Transient errors keep the cursor; a bad file is `mark_failed` and the run goes on.
+  Drive connect is finished by the frontend page `/connect/gdrive/callback` (POST with the user's JWT), never by a backend redirect.
+  `DELETE /api/knowledge/documents/{id}` deletes one document and adds its id to the source's `config.excluded_ids`, which sync skips.
+- Poller (`sync_poller.py`): `SyncPoller` in `lifespan` calls `sync_source` every 5 min for due sources (`list_due_sources`, the one
+  cross-user query, IDs only), max 2 at once; a timed-out run is never cancelled. Revoked Google access → status `needs_reauth`
+  (not polled; reconnect sets `active`). `KNOWLEDGE_SYNC_ENABLED=false` in tests/CI. Drive/Gemini httpx: connect 10 s, read 60 s.
+  Logs (`main.py` configures `backend.*` at `LOG_LEVEL`): per file `knowledge file synced`, per run `knowledge sync`, per tick `knowledge poll`.
 
 **Rules:** every table carries `user_id` (directly or via `posts`), and ownership is enforced in the service layer. Real publish
 history comes from `post_publish_log.published_at`, never `posts.scheduled_at` (that's future intent). Never edit existing migrations;
@@ -98,7 +118,7 @@ history comes from `post_publish_log.published_at`, never `posts.scheduled_at` (
 |---|---|---|
 | 1 | Three independent platform agents (LinkedIn, Reddit, X), each with its own endpoint and studio page | Done |
 | 1b | Thread memory for those agents | Done for LinkedIn; Reddit and X still stateless |
-| 2 | Unified knowledge source: retrieve, chunk, embed and semantically search all connected sources, shared by every agent | Next. Not built |
+| 2 | Unified knowledge source: retrieve, chunk, embed and semantically search all connected sources, shared by every agent | Storage, Drive ingestion ("Sync now") and 5-min poller built; retrieval tool, agent wiring and UI next |
 | 3 | Supervisor/worker graph (below) | Later. `backend/ai/agents/*.py`, `graph.py` and `llm.py` are empty stubs; `state.py`/`schemas.py` are drafted |
 
 ### Independent platform agents (`backend/ai/independent_agents/`, Steps 1–1b)
@@ -112,7 +132,7 @@ history comes from `post_publish_log.published_at`, never `posts.scheduled_at` (
 - **Limits:** a thread ends after `THREAD_TURN_LIMIT` (15) turns, and the UI tells the user to start a new chat; history is never trimmed silently.
   A `busy_until` lease allows one turn at a time. Its length is derived in `limits.py` from Gemini attempts × timeout, so never hardcode it.
   Threads idle longer than `THREAD_RETENTION_DAYS` (7) are hidden right away and removed by a daily purge task in `main.py`.
-- Frontend: the only app pages are landing, auth (`/login`, `/register`, password reset), `/onboarding`, `HomeDashboardPage` (`/home`) and `LinkedInStudioPage`, `RedditStudioPage` and `XStudioPage` (`/linkedin`, `/reddit`, `/x`),
+- Frontend: the only app pages are landing, auth (`/login`, `/register`, password reset), `/onboarding`, `HomeDashboardPage` (`/home`, and `/knowledge` → `KnowledgeView`: Drive connect, folder picker, Sync now, documents; `/connect/gdrive/callback`) and `LinkedInStudioPage`, `RedditStudioPage` and `XStudioPage` (`/linkedin`, `/reddit`, `/x`),
   via `src/api/independentAgents.js`. LinkedIn studio uses the thread endpoints; Reddit studio calls the stateless endpoint; X studio is still simulated. Tests: see §2 Tests.
 
 ### Agent graph (Step 3): single supervisor, everything else is a tool
@@ -157,8 +177,7 @@ flow (each chosen angle gets its own draft/edit/approve cycle); resumed session 
 restores the thread — supervisor should recognize the stage, not restart); multi-source
 requests (researcher/knowledge-source tool may be called more than once before suggesting).
 
-This staging matters for the UI: it needs distinct states — suggestions/browse, draft/edit,
-save/publish confirmation — not just a single chat stream.
+This staging matters for the UI: it needs distinct states — suggestions/browse, draft/edit, save/publish confirmation — not just a single chat stream.
 
 ### Save/publish, and operational rules
 - Writer tool call returns a **draft only**, never writes to `posts`. `save_post` is the

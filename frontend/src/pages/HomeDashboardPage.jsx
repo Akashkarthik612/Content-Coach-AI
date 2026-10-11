@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import KnowledgeView from './KnowledgeView'
+import { getDriveConnectUrl, listDocuments, listSources } from '../api/knowledge'
 
 /* ─── Design tokens (Honne Home) ─────────────────────────────────────────── */
 const C = {
@@ -29,14 +31,14 @@ const FONT = {
   mono: "'Geist Mono', ui-monospace, monospace",
 }
 
-/* ─── Mock content (knowledge sources and agents aren't wired to
-     a backend yet — see CLAUDE.md's knowledge_sources table, not designed) ── */
+/* ─── Knowledge sources. Google Drive is live (/api/knowledge); the rest
+     are listed as coming soon. Connected state and counts come from the backend. ── */
 const SRC = [
-  { id: 'drive', name: 'Google Drive', desc: 'Docs and Sheets', count: '8 docs', mono: 'G' },
-  { id: 'notion', name: 'Notion', desc: 'Pages and databases', count: '4 pages', mono: 'N' },
-  { id: 'github', name: 'GitHub', desc: 'READMEs and docs', count: '2 repos', mono: 'Gh' },
-  { id: 'word', name: 'Microsoft Word', desc: '.docx files', count: '3 files', mono: 'W' },
-  { id: 'files', name: 'Uploaded files', desc: 'PDF, Markdown, text', count: '5 files', mono: 'F' },
+  { id: 'drive', provider: 'gdrive', name: 'Google Drive', desc: 'Docs, PDFs, Markdown, text', mono: 'G' },
+  { id: 'notion', name: 'Notion', desc: 'Pages and databases', mono: 'N', soon: true },
+  { id: 'github', name: 'GitHub', desc: 'READMEs and docs', mono: 'Gh', soon: true },
+  { id: 'word', name: 'Microsoft Word', desc: '.docx files', mono: 'W', soon: true },
+  { id: 'files', provider: 'upload', name: 'Uploaded files', desc: 'PDF, Markdown, text', mono: 'F', soon: true },
 ]
 const AGENTS = [
   { id: 'auto', name: 'Auto', desc: 'Honne picks the right agent' },
@@ -60,7 +62,7 @@ const NAV_ITEMS = [
   { id: 'home', label: 'Home', icon: 'M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8|M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' },
   { id: 'create', label: 'Create', icon: 'M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7|M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z' },
   { id: 'posts', label: 'Posts', icon: 'M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z|M14 2v4a2 2 0 0 0 2 2h4|M16 13H8|M16 17H8' },
-  { id: 'sources', label: 'Sources', icon: 'E:9,12,5,5,3' },
+  { id: 'knowledge', label: 'Knowledge', icon: 'E:9,12,5,5,3' },
   { id: 'agents', label: 'Agents', icon: 'M12 8V4H8|M4 8h16v12H4z|M2 14h2|M20 14h2|M15 13v2|M9 13v2', rect: '4,8,16,12,2' },
   { id: 'analytics', label: 'Analytics', icon: 'M3 3v16a2 2 0 0 0 2 2h16|M18 17V9|M13 17V5|M8 17v-3' },
 ]
@@ -176,7 +178,7 @@ function useViewportCategory() {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
-export default function HomeDashboardPage() {
+export default function HomeDashboardPage({ initialNav = 'home' }) {
   const navigate = useNavigate()
   const cat = useViewportCategory()
   const mobile = cat === 'mobile'
@@ -187,7 +189,7 @@ export default function HomeDashboardPage() {
 
   const [collapsed, setCollapsed] = useState(tablet)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const [activeNav, setActiveNav] = useState('home')
+  const [activeNav, setActiveNav] = useState(initialNav)
   const [stub, setStub] = useState(null) // { name } — in-page placeholder for undesigned sections
 
   const [text, setText] = useState('')
@@ -199,7 +201,7 @@ export default function HomeDashboardPage() {
   const [agent, setAgent] = useState('auto')
   const [pop, setPop] = useState(null) // 'knowledge' | 'agent' | null
 
-  const [connected, setConnected] = useState({ drive: 1, notion: 1, github: 1, files: 1 })
+  const [kb, setKb] = useState({ sources: [], documents: [] }) // real knowledge sources
   const [connecting, setConnecting] = useState({})
   const [promptDismissed, setPromptDismissed] = useState(false)
 
@@ -227,6 +229,11 @@ export default function HomeDashboardPage() {
     setTimeout(() => { const t = taRef.current; if (!t) return; t.focus(); const n = t.value.length; t.setSelectionRange(n, n); autosize() }, 0)
   }, [autosize])
 
+  const goHome = useCallback(() => {
+    setStub(null); setActiveNav('home')
+    if (initialNav !== 'home') navigate('/home')
+  }, [initialNav, navigate])
+
   // Close popovers on outside click / Escape; ⌘K focuses the composer, ⌘\ toggles the sidebar.
   useEffect(() => {
     const onDoc = e => {
@@ -234,15 +241,30 @@ export default function HomeDashboardPage() {
     }
     const onKey = e => {
       const mod = e.metaKey || e.ctrlKey
-      if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); setStub(null); setActiveNav('home'); focusTa() }
+      if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); goHome(); focusTa() }
       if (mod && e.key === '\\') { e.preventDefault(); if (mobile) setMobileNavOpen(o => !o); else setCollapsed(c => !c) }
       if (e.key === 'Escape') { setPop(null); setMobileNavOpen(false) }
     }
     document.addEventListener('mousedown', onDoc)
     document.addEventListener('keydown', onKey)
     return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey) }
-  }, [pop, mobile, focusTa])
+  }, [pop, mobile, focusTa, goHome])
 
+  useEffect(() => {
+    let live = true
+    Promise.all([listSources(), listDocuments()])
+      .then(([sources, documents]) => { if (live) setKb({ sources, documents }) })
+      .catch(() => {}) // the composer still works; the knowledge page shows the error
+    return () => { live = false }
+  }, [])
+  const docsFor = provider => {
+    const ids = new Set(kb.sources.filter(s => s.provider === provider).map(s => s.id))
+    return kb.documents.filter(d => ids.has(d.source_id)).length
+  }
+  const connected = Object.fromEntries(
+    SRC.filter(x => x.provider && kb.sources.some(s => s.provider === x.provider)).map(x => [x.id, 1]),
+  )
+  const countOf = x => { const n = docsFor(x.provider); return `${n} ${n === 1 ? 'doc' : 'docs'}` }
   const connectedIds = SRC.filter(x => connected[x.id]).map(x => x.id)
   const anyConnected = connectedIds.length > 0
   const hasUnconnected = SRC.length > connectedIds.length
@@ -250,11 +272,16 @@ export default function HomeDashboardPage() {
   const hasText = text.trim().length > 0
   const showKnowledgePrompt = !anyConnected && !promptDismissed
 
-  function connectSource(id) {
-    if (connecting[id]) return
+  async function connectSource(id) {
+    if (connecting[id] || id !== 'drive') return
     setConnecting(c => ({ ...c, [id]: true }))
-    setTimeout(() => setConnecting(c => ({ ...c, [id]: false })), 1100)
-    setTimeout(() => setConnected(c => ({ ...c, [id]: 1 })), 1100)
+    try {
+      // Google's consent screen; it comes back through /connect/gdrive/callback to /knowledge.
+      window.location.assign((await getDriveConnectUrl()).auth_url)
+    } catch {
+      setConnecting(c => ({ ...c, [id]: false }))
+      navigate('/knowledge')
+    }
   }
   function pickAction(id) {
     const a = ACTIONS[id]
@@ -280,9 +307,10 @@ export default function HomeDashboardPage() {
   }
   function goNav(id) {
     setPop(null); setMobileNavOpen(false)
-    if (id === 'home') { setStub(null); setActiveNav('home'); return }
+    if (id === 'home') { goHome(); return }
     if (id === 'create') { navigate('/linkedin'); return }
-    // Sources, Posts, Agents and Analytics have no real page yet — show the
+    if (id === 'knowledge') { setStub(null); setActiveNav('knowledge'); navigate('/knowledge'); return }
+    // Posts, Agents and Analytics have no real page yet — show the
     // in-app placeholder the design uses for destinations outside its scope.
     setActiveNav(id)
     setStub({ name: NAV_ITEMS.find(n => n.id === id)?.label ?? 'Honne' })
@@ -290,7 +318,7 @@ export default function HomeDashboardPage() {
   function onLogoClick() {
     if (mobile) { setMobileNavOpen(false); return }
     if (collapsed) { setCollapsed(false); return }
-    setStub(null); setActiveNav('home')
+    goHome()
   }
 
   const h = new Date().getHours()
@@ -298,7 +326,7 @@ export default function HomeDashboardPage() {
   const statusLine = anyConnected ? `${connectedIds.length} ${connectedIds.length === 1 ? 'source' : 'sources'} connected · style memory on` : 'No knowledge connected yet'
   const kSel = knowledge === 'all' ? null : SRC.find(x => x.id === knowledge)
   const kLabel = !anyConnected ? 'None connected' : kSel ? kSel.name : 'All sources'
-  const kOpts = anyConnected ? [{ id: 'all', name: 'All sources', mono: '∗', count: `${connectedIds.length} ${connectedIds.length === 1 ? 'source' : 'sources'}` }].concat(SRC.filter(x => connected[x.id])) : []
+  const kOpts = anyConnected ? [{ id: 'all', name: 'All sources', mono: '∗', count: `${connectedIds.length} ${connectedIds.length === 1 ? 'source' : 'sources'}` }].concat(SRC.filter(x => connected[x.id]).map(x => ({ ...x, count: countOf(x) }))) : []
   const kConnect = SRC.filter(x => !connected[x.id])
   const agentName = AGENTS.find(a => a.id === agent).name
 
@@ -394,13 +422,18 @@ export default function HomeDashboardPage() {
               <MenuIcon />
             </button>
             <LogoMark />
-            <span style={{ fontSize: 15, fontWeight: 600 }}>{stub ? stub.name : 'Honne'}</span>
+            <span style={{ fontSize: 15, fontWeight: 600 }}>{stub ? stub.name : activeNav === 'knowledge' ? 'Knowledge' : 'Honne'}</span>
             <div style={{ flex: 1 }} />
             <div style={{ width: 30, height: 30, borderRadius: '50%', background: C.avatarBg, color: C.avatarFg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 600 }}>{initial}</div>
           </div>
         )}
 
-        {!stub ? (
+        {stub ? null : activeNav === 'knowledge' ? (
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            <KnowledgeView />
+          </div>
+        ) : null}
+        {!stub && activeNav !== 'knowledge' ? (
           <div style={{ position: 'relative', flex: 1, overflowY: 'auto' }}>
             <div aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 560, overflow: 'hidden', pointerEvents: 'none' }}>
               <div style={{ position: 'absolute', left: '50%', top: -220, width: 720, height: 520, marginLeft: -520, borderRadius: '50%', background: 'radial-gradient(closest-side, rgba(246,161,91,.42), rgba(246,161,91,0))', filter: 'blur(20px)', animation: 'hn-home-drift-a 11s ease-in-out infinite' }} />
@@ -508,16 +541,20 @@ export default function HomeDashboardPage() {
                               <div style={{ fontSize: 13, fontWeight: 500 }}>{c.name}</div>
                               <div style={{ fontSize: 11.5, color: C.faint2 }}>{c.desc}</div>
                             </div>
-                            <button onClick={() => connectSource(c.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 28, padding: '0 10px', border: '1px solid rgba(28,26,23,.12)', borderRadius: 7, background: '#FFFFFF', fontSize: 12, fontWeight: 500, color: C.ink, cursor: 'pointer', flex: 'none' }}>
-                              {connecting[c.id] && <Spinner />}
-                              {connecting[c.id] ? 'Connecting' : 'Connect'}
-                            </button>
+                            {c.soon ? (
+                              <span style={{ fontFamily: FONT.mono, fontSize: 10, letterSpacing: '.06em', color: C.faint2, flex: 'none' }}>SOON</span>
+                            ) : (
+                              <button onClick={() => connectSource(c.id)} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 28, padding: '0 10px', border: '1px solid rgba(28,26,23,.12)', borderRadius: 7, background: '#FFFFFF', fontSize: 12, fontWeight: 500, color: C.ink, cursor: 'pointer', flex: 'none' }}>
+                                {connecting[c.id] && <Spinner />}
+                                {connecting[c.id] ? 'Connecting' : 'Connect'}
+                              </button>
+                            )}
                           </div>
                         ))}
                       </>
                     )}
                     <div style={{ margin: '6px 4px 0', paddingTop: 6, borderTop: '1px solid rgba(28,26,23,.07)' }}>
-                      <button onClick={() => goNav('sources')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', height: 32, padding: '0 6px', border: 0, borderRadius: 7, background: 'transparent', fontSize: 12.5, color: C.body, cursor: 'pointer' }}>
+                      <button onClick={() => goNav('knowledge')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', height: 32, padding: '0 6px', border: 0, borderRadius: 7, background: 'transparent', fontSize: 12.5, color: C.body, cursor: 'pointer' }}>
                         Manage sources
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M7 7h10v10" /><path d="M7 17 17 7" /></svg>
                       </button>
@@ -638,11 +675,11 @@ export default function HomeDashboardPage() {
               </section>
             </div>
           </div>
-        ) : (
-          /* Undesigned destination placeholder (Sources) */
+        ) : stub && (
+          /* Undesigned destination placeholder */
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             <div style={{ height: 52, flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px 0 10px', borderBottom: `1px solid ${C.borderSoft}` }}>
-              <button onClick={() => { setStub(null); setActiveNav('home') }} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 10px 0 8px', border: 0, borderRadius: 8, background: 'transparent', fontSize: 13, color: C.body, cursor: 'pointer' }}>
+              <button onClick={goHome} style={{ display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 10px 0 8px', border: 0, borderRadius: 8, background: 'transparent', fontSize: 13, color: C.body, cursor: 'pointer' }}>
                 <BackArrow />
                 Home
               </button>
@@ -652,8 +689,8 @@ export default function HomeDashboardPage() {
             <div style={{ flex: 1, padding: 20, minHeight: 0 }}>
               <div style={{ height: '100%', border: '1px solid rgba(28,26,23,.08)', borderRadius: 12, background: 'repeating-linear-gradient(135deg, #F3F1ED 0 10px, #F8F7F4 10px 20px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
                 <div style={{ maxWidth: 420 }}>
-                  <div style={{ fontFamily: FONT.mono, fontSize: 12, color: C.body, letterSpacing: '.02em' }}>SOURCES</div>
-                  <div style={{ fontSize: 13, color: C.faint, marginTop: 8, lineHeight: 1.5 }}>Connecting and managing knowledge sources isn&rsquo;t built yet. It&rsquo;ll live here.</div>
+                  <div style={{ fontFamily: FONT.mono, fontSize: 12, color: C.body, letterSpacing: '.02em' }}>{stub.name.toUpperCase()}</div>
+                  <div style={{ fontSize: 13, color: C.faint, marginTop: 8, lineHeight: 1.5 }}>This section isn&rsquo;t built yet. It&rsquo;ll live here.</div>
                 </div>
               </div>
             </div>

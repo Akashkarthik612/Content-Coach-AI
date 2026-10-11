@@ -20,3 +20,6 @@ sqlalchemy
 tenacity
 uvicorn
 boto3
+cryptography
+pypdf
+tiktoken

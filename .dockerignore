@@ -7,7 +7,8 @@ venv/
 .git/
 frontend/
 pgvector/
-tests/
+**/tests/
+conftest.py
 **/__pycache__/
 *.pdf
 *.pptx
