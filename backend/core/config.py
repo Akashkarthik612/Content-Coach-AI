@@ -1,10 +1,7 @@
-import os
 from functools import lru_cache
 
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-from backend.core.aws_secrets import get_secret
 
 load_dotenv()
 
@@ -99,15 +96,6 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    env = os.getenv("ENV", "development").lower()
-
-    if env in ("production", "ec2", "prod"):
-        secret_name = os.environ["AWS_SECRET_NAME"]
-        region = os.getenv("AWS_REGION", "eu-west-3")
-        secrets = get_secret(secret_name, region)
-        for k, v in secrets.items():
-            os.environ[k] = str(v)
-
     return Settings()
 
 

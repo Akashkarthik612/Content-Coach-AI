@@ -34,9 +34,6 @@ services:
     restart: unless-stopped
 
     environment:
-      ENV: production
-      AWS_SECRET_NAME: content-coach-ai-development-secrets
-      AWS_REGION: us-east-1
       DATABASE_URL: postgresql://postgres:postgres@db:5432/content_coach
 
     ports:
