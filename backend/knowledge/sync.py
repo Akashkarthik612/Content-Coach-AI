@@ -186,6 +186,9 @@ class SyncService:
             and meta.modified_at is not None
             and stored.source_modified_at == meta.modified_at
             and stored.sync_status == "synced"
+            # Synced before 0028: download once more so the pipeline stores the
+            # body (the hash matches, so nothing is embedded).
+            and stored.has_body
         ):
             report.unchanged += 1
             return

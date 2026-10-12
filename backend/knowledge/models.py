@@ -125,6 +125,9 @@ class KnowledgeDocument(Base):
     source_url = Column(Text, nullable=True)
     # sha256 hex of the normalized full text.
     content_hash = Column(Text, nullable=False)
+    # The normalized full text (no $title: prefix), for read_document only;
+    # never embedded. NULL until a document synced before 0028 is re-synced.
+    body = Column(Text, nullable=True)
     chunk_count = Column(Integer, nullable=False, default=0, server_default="0")
     # Drive modifiedTime: lets a sync skip the download when unchanged.
     source_modified_at = Column(DateTime(timezone=True), nullable=True)

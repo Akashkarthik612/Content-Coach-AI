@@ -73,7 +73,7 @@ Single test: `pytest tests/unit/independent_agents/<file>.py::<test_name>`; by l
 | Cache | Redis |
 | Tracing | LangSmith |
 
-### Database (Supabase Postgres; Alembic head `0027`)
+### Database (Supabase Postgres; Alembic head `0028`)
 The model: a **user** attaches **knowledge sources**, the app generates **posts** from them, and each post's
 **analytics** are tracked regardless of platform. Read `backend/*/models.py` for exact columns.
 - `users`: account row keyed by the Supabase auth id. No password column; Supabase owns credentials (`0023`).
@@ -87,7 +87,7 @@ The model: a **user** attaches **knowledge sources**, the app generates **posts*
   title, `turn_count`, the `busy_until` lease and `last_message_at`.
 - Checkpoint tables (`checkpoints`, `checkpoint_*`) are created by `AsyncPostgresSaver.setup()` at startup, not by Alembic.
 - Knowledge store (`backend/knowledge/`, design in `Day_5.md`): `knowledge_sources` (one per connection: provider gdrive|upload,
-  `config`, sync `cursor`, status) → `knowledge_documents` (one per file, `content_hash`) → `knowledge_chunks` (text + `vector(768)`,
+  `config`, sync `cursor`, status) → `knowledge_documents` (one per file, `content_hash`, full normalized text in `body`, never embedded) → `knowledge_chunks` (text + `vector(768)`,
   `embedding_model` tag, HNSW cosine index). Children copy `user_id`/`source_id`; composite FKs keep the copies consistent.
   All access goes through `KnowledgeRepository`: every method takes `user_id` and every statement filters on it. Search reads the
   pgvector version at startup: ≥ 0.8 uses `hnsw.iterative_scan`, older scans exactly, so a user always gets k results when they exist.
@@ -104,10 +104,11 @@ The model: a **user** attaches **knowledge sources**, the app generates **posts*
   cross-user query, IDs only), max 2 at once; a timed-out run is never cancelled. Revoked Google access → status `needs_reauth`
   (not polled; reconnect sets `active`). `KNOWLEDGE_SYNC_ENABLED=false` in tests/CI. Drive/Gemini httpx: connect 10 s, read 60 s.
   Logs (`main.py` configures `backend.*` at `LOG_LEVEL`): per file `knowledge file synced`, per run `knowledge sync`, per tick `knowledge poll`.
+- Agent tools (`backend/ai/tools/`, design in `Day_7.md`): `build_knowledge_tools(ctx, KnowledgeRetrievalService)` gives any agent `search_knowledge`, `find_documents`, `list_documents`, `read_document`; `user_id` comes from `ToolContext`, never a tool argument. Paused sources are hidden (as in search). A doc synced before `0028` has `body` NULL (`text_unavailable`) until its next sync, which downloads it once and embeds nothing.
+- `ToolCallingRunner` (`tool_loop.py`): the output schema becomes a `submit_post` tool; ≤ `MAX_TOOL_ROUNDS` (4) rounds and `MAX_TOOL_CALLS` (4) calls, then one forced submit-only call (WARNING). Runs on a local message list; only the post + `sources` come back. Logs `knowledge.tool`, `agent.tool_loop`. `KNOWLEDGE_TOOLS_ENABLED=false` → one structured call.
 
 **Rules:** every table carries `user_id` (directly or via `posts`), and ownership is enforced in the service layer. Real publish
-history comes from `post_publish_log.published_at`, never `posts.scheduled_at` (that's future intent). Never edit existing migrations;
-`0022` (schema cleanup) is irreversible.
+history comes from `post_publish_log.published_at`, never `posts.scheduled_at` (that's future intent). Never edit existing migrations; `0022` (schema cleanup) is irreversible.
 
 ---
 
@@ -118,19 +119,19 @@ history comes from `post_publish_log.published_at`, never `posts.scheduled_at` (
 |---|---|---|
 | 1 | Three independent platform agents (LinkedIn, Reddit, X), each with its own endpoint and studio page | Done |
 | 1b | Thread memory for those agents | Done for LinkedIn; Reddit and X still stateless |
-| 2 | Unified knowledge source: retrieve, chunk, embed and semantically search all connected sources, shared by every agent | Storage, Drive ingestion ("Sync now") and 5-min poller built; retrieval tool, agent wiring and UI next |
+| 2 | Unified knowledge source: retrieve, chunk, embed and semantically search all connected sources, shared by every agent | Storage, Drive ingestion, 5-min poller and agent knowledge tools built; sources/citations UI next |
 | 3 | Supervisor/worker graph (below) | Later. `backend/ai/agents/*.py`, `graph.py` and `llm.py` are empty stubs; `state.py`/`schemas.py` are drafted |
 
 ### Independent platform agents (`backend/ai/independent_agents/`, Steps 1–1b)
-- Each agent is **one LLM call per turn** (Gemini `gemini-3.5-flash`) with its own system prompt. No tools, no routing, no supervisor.
-  Keep these separate from the Step 3 supervisor graph: don't route through it or change it for this work.
+- Each turn is a knowledge-tool loop ending in `submit_post` (§2 Agent tools; Gemini `gemini-3.5-flash`, own system prompt), no routing,
+  no supervisor. Keep these separate from the Step 3 supervisor graph: don't route through it or change it for this work.
 - Routes live under `/api/independent-agents`: `POST /linkedin` (chat turn), `GET /linkedin/threads`, `GET`/`DELETE /linkedin/threads/{id}`,
-  and stateless `POST /reddit` and `POST /x`. Every endpoint returns a draft and nothing is written to `posts`.
+  and stateless `POST /reddit` and `POST /x`. Every endpoint returns a draft (+ `sources`) and nothing is written to `posts`.
 - **Thread memory:** one chat is one thread. The conversation lives in the LangGraph `AsyncPostgresSaver` (a single-node graph built at
   startup in `main.py`). `AgentThreadService` (`threads.py`) owns the `agent_threads` row, and every lookup matches id, user and agent.
-  A new chat starts with empty memory; there is no memory across chats (long-term context will come from Step 2).
+  A new chat starts with empty memory; there is no memory across chats (the knowledge tools give long-term context).
 - **Limits:** a thread ends after `THREAD_TURN_LIMIT` (15) turns, and the UI tells the user to start a new chat; history is never trimmed silently.
-  A `busy_until` lease allows one turn at a time. Its length is derived in `limits.py` from Gemini attempts × timeout, so never hardcode it.
+  A `busy_until` lease allows one turn at a time. Its length is derived in `limits.py` from Gemini attempts × timeout and the tool-loop caps (570 s); never hardcode it.
   Threads idle longer than `THREAD_RETENTION_DAYS` (7) are hidden right away and removed by a daily purge task in `main.py`.
 - Frontend: the only app pages are landing, auth (`/login`, `/register`, password reset), `/onboarding`, `HomeDashboardPage` (`/home`, and `/knowledge` → `KnowledgeView`: Drive connect, folder picker, Sync now, documents; `/connect/gdrive/callback`) and `LinkedInStudioPage`, `RedditStudioPage` and `XStudioPage` (`/linkedin`, `/reddit`, `/x`),
   via `src/api/independentAgents.js`. LinkedIn studio uses the thread endpoints; Reddit studio calls the stateless endpoint; X studio is still simulated. Tests: see §2 Tests.
@@ -190,9 +191,8 @@ This staging matters for the UI: it needs distinct states — suggestions/browse
   existing draft" so the supervisor never has to guess what context to pass.
 
 ### Tools, retrieval, model tiering
-Web search: Tavily (researcher). Knowledge sources (Drive, Notion, GitHub, uploads): existing
-RAG pipeline for now; MCP server for on-the-go access is planned, not built. Model tiering:
-supervisor on Gemini Flash-Lite (routing only); researcher and writer on Gemini Flash.
+Web search: Tavily (researcher). Knowledge sources: the agent tools (§2), reused by Step 3; an MCP server over `KnowledgeRetrievalService`
+is planned, not built. Model tiering: supervisor on Gemini Flash-Lite (routing only); researcher and writer on Gemini Flash.
 
 ### Architectural constraints (carried over, still binding)
 LLM for judgment only, deterministic Python for mechanics. JSON at machine-to-machine

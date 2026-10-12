@@ -92,6 +92,17 @@ class Settings(BaseSettings):
     KNOWLEDGE_SYNC_BATCH_SIZE: int = 50
     KNOWLEDGE_SYNC_FIRST_RUN_DELAY_SECONDS: int = 30
 
+    # Agents' knowledge tools (backend/ai/tools/, backend/knowledge/retrieval.py).
+    # False: the agents make one structured call with no tools, as before Day 7.
+    KNOWLEDGE_TOOLS_ENABLED: bool = True
+    KNOWLEDGE_SEARCH_TOP_K: int = 8  # chunks per search (<= 512 tokens each)
+    KNOWLEDGE_READ_MAX_CHARS: int = 12_000  # read_document default and max per call
+    KNOWLEDGE_LIST_DEFAULT: int = 20  # find/list default page size
+    KNOWLEDGE_LIST_MAX: int = 50
+    # Query embedding inside a tool call: must fit TOOL_TIMEOUT_S (limits.py).
+    KNOWLEDGE_QUERY_EMBED_ATTEMPTS: int = 1
+    KNOWLEDGE_QUERY_EMBED_TIMEOUT_S: float = 8.0
+
 
 
 @lru_cache

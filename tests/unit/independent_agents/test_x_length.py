@@ -5,6 +5,7 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.ai.independent_agents import router as agents_router
 from backend.ai.independent_agents import x
 from backend.ai.independent_agents.limits import X_POST_MAX_CHARS
 from backend.auth.services import get_current_user
@@ -30,11 +31,12 @@ def test_schema_sent_to_gemini_carries_max_length():
 
 
 def test_route_returns_502_for_too_long_post(monkeypatch):
-    async def too_long(req, user_id):
+    async def too_long(req, user_id, knowledge=None):
         x.XAgent.check_lengths(x.XPostResponse(posts=["a" * (X_POST_MAX_CHARS + 1)]), user_id)
 
     monkeypatch.setattr(x.XAgent, "run", staticmethod(too_long))
     app.dependency_overrides[get_current_user] = lambda: type("U", (), {"id": USER_ID})()
+    app.dependency_overrides[agents_router._knowledge] = lambda: None  # no lifespan here
     try:
         res = TestClient(app).post("/api/independent-agents/x", json={"topic": "anything"})
     finally:

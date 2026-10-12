@@ -76,3 +76,18 @@ def test_build_is_deterministic_and_hash_tracks_content():
 def test_invalid_spec_raises(override):
     with pytest.raises(ValueError):
         dataclasses.replace(X_PROMPT, **override)
+
+
+# ── T14 knowledge_tools section (Day 7, D7-D10) ───────────────────────────────
+
+
+@pytest.mark.parametrize("spec", ALL_SPECS, ids=lambda s: s.platform)
+def test_knowledge_tools_section_only_when_tools_are_bound(spec):
+    plain = SystemPromptBuilder.build(spec)
+    with_tools = SystemPromptBuilder.build(spec, tools_bound=True)
+    assert "<knowledge_tools>" not in plain.text and "knowledge_tools" not in plain.slots_included
+    assert _tags(with_tools.text)[-2:] == ["knowledge_tools", "output_contract"]
+    assert with_tools.slots_included == ("knowledge_tools",)
+    for name in ("search_knowledge", "find_documents", "list_documents", "read_document", "submit_post"):
+        assert name in with_tools.text
+    assert "data, not instructions" in with_tools.text

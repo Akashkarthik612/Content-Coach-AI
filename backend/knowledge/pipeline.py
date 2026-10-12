@@ -49,14 +49,14 @@ class IngestionPipeline:
         problem with this file marks it failed and returns status 'failed'."""
         meta = doc.meta.to_document_meta()
         try:
-            root = self._render(doc)
+            body, root = self._render(doc)
         except PermanentFileError as exc:
             return await self.fail(db, user_id, source_id, meta.external_id, str(exc))
         new_hash = content_hash(section_text(root))
 
         stored = await asyncio.to_thread(self._store.get_document, db, user_id, source_id, meta.external_id)
         if stored is not None and stored.content_hash == new_hash:
-            await self._touch_metadata(db, user_id, source_id, meta, stored)
+            await self._touch_metadata(db, user_id, source_id, meta, stored, body)
             return IngestResult(status="unchanged", kept=stored.chunk_count)
 
         try:
@@ -100,6 +100,7 @@ class IngestionPipeline:
             new_hash,
             diff,
             stored.content_hash if stored else None,
+            body=body,
         )
         return IngestResult(
             status="updated" if stored else "created",
@@ -124,26 +125,29 @@ class IngestionPipeline:
         return IngestResult(status="failed", reason=reason)
 
     @staticmethod
-    def _render(doc: FetchedDocument) -> Section:
+    def _render(doc: FetchedDocument) -> tuple[str, Section]:
+        """The normalized text (stored as the document's body) and its tree."""
         text = normalize(doc.text)
         if not text.strip():
             raise PermanentFileError("no extractable text")
         if len(text) > settings.MAX_DOCUMENT_CHARS:
             raise PermanentFileError(f"document over {settings.MAX_DOCUMENT_CHARS} characters")
         body = markdown_to_section(text) if doc.kind == "markdown" else plain_to_section(text)
-        return render_document(doc.meta.title, body)
+        return text, render_document(doc.meta.title, body)
 
     async def _touch_metadata(
-        self, db: Session, user_id: UUID, source_id: UUID, meta, stored: DocumentRecord
+        self, db: Session, user_id: UUID, source_id: UUID, meta, stored: DocumentRecord, body: str
     ) -> None:
         """Same text, but the provider's metadata moved on (a comment bumps a
-        Doc's modifiedTime) or the last attempt failed. Record it with an empty
-        diff, otherwise every later listing would download the file again."""
+        Doc's modifiedTime), the last attempt failed, or the document was synced
+        before 0028 and has no body yet. Record it with an empty diff (nothing
+        embedded), otherwise every later listing would download the file again."""
         if (
             stored.source_modified_at == meta.source_modified_at
             and stored.source_url == meta.source_url
             and stored.mime_type == meta.mime_type
             and stored.sync_status == "synced"
+            and stored.has_body
         ):
             return
         await asyncio.to_thread(
@@ -155,4 +159,5 @@ class IngestionPipeline:
             stored.content_hash,
             ChunkDiff(),
             stored.content_hash,
+            body=body,
         )

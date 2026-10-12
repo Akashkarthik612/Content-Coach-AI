@@ -25,7 +25,13 @@ from sqlalchemy.orm import Session
 
 from backend.core.config import settings
 from backend.knowledge import search_mode
-from backend.knowledge.errors import InvalidVectorError, SourceNotFoundError, StaleDiffError
+from backend.knowledge.errors import (
+    DocumentNotFoundError,
+    DocumentTextUnavailableError,
+    InvalidVectorError,
+    SourceNotFoundError,
+    StaleDiffError,
+)
 from backend.knowledge.models import (
     KnowledgeChunk,
     KnowledgeDocument,
@@ -36,7 +42,9 @@ from backend.knowledge.records import (
     ChunkDiff,
     ChunkHit,
     DocumentMeta,
+    DocumentPage,
     DocumentRecord,
+    DocumentSummary,
     DueSource,
     EncryptedCredential,
     NewChunk,
@@ -82,7 +90,39 @@ _DOCUMENT_COLS = (
     _D.c.sync_status,
     _D.c.updated_at,
     _D.c.last_error,
+    # Whether the full text is stored, never the text itself (up to MAX_DOCUMENT_CHARS).
+    _D.c.body.isnot(None).label("has_body"),
 )
+
+
+def _escape_like(text: str) -> str:
+    r"""So `%`, `_` and `\` in a title query match themselves (ESCAPE '\')."""
+    return text.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+
+
+def _visible_documents():
+    """Documents an agent may see: the same rule as search, which skips
+    paused sources. A failed document stays visible because its last good
+    version (chunks and body) is still stored and searchable."""
+    return select(
+        _D.c.id,
+        _D.c.title,
+        _S.c.display_name,
+        _D.c.mime_type,
+        _D.c.source_url,
+        _D.c.source_modified_at,
+    ).join(_S, (_S.c.id == _D.c.source_id) & (_S.c.user_id == _D.c.user_id))
+
+
+def _summary(row: Any) -> DocumentSummary:
+    return DocumentSummary(
+        document_id=row.id,
+        title=row.title,
+        source_name=row.display_name,
+        mime_type=row.mime_type,
+        url=row.source_url,
+        modified_at=row.source_modified_at,
+    )
 
 
 def _source(row: Any) -> SourceRecord:
@@ -183,6 +223,8 @@ class KnowledgeStore(Protocol):
         content_hash: str,
         diff: ChunkDiff,
         base_content_hash: str | None,
+        *,
+        body: str,
     ) -> DocumentRecord: ...
 
     def mark_failed(
@@ -199,6 +241,20 @@ class KnowledgeStore(Protocol):
         k: int,
         source_ids: Sequence[UUID] | None = None,
     ) -> list[ChunkHit]: ...
+
+    def find_documents_by_title(
+        self, db: Session, user_id: UUID, title_query: str, limit: int
+    ) -> list[DocumentSummary]: ...
+
+    def list_documents_page(
+        self, db: Session, user_id: UUID, sort_by: str, limit: int, offset: int
+    ) -> tuple[list[DocumentSummary], bool]: ...
+
+    def get_document_text(
+        self, db: Session, user_id: UUID, document_id: UUID, offset: int, limit: int
+    ) -> DocumentPage: ...
+
+    def has_sources(self, db: Session, user_id: UUID) -> bool: ...
 
     def save_credentials(
         self,
@@ -496,9 +552,12 @@ class KnowledgeRepository:
         content_hash: str,
         diff: ChunkDiff,
         base_content_hash: str | None,
+        *,
+        body: str,
     ) -> DocumentRecord:
-        """Write one document version in one transaction: upsert the document,
-        delete, insert and reorder chunks, then set chunk_count.
+        """Write one document version in one transaction: upsert the document
+        (with its full text in `body`, beside the hash that covers it), delete,
+        insert and reorder chunks, then set chunk_count.
 
         `base_content_hash` is the stored hash the diff was computed against
         (None for a new document). Under the row lock it must still match,
@@ -534,6 +593,7 @@ class KnowledgeRepository:
                 "source_url": meta.source_url,
                 "source_modified_at": meta.source_modified_at,
                 "content_hash": content_hash,
+                "body": body,
                 "sync_status": "synced",
                 "last_error": None,
             }
@@ -684,6 +744,87 @@ class KnowledgeRepository:
             )
             for r in rows
         ]
+
+    # ── reads for agent tools (Day 7) ──────────────────────────────────────────
+    # Same visibility as search (_visible_documents). Metadata only, except
+    # get_document_text, which slices the body in SQL so a 750k-char document
+    # is never loaded whole.
+
+    @staticmethod
+    def find_documents_by_title(
+        db: Session, user_id: UUID, title_query: str, limit: int
+    ) -> list[DocumentSummary]:
+        """Case-insensitive substring match on the title, wildcards taken
+        literally. Titles that start with the query first, then most recently
+        modified. No trigram index: one user's documents are few, and the
+        (user_id, source_id) index narrows to them first."""
+        escaped = _escape_like(title_query)
+        contains = _D.c.title.ilike(f"%{escaped}%", escape="\\")
+        starts = _D.c.title.ilike(f"{escaped}%", escape="\\")
+        rows = db.execute(
+            _visible_documents()
+            .where(_D.c.user_id == user_id, _S.c.status != "paused", contains)
+            .order_by(starts.desc(), _D.c.source_modified_at.desc().nulls_last(), _D.c.id)
+            .limit(limit)
+        ).all()
+        return [_summary(r) for r in rows]
+
+    @staticmethod
+    def list_documents_page(
+        db: Session, user_id: UUID, sort_by: str, limit: int, offset: int
+    ) -> tuple[list[DocumentSummary], bool]:
+        """One page, and whether another follows (one extra row is fetched to
+        tell). sort_by is "title" or "modified" (newest first)."""
+        if sort_by == "title":
+            order = (_D.c.title, _D.c.id)
+        elif sort_by == "modified":
+            order = (_D.c.source_modified_at.desc().nulls_last(), _D.c.id)
+        else:
+            raise ValueError(f"unknown sort_by {sort_by!r}")
+        rows = db.execute(
+            _visible_documents()
+            .where(_D.c.user_id == user_id, _S.c.status != "paused")
+            .order_by(*order)
+            .limit(limit + 1)
+            .offset(offset)
+        ).all()
+        return [_summary(r) for r in rows[:limit]], len(rows) > limit
+
+    @staticmethod
+    def get_document_text(
+        db: Session, user_id: UUID, document_id: UUID, offset: int, limit: int
+    ) -> DocumentPage:
+        """`limit` characters of the body from `offset` (0-based). Raises
+        DocumentNotFoundError (no such visible document for this user) or
+        DocumentTextUnavailableError (synced before 0028, body still NULL)."""
+        row = db.execute(
+            select(
+                _D.c.title,
+                _D.c.source_url,
+                func.substr(_D.c.body, offset + 1, limit).label("text"),
+                func.char_length(_D.c.body).label("total_chars"),
+            )
+            .join(_S, (_S.c.id == _D.c.source_id) & (_S.c.user_id == _D.c.user_id))
+            .where(_D.c.id == document_id, _D.c.user_id == user_id, _S.c.status != "paused")
+        ).one_or_none()
+        if row is None:
+            raise DocumentNotFoundError(f"no document {document_id}")
+        if row.total_chars is None:
+            raise DocumentTextUnavailableError(f"document {document_id} has no stored text yet")
+        end = offset + len(row.text)
+        return DocumentPage(
+            document_id=document_id,
+            title=row.title,
+            url=row.source_url,
+            text=row.text,
+            offset=offset,
+            total_chars=row.total_chars,
+            next_offset=end if end < row.total_chars else None,
+        )
+
+    @staticmethod
+    def has_sources(db: Session, user_id: UUID) -> bool:
+        return db.execute(select(select(_S.c.id).where(_S.c.user_id == user_id).exists())).scalar_one()
 
     # ── credentials (0026) ─────────────────────────────────────────────────────
     # Ciphertext only: encryption lives in credentials.py, never here.

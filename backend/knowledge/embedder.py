@@ -46,11 +46,23 @@ def query_input(text: str) -> str:
 
 
 class GeminiEmbedder:
-    def __init__(self, client: httpx.AsyncClient | None = None, backoff_s: float = 1.0) -> None:
+    """Defaults suit ingestion (a background job that can wait). The agents'
+    query embedding passes fewer attempts and a shorter timeout so a search
+    tool call stays inside its own time limit."""
+
+    def __init__(
+        self,
+        client: httpx.AsyncClient | None = None,
+        backoff_s: float = 1.0,
+        attempts: int = ATTEMPTS,
+        timeout: httpx.Timeout = TIMEOUT,
+    ) -> None:
         self.model_tag = settings.EMBEDDING_MODEL_TAG
         self._model = settings.EMBEDDING_MODEL
         self._client = client
         self._backoff_s = backoff_s
+        self._attempts = attempts
+        self._timeout = timeout
 
     async def embed_documents(self, title: str, texts: list[str]) -> list[list[float]]:
         vectors: list[list[float]] = []
@@ -93,13 +105,13 @@ class GeminiEmbedder:
         # Header, not ?key=: query strings end up in access logs.
         headers = {"x-goog-api-key": settings.LANGCHAIN_API_KEY_GEMINI}
         last: str = ""
-        for attempt in range(1, ATTEMPTS + 1):
+        for attempt in range(1, self._attempts + 1):
             try:
                 if self._client is not None:
-                    response = await self._client.post(url, json=body, headers=headers, timeout=TIMEOUT)
+                    response = await self._client.post(url, json=body, headers=headers, timeout=self._timeout)
                 else:
-                    async with httpx.AsyncClient(timeout=TIMEOUT) as client:
-                        response = await client.post(url, json=body, headers=headers, timeout=TIMEOUT)
+                    async with httpx.AsyncClient(timeout=self._timeout) as client:
+                        response = await client.post(url, json=body, headers=headers, timeout=self._timeout)
             except httpx.HTTPError as exc:
                 last = f"{type(exc).__name__}"
             else:
@@ -111,7 +123,7 @@ class GeminiEmbedder:
                 last = f"HTTP {response.status_code}"
                 if response.status_code not in (429, 500, 502, 503, 504):
                     break  # 401/403/404: configuration problem, not worth retrying now
-            if attempt < ATTEMPTS:
+            if attempt < self._attempts:
                 await asyncio.sleep(self._backoff_s * 2 ** (attempt - 1))
         logger.warning("knowledge embedding unavailable model=%s error=%s", self._model, last)
         raise EmbeddingUnavailableError(f"embedding API unavailable: {last}")

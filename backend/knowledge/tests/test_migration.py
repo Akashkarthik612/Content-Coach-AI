@@ -1,4 +1,4 @@
-"""Migrations 0025-0027 are reversible. No `db` fixture here: an open
+"""Migrations 0025-0028 are reversible. No `db` fixture here: an open
 session would block DROP TABLE."""
 
 import os
@@ -106,3 +106,25 @@ def test_0027_needs_reauth_round_trip(migrated_db):
     finally:
         _alembic("upgrade", "head")
         _query(lambda conn: (conn.execute(text("DELETE FROM users WHERE id = :u"), {"u": user_id}), conn.commit()))
+
+
+def _document_columns() -> set[str]:
+    return _query(
+        lambda conn: set(
+            conn.execute(
+                text("SELECT column_name FROM information_schema.columns WHERE table_name = 'knowledge_documents'")
+            ).scalars()
+        )
+    )
+
+
+def test_0028_body_column_round_trip(migrated_db):
+    """body is added nullable (old documents are backfilled by sync) and dropped on downgrade."""
+    try:
+        assert "body" in _document_columns()
+        _alembic("downgrade", "0027")
+        assert "body" not in _document_columns()
+        _alembic("upgrade", "head")
+        assert "body" in _document_columns()
+    finally:
+        _alembic("upgrade", "head")

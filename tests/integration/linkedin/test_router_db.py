@@ -18,7 +18,10 @@ URL = "/api/independent-agents/linkedin"
 
 
 @pytest.fixture
-def client(db, make_user, llm):
+def client(db, make_user, llm, monkeypatch):
+    # Thread storage is under test here, so the turn is the one structured
+    # call the `llm` fake replaces (the tool loop is covered by test_knowledge_turn).
+    monkeypatch.setattr(settings, "KNOWLEDGE_TOOLS_ENABLED", False)
     user = SimpleNamespace(id=make_user())  # routes only read user.id
     app.dependency_overrides[get_current_user] = lambda: user
     with TestClient(app) as test_client:  # runs the lifespan: real pool, setup(), graph

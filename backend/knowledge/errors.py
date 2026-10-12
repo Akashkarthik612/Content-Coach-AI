@@ -38,3 +38,34 @@ class PrefixTooLongError(PermanentFileError):
 
 class LeaseLostError(Exception):
     """Another run took this source's sync lease (ours expired). Stop now."""
+
+
+# ── retrieval for agent tools (Day 7) ─────────────────────────────────────────
+# Expected outcomes of a tool call the model can recover from: returned to it
+# as {"error": code, "message": ...}, never raised to the user. Infrastructure
+# failures (DB, embeddings) are not in this family and fail the turn.
+
+
+class KnowledgeToolError(Exception):
+    code = "tool_error"
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
+class DocumentNotFoundError(KnowledgeToolError):
+    """No such document for this user (never existed, someone else's, deleted,
+    or its source is paused)."""
+
+    code = "not_found"
+
+
+class DocumentTextUnavailableError(KnowledgeToolError):
+    """Synced before the body column existed; filled on the next sync."""
+
+    code = "text_unavailable"
+
+
+class InvalidToolInputError(KnowledgeToolError):
+    code = "invalid_input"

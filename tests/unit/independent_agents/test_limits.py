@@ -36,3 +36,17 @@ def test_reddit_revision_fits_a_max_size_post():
     draft = "Revise this current draft according to the request above.\n\nTitle: " + "t" * 300
     draft += "\n\n" + "b" * REDDIT_BODY_MAX_CHARS
     RedditPostRequest(topic="make it shorter", extra_context=draft)  # must not raise
+
+
+def test_t15_lease_covers_the_worst_case_tool_loop_turn():
+    # Day_7.md D7-D6: every model call (lookup rounds + the submit) at its
+    # retry worst case, every allowed tool call at its timeout, plus saving.
+    llm_call = limits.GEMINI_ATTEMPTS * limits.GEMINI_TIMEOUT_S + limits.BACKOFF_S
+    expected = (
+        (limits.MAX_TOOL_ROUNDS + 1) * llm_call
+        + limits.MAX_TOOL_CALLS * limits.TOOL_TIMEOUT_S
+        + limits.SAVE_BUFFER_S
+    )
+    assert limits.LEASE.total_seconds() == expected == 570
+    simulated_turn = (limits.MAX_TOOL_ROUNDS + 1) * llm_call + limits.MAX_TOOL_CALLS * limits.TOOL_TIMEOUT_S
+    assert limits.LEASE.total_seconds() > simulated_turn

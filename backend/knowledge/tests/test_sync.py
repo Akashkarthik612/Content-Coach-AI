@@ -361,3 +361,33 @@ async def test_document_deleted_by_the_user_is_not_synced_back(db, user, source,
     report = await service(con, embedder).sync_source(db, user, source.id)
     assert report.mode == "full" and "fetch:b" not in con.calls
     assert ids(db, user, source) == {"a"}
+
+
+# ── Day 7 D7-D1: body backfill ───────────────────────────────────────────────
+
+
+async def test_t7_document_without_body_is_fetched_once_and_backfilled_without_embedding(
+    db, user, source, embedder
+):
+    await service(FakeConnector(source, files=[meta("a")]), embedder).sync_source(db, user, source.id)
+    # As if synced before 0028.
+    db.execute(text("UPDATE knowledge_documents SET body = NULL"))
+    db.commit()
+    assert Repo.get_document(db, user, source.id, "a").has_body is False
+    calls_before = len(embedder.calls)
+
+    # Same modifiedTime: normally skipped, but a missing body forces one download.
+    Repo.update_source_config(db, user, source.id, "a@x.com", CONFIG)
+    con = FakeConnector(source, files=[meta("a")])
+    report = await service(con, embedder).sync_source(db, user, source.id)
+    assert "fetch:a" in con.calls
+    assert (report.unchanged, report.embedded) == (1, 0)
+    assert len(embedder.calls) == calls_before  # zero embedding calls
+    body = db.execute(text("SELECT body FROM knowledge_documents")).scalar_one()
+    assert body == f"# a\nBody of a at {T0}.\n"
+
+    # Now it has a body: the next sync skips the download again.
+    Repo.update_source_config(db, user, source.id, "a@x.com", CONFIG)
+    con = FakeConnector(source, files=[meta("a")])
+    await service(con, embedder).sync_source(db, user, source.id)
+    assert "fetch:a" not in con.calls

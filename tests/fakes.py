@@ -1,12 +1,19 @@
 """Fakes shared by the unit and integration tests.
 
-FakeLLM replaces linkedin._structured_llm() and records what it was sent.
+FakeLLM is a structured-output model (what `with_structured_output` returns):
+it records what it was sent and returns a LinkedInPost.
+ScriptedChatModel stands in for the raw Gemini chat model: `bind_tools` calls
+return queued AIMessages (tool calls), `with_structured_output` returns a
+FakeLLM. Both record every call.
 FakeThreads is an in-memory AgentThreadService with the same methods and
 errors, for tests that don't want a database.
 """
 
 import uuid
+from collections import deque
 from typing import ClassVar
+
+from langchain_core.messages import AIMessage
 
 from backend.ai.independent_agents import linkedin
 from backend.ai.independent_agents.threads import (
@@ -32,6 +39,50 @@ class FakeLLM:
             self.on_call()
         self.calls.append(messages)
         return linkedin.LinkedInPost(content=f"post {len(self.calls)}", note=self.note)
+
+
+def tool_call(name: str, args: dict | None = None, call_id: str | None = None) -> AIMessage:
+    """A model reply that calls one tool."""
+    return AIMessage(
+        content="",
+        tool_calls=[{"name": name, "args": args or {}, "id": call_id or f"call-{uuid.uuid4().hex[:8]}"}],
+    )
+
+
+def submit(**post) -> AIMessage:
+    return tool_call("submit_post", post)
+
+
+class ScriptedChatModel:
+    """Replies come from `replies` in order: an AIMessage, or an exception to
+    raise. `calls` records (tool names bound, tool_choice, messages) per call."""
+
+    def __init__(self, *replies):
+        self.replies: deque = deque(replies)
+        self.calls: list[tuple[tuple[str, ...], object, list]] = []
+        self.structured = FakeLLM()  # used when the knowledge tools are switched off
+        self.structured_schemas: list[type] = []
+
+    def bind_tools(self, tools, tool_choice=None, **_):
+        return _BoundScript(self, tuple(getattr(t, "name", str(t)) for t in tools), tool_choice)
+
+    def with_structured_output(self, schema, **_):
+        self.structured_schemas.append(schema)
+        return self.structured
+
+
+class _BoundScript:
+    def __init__(self, model: ScriptedChatModel, names: tuple[str, ...], tool_choice):
+        self._model, self._names, self._choice = model, names, tool_choice
+
+    async def ainvoke(self, messages, *_, **__):
+        self._model.calls.append((self._names, self._choice, list(messages)))
+        if not self._model.replies:
+            raise AssertionError("ScriptedChatModel ran out of replies")
+        reply = self._model.replies.popleft()
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
 
 
 class FakeThreads:

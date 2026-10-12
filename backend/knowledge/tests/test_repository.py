@@ -55,7 +55,7 @@ def meta(external_id: str = "file-1") -> DocumentMeta:
 
 def put(db, user_id, source_id, external_id, chunks, content_hash="h1", base=None):
     return Repo.apply_document_version(
-        db, user_id, source_id, meta(external_id), content_hash, ChunkDiff(to_insert=chunks), base
+        db, user_id, source_id, meta(external_id), content_hash, ChunkDiff(to_insert=chunks), base, body=f"body {content_hash}"
     )
 
 
@@ -157,7 +157,7 @@ def test_08_failure_after_delete_rolls_everything_back(db, user, drive, monkeypa
     monkeypatch.setattr(repository, "_insert_chunks", boom)
     diff = ChunkDiff(to_insert=[chunk(0, "c")], to_delete_ids=[before[0].id])
     with pytest.raises(RuntimeError):
-        Repo.apply_document_version(db, user, drive.id, meta("f"), "h2", diff, "h1")
+        Repo.apply_document_version(db, user, drive.id, meta("f"), "h2", diff, "h1", body="b2")
 
     assert Repo.list_chunk_refs(db, user, doc.id) == before
     assert Repo.get_document(db, user, drive.id, "f").content_hash == "h1"
@@ -168,7 +168,7 @@ def test_08b_ordinal_clash_fails_at_commit_and_rolls_back(db, user, drive):
     before = Repo.list_chunk_refs(db, user, doc.id)
     diff = ChunkDiff(to_insert=[chunk(5, "x"), chunk(5, "y")], to_delete_ids=[before[0].id])
     with pytest.raises(IntegrityError, match="uq_knowledge_chunks_doc_ordinal"):
-        Repo.apply_document_version(db, user, drive.id, meta("f"), "h2", diff, "h1")
+        Repo.apply_document_version(db, user, drive.id, meta("f"), "h2", diff, "h1", body="b2")
     assert Repo.list_chunk_refs(db, user, doc.id) == before
 
 
@@ -176,7 +176,7 @@ def test_09_reorder_permutation_needs_no_temporary_ordinals(db, user, drive):
     doc = put(db, user, drive.id, "f", [chunk(0, "a"), chunk(1, "b"), chunk(2, "c")])
     a, b, c = Repo.list_chunk_refs(db, user, doc.id)
     diff = ChunkDiff(reorder={a.id: 2, b.id: 0, c.id: 1})
-    Repo.apply_document_version(db, user, drive.id, meta("f"), "h2", diff, "h1")
+    Repo.apply_document_version(db, user, drive.id, meta("f"), "h2", diff, "h1", body="b2")
     assert [r.chunk_hash for r in Repo.list_chunk_refs(db, user, doc.id)] == [sha("b"), sha("c"), sha("a")]
 
 
@@ -189,7 +189,7 @@ def test_10_identical_chunks_in_one_document_are_both_stored(db, user, drive):
 def test_15_wrong_dimension_raises_and_writes_nothing(db, user, drive):
     bad = NewChunk(0, None, "x", sha("x"), 1, [1.0, 0.0, 0.0], TAG)
     with pytest.raises(InvalidVectorError):
-        Repo.apply_document_version(db, user, drive.id, meta("f"), "h1", ChunkDiff(to_insert=[bad]), None)
+        Repo.apply_document_version(db, user, drive.id, meta("f"), "h1", ChunkDiff(to_insert=[bad]), None, body="b1")
     assert Repo.get_document(db, user, drive.id, "f") is None
     with pytest.raises(InvalidVectorError):
         Repo.search(db, user, [0.0] * settings.EMBEDDING_DIM, k=3)  # zero vector: no direction
@@ -213,7 +213,7 @@ def test_17_concurrent_applies_one_wins_one_is_stale(db, user, drive):
         with SessionLocal() as session:
             barrier.wait()
             try:
-                Repo.apply_document_version(session, user, drive.id, meta("f"), content_hash, diff, "h0")
+                Repo.apply_document_version(session, user, drive.id, meta("f"), content_hash, diff, "h0", body=content)
                 results.append(("ok", content_hash))
             except StaleDiffError:
                 results.append(("stale", content_hash))

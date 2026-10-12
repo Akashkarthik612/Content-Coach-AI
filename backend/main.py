@@ -6,17 +6,24 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.ai.independent_agents.checkpointer import create_checkpointer, create_pool
+from backend.ai.independent_agents.limits import MAX_TOOL_CALLS, MAX_TOOL_ROUNDS, TOOL_TIMEOUT_S
 from backend.ai.independent_agents.linkedin import build_linkedin_graph
 from backend.ai.independent_agents.router import router as independent_agents_router
 from backend.ai.independent_agents.threads import AgentThreadService
+from backend.ai.tools.access import KnowledgeAccess
+from backend.ai.tools.tool_loop import ToolCallingRunner
 from backend.auth.router import router as auth_router
 from backend.core.config import settings
 from backend.core.database import SessionLocal
 from backend.knowledge.credentials import TokenCipher
+from backend.knowledge.embedder import GeminiEmbedder
+from backend.knowledge.repository import KnowledgeRepository
+from backend.knowledge.retrieval import KnowledgeRetrievalService
 from backend.knowledge.router import router as knowledge_router
 from backend.knowledge.search_mode import detect_search_mode
 from backend.knowledge.sync_poller import PollerSettings, start_sync_poller, stop_sync_poller
@@ -87,6 +94,27 @@ def _check_production_config() -> None:
         raise RuntimeError("KNOWLEDGE_TOKEN_KEY is not a valid Fernet key; refusing to start on Render") from exc
 
 
+def build_knowledge_access() -> KnowledgeAccess | None:
+    """The agents' knowledge tools, or None when KNOWLEDGE_TOOLS_ENABLED is
+    off (then every agent makes one structured call, as before Day 7)."""
+    logger.info("knowledge_tools_enabled=%s", settings.KNOWLEDGE_TOOLS_ENABLED)
+    if not settings.KNOWLEDGE_TOOLS_ENABLED:
+        return None
+    t = settings.KNOWLEDGE_QUERY_EMBED_TIMEOUT_S
+    query_embedder = GeminiEmbedder(
+        attempts=settings.KNOWLEDGE_QUERY_EMBED_ATTEMPTS,
+        timeout=httpx.Timeout(connect=min(t, 10.0), read=t, write=t, pool=min(t, 10.0)),
+    )
+    return KnowledgeAccess(
+        service=KnowledgeRetrievalService(
+            KnowledgeRepository, query_embedder, SessionLocal, statement_timeout_s=TOOL_TIMEOUT_S
+        ),
+        runner=ToolCallingRunner(
+            max_rounds=MAX_TOOL_ROUNDS, max_calls=MAX_TOOL_CALLS, tool_timeout_s=TOOL_TIMEOUT_S
+        ),
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _check_production_config()
@@ -97,7 +125,8 @@ async def lifespan(app: FastAPI):
     async with create_pool(settings.DATABASE_URL) as pool:
         checkpointer = create_checkpointer(pool)
         await checkpointer.setup()  # official + idempotent: creates/migrates the checkpoint tables
-        app.state.linkedin_graph = build_linkedin_graph(checkpointer)
+        app.state.knowledge = build_knowledge_access()
+        app.state.linkedin_graph = build_linkedin_graph(checkpointer, app.state.knowledge)
         purge_task = asyncio.create_task(_purge_expired_threads_forever(checkpointer))
         # Every 5 min, sync the knowledge sources that are due (off in tests/CI).
         sync_poller = start_sync_poller(PollerSettings.from_settings(settings))

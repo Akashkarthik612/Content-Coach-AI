@@ -54,6 +54,7 @@ class DocumentRecord:
     sync_status: str
     updated_at: datetime
     last_error: str | None = None  # why the last attempt failed (sync_status='failed')
+    has_body: bool = True  # False until a document synced before 0028 is re-synced
 
 
 @dataclass(frozen=True)
@@ -280,3 +281,56 @@ class TickReport:
     failed: int
     timed_out: int
     stragglers: int
+
+
+# ── retrieval for agent tools (Day 7) ─────────────────────────────────────────
+# What the knowledge tools return: only what a model needs to pick and read a
+# document. No user_id, hashes or distances.
+
+
+@dataclass(frozen=True)
+class ChunkSnippet:
+    heading: str | None
+    text: str
+
+
+@dataclass(frozen=True)
+class DocumentHits:
+    """Search hits grouped by document, in rank order: title and url once per
+    document, not once per chunk."""
+
+    document_id: UUID
+    title: str
+    url: str | None
+    chunks: tuple[ChunkSnippet, ...]
+
+
+@dataclass(frozen=True)
+class DocumentSummary:
+    """One document, enough to choose it and pass its id to read."""
+
+    document_id: UUID
+    title: str
+    source_name: str
+    mime_type: str
+    url: str | None
+    modified_at: datetime | None
+
+
+@dataclass(frozen=True)
+class DocumentListPage:
+    items: tuple[DocumentSummary, ...]
+    next_cursor: str | None  # None on the last page
+
+
+@dataclass(frozen=True)
+class DocumentPage:
+    """A slice of a document's body. next_offset is None at the end."""
+
+    document_id: UUID
+    title: str
+    url: str | None
+    text: str
+    offset: int
+    total_chars: int
+    next_offset: int | None

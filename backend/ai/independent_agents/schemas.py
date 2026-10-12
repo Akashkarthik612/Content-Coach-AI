@@ -26,10 +26,20 @@ class ThreadStatus(BaseModel):
     limit_reached: bool
 
 
+class SourceRefOut(BaseModel):
+    """A document the agent's knowledge tools showed it this turn."""
+
+    document_id: UUID
+    title: str
+    url: str | None = None
+
+
 class LinkedInChatResponse(BaseModel):
     content: str
     # Agent's message to the user (what it left out, or a question); not part of the post.
     note: str | None = None
+    # Documents the knowledge tools returned this turn (the UI shows them in a later build).
+    sources: list[SourceRefOut] = []
     thread: ThreadStatus
 
 

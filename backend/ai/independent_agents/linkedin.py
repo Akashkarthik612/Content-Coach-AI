@@ -1,14 +1,19 @@
-"""LinkedIn independent agent — one LLM call per turn, with thread memory.
+"""LinkedIn independent agent — one turn per request, with thread memory.
 
-Standalone by design (see day_3.md): no supervisor, no tools, no routing.
-The graph is a single node (START -> generate -> END); it exists only so the
-LangGraph checkpointer can load the conversation for a thread_id before the
-LLM call and save it after. Its state lives in this file so it shares nothing
-with the Reddit and X agents.
+Standalone by design (see day_3.md): no supervisor, no routing. The graph is
+a single node (START -> generate -> END); it exists only so the LangGraph
+checkpointer can load the conversation for a thread_id before the turn and
+save it after. Its state lives in this file so it shares nothing with the
+Reddit and X agents.
+
+With the knowledge tools on (Day 7), the turn is a tool loop run on a local
+message list; only the final post enters the state and the checkpoint (D7-D2).
+Off, it is one structured call.
 """
 
 from functools import lru_cache
 from typing import Annotated, TypedDict
+from uuid import UUID
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
@@ -22,6 +27,8 @@ from pydantic import BaseModel, Field
 from backend.ai.independent_agents.limits import GEMINI_ATTEMPTS, GEMINI_TIMEOUT_S
 from backend.ai.independent_agents.prompts.builder import SystemPromptBuilder, log_prompt_built
 from backend.ai.independent_agents.prompts.platform_specs import LINKEDIN_PROMPT
+from backend.ai.tools.access import KnowledgeAccess, sources_json
+from backend.ai.tools.context import ToolContext
 from backend.core.config import settings
 
 AGENT = "linkedin"
@@ -32,12 +39,12 @@ class LinkedInState(TypedDict):
     # The whole chat; add_messages appends, never trims. Length is bounded by
     # the per-thread turn cap enforced in threads.py, not by cutting history.
     messages: Annotated[list[AnyMessage], add_messages]
-    # Owner of the thread; Step 2 uses it to search the user's knowledge source.
+    # Owner of the thread: the knowledge tools read only this user's documents.
     user_id: str
 
 
 class LinkedInPost(BaseModel):
-    """Structured output of the one LLM call."""
+    """What the model returns: the structured output, or submit_post's arguments."""
 
     content: str = Field(description="The full LinkedIn post, ready to paste.")
     note: str | None = Field(
@@ -46,7 +53,7 @@ class LinkedInPost(BaseModel):
 
 
 @lru_cache
-def _structured_llm():
+def _chat_model() -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(
         model=MODEL_NAME,
         google_api_key=settings.LANGCHAIN_API_KEY_GEMINI,
@@ -55,26 +62,42 @@ def _structured_llm():
         # Bounded so a turn always finishes inside the thread lease (limits.py).
         max_retries=GEMINI_ATTEMPTS,
         timeout=GEMINI_TIMEOUT_S,
-    ).with_structured_output(LinkedInPost)
+    )
 
 
-async def generate(state: LinkedInState, config: RunnableConfig | None = None) -> dict:
+@lru_cache
+def _structured_llm():
+    """The knowledge tools switched off: one structured call."""
+    return _chat_model().with_structured_output(LinkedInPost)
+
+
+async def generate(
+    state: LinkedInState, config: RunnableConfig | None = None, knowledge: KnowledgeAccess | None = None
+) -> dict:
     messages = state["messages"]
     # Gemini rejects a request ending on a model turn. The route always appends
     # the user's message before this node runs, so this only fires on a bug.
     if not messages or not isinstance(messages[-1], HumanMessage):
         raise ValueError("LinkedIn agent: conversation must end on a user message")
 
-    prompt = SystemPromptBuilder.build(LINKEDIN_PROMPT)
+    prompt = SystemPromptBuilder.build(LINKEDIN_PROMPT, tools_bound=knowledge is not None)
     thread_id = (config or {}).get("configurable", {}).get("thread_id")
     log_prompt_built(prompt, user_id=state["user_id"], thread_id=thread_id)
+    request = [SystemMessage(prompt.text), *_with_notes(messages)]
 
-    post: LinkedInPost = await _structured_llm().ainvoke(
-        [SystemMessage(prompt.text), *_with_notes(messages)]
-    )
-    # The note rides in additional_kwargs, so `content` stays the clean post
-    # for the checkpoint, the UI and the API.
-    return {"messages": [AIMessage(content=post.content, additional_kwargs={"note": post.note})]}
+    if knowledge is None:
+        post: LinkedInPost = await _structured_llm().ainvoke(request)
+        sources: list[dict] = []
+    else:
+        ctx = ToolContext(user_id=UUID(state["user_id"]), agent=AGENT, correlation_id=str(thread_id))
+        result = await knowledge.write(_chat_model(), request, LinkedInPost, ctx)
+        post, sources = result.output, sources_json(result.sources)
+    # The note and sources ride in additional_kwargs, so `content` stays the
+    # clean post for the checkpoint, the UI and the API. Tool calls and results
+    # never enter the state.
+    return {
+        "messages": [AIMessage(content=post.content, additional_kwargs={"note": post.note, "sources": sources})]
+    }
 
 
 def _with_notes(messages: list[AnyMessage]) -> list[AnyMessage]:
@@ -89,9 +112,16 @@ def _with_notes(messages: list[AnyMessage]) -> list[AnyMessage]:
     ]
 
 
-def build_linkedin_graph(checkpointer: BaseCheckpointSaver) -> CompiledStateGraph:
+def build_linkedin_graph(
+    checkpointer: BaseCheckpointSaver, knowledge: KnowledgeAccess | None = None
+) -> CompiledStateGraph:
+    """knowledge=None: no tools (KNOWLEDGE_TOOLS_ENABLED off, or a test)."""
+
+    async def generate_node(state: LinkedInState, config: RunnableConfig) -> dict:
+        return await generate(state, config, knowledge)
+
     graph = StateGraph(LinkedInState)
-    graph.add_node("generate", generate)
+    graph.add_node("generate", generate_node)
     graph.add_edge(START, "generate")
     graph.add_edge("generate", END)
     return graph.compile(checkpointer=checkpointer)

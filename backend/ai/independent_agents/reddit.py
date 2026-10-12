@@ -1,11 +1,12 @@
-"""Reddit independent agent — one LLM call that writes one Reddit post.
+"""Reddit independent agent — writes one Reddit post per request.
 
-Standalone by design (see day_3.md): no supervisor, no graph, no tools. Its
-request/response state lives in this file so it shares nothing with the
+Standalone by design (see day_3.md): no supervisor, no graph. With the
+knowledge tools on (Day 7) the turn is a tool loop; off, one structured call.
+Its request/response state lives in this file so it shares nothing with the
 LinkedIn and X agents.
 """
 
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -14,6 +15,9 @@ from pydantic import BaseModel, Field
 from backend.ai.independent_agents.limits import GEMINI_ATTEMPTS, GEMINI_TIMEOUT_S
 from backend.ai.independent_agents.prompts.builder import SystemPromptBuilder, log_prompt_built
 from backend.ai.independent_agents.prompts.platform_specs import REDDIT_PROMPT
+from backend.ai.independent_agents.schemas import SourceRefOut
+from backend.ai.tools.access import KnowledgeAccess, sources_json
+from backend.ai.tools.context import ToolContext
 from backend.core.config import settings
 
 MODEL_NAME = "gemini-3.5-flash"
@@ -34,22 +38,34 @@ class RedditPostRequest(BaseModel):
 
 
 class RedditPostResponse(BaseModel):
+    """What the model fills (structured output, or submit_post's arguments).
+    Keep server-side fields out of it: the model would invent them."""
+
     title: str = Field(description="Post title, under 120 characters.")
     content: str = Field(description="Post body in Reddit markdown.")
     suggested_subreddit: str = Field(description="Best-fit subreddit name, without 'r/'.")
     note: str | None = Field(default=None, description="Short message to the user, shown apart from the post.")
 
 
+class RedditDraftResponse(RedditPostResponse):
+    """The API response: the model's post plus the documents its tools showed it."""
+
+    sources: list[SourceRefOut] = []
+
+
 class RedditAgent:
     @staticmethod
-    async def run(req: RedditPostRequest, user_id: UUID) -> RedditPostResponse:
+    async def run(
+        req: RedditPostRequest, user_id: UUID, knowledge: KnowledgeAccess | None = None
+    ) -> RedditDraftResponse:
         llm = ChatGoogleGenerativeAI(
             model=MODEL_NAME,
             google_api_key=settings.LANGCHAIN_API_KEY_GEMINI,
+            base_url=settings.GEMINI_BASE_URL or None,
             thinking_level="low",
             max_retries=GEMINI_ATTEMPTS,
             timeout=GEMINI_TIMEOUT_S,
-        ).with_structured_output(RedditPostResponse)
+        )
 
         user_msg = f"Topic: {req.topic}"
         if req.subreddit:
@@ -59,6 +75,12 @@ class RedditAgent:
         if req.extra_context:
             user_msg += f"\nContext:\n{req.extra_context}"
 
-        prompt = SystemPromptBuilder.build(REDDIT_PROMPT)
+        prompt = SystemPromptBuilder.build(REDDIT_PROMPT, tools_bound=knowledge is not None)
         log_prompt_built(prompt, user_id=user_id)
-        return await llm.ainvoke([SystemMessage(prompt.text), HumanMessage(user_msg)])
+        request = [SystemMessage(prompt.text), HumanMessage(user_msg)]
+        if knowledge is None:
+            post: RedditPostResponse = await llm.with_structured_output(RedditPostResponse).ainvoke(request)
+            return RedditDraftResponse(**post.model_dump())
+        ctx = ToolContext(user_id=user_id, agent="reddit", correlation_id=str(uuid4()))
+        result = await knowledge.write(llm, request, RedditPostResponse, ctx)
+        return RedditDraftResponse(**result.output.model_dump(), sources=sources_json(result.sources))

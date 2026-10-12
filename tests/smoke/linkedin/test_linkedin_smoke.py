@@ -6,6 +6,9 @@ The contract test pins the exact request the production key will receive, so
 a library upgrade that changes it fails here instead of in production.
 """
 
+import asyncio
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
@@ -14,9 +17,15 @@ from backend.ai.independent_agents.limits import GEMINI_ATTEMPTS, GEMINI_TIMEOUT
 from backend.ai.independent_agents.prompts.builder import SystemPromptBuilder
 from backend.ai.independent_agents.prompts.platform_specs import LINKEDIN_PROMPT
 from backend.auth.models import User
+from backend.core.config import settings
+from backend.knowledge.embedder import FakeEmbedder
+from backend.knowledge.pipeline import IngestionPipeline
+from backend.knowledge.records import FetchedDocument, FileMeta
+from backend.knowledge.repository import KnowledgeRepository as Repo
 from backend.main import app
 from tests.conftest import SMOKE_ORIGIN
 from tests.smoke import jwt_keys
+from tests.smoke.conftest import reset_clients
 from tests.smoke.fake_upstream import MODEL_PATH
 
 URL = "/api/independent-agents/linkedin"
@@ -73,7 +82,9 @@ def test_first_message_reaches_gemini_and_returns_its_post(client, upstream, use
 
 
 def test_gemini_request_contract(client, upstream, user):
-    """Exactly what production sends to Google with the real key."""
+    """Exactly what production sends to Google with the real key (knowledge
+    tools on, the default): function declarations, tool_choice=any, and no
+    response schema, since the post comes back as submit_post's arguments."""
     _send(client, user, "write about our launch")
 
     (req,) = upstream.requests
@@ -81,14 +92,76 @@ def test_gemini_request_contract(client, upstream, user):
     assert req.headers["x-goog-api-key"] == "smoke-key"
     assert req.headers["x-server-timeout"] == str(GEMINI_TIMEOUT_S)
     body = req.body
-    assert body["systemInstruction"]["parts"][0]["text"] == SystemPromptBuilder.build(LINKEDIN_PROMPT).text
+    expected_prompt = SystemPromptBuilder.build(LINKEDIN_PROMPT, tools_bound=True).text
+    assert body["systemInstruction"]["parts"][0]["text"] == expected_prompt
     assert _texts(body) == [("user", "write about our launch")]
+    declared = {f["name"]: f for t in body["tools"] for f in t["functionDeclarations"]}
+    assert sorted(declared) == sorted(
+        ["search_knowledge", "find_documents", "list_documents", "read_document", "submit_post"]
+    )
+    submit_params = json.dumps(declared["submit_post"])
+    assert '"content"' in submit_params and "user_id" not in json.dumps(declared)
+    assert body["toolConfig"]["functionCallingConfig"]["mode"] == "ANY"
+    config = body["generationConfig"]
+    assert "responseJsonSchema" not in config
+    assert config["thinkingConfig"] == {"thinking_level": "LOW"}
+
+
+def test_gemini_request_contract_with_knowledge_tools_off(db, upstream, user, monkeypatch):
+    """KNOWLEDGE_TOOLS_ENABLED=False: one structured-output call, as before Day 7."""
+    monkeypatch.setattr(settings, "KNOWLEDGE_TOOLS_ENABLED", False)
+    upstream.reset()
+    monkeypatch.setattr(settings, "GEMINI_BASE_URL", upstream.url)
+    monkeypatch.setattr(settings, "LANGCHAIN_API_KEY_GEMINI", "smoke-key")
+    monkeypatch.setattr(settings, "SUPABASE_URL", upstream.url)
+    reset_clients()
+    try:
+        with TestClient(app) as client:
+            res = _send(client, user, "write about our launch")
+    finally:
+        reset_clients()
+
+    assert res.status_code == 200
+    (req,) = upstream.requests
+    body = req.body
+    assert body["systemInstruction"]["parts"][0]["text"] == SystemPromptBuilder.build(LINKEDIN_PROMPT).text
+    assert "tools" not in body
     config = body["generationConfig"]
     assert config["responseMimeType"] == "application/json"
     schema = config["responseJsonSchema"]
     assert schema["required"] == ["content"]
     assert schema["properties"]["content"]["type"] == "string"
-    assert config["thinkingConfig"] == {"thinking_level": "LOW"}
+
+
+def test_t16_agent_searches_a_seeded_document_then_submits(client, upstream, user, db):
+    """Fake Gemini scripts search_knowledge on the user's synced doc, then
+    submit_post. The second request carries the tool's real result."""
+    assert client.get(f"{URL}/threads", headers=user.headers).status_code == 200  # provisions the user
+    source = Repo.create_source(db, user.id, "gdrive", "acct", "Drive", {"folder_ids": ["F"]})
+    asyncio.run(
+        IngestionPipeline(Repo, FakeEmbedder()).ingest(
+            db, user.id, source.id,
+            FetchedDocument(
+                FileMeta("f1", "Q3 Launch Plan", "text/markdown"),
+                "# Pilot\nWe ship v2 to 40 pilot teams.\n",
+                "markdown",
+            ),
+        )
+    )
+    upstream.reply_call("search_knowledge", {"query": "pilot plan"})
+    upstream.reply_post("Shipping v2 to 40 pilot teams.")
+
+    res = _send(client, user, "write about our pilot")
+
+    assert res.status_code == 200
+    assert res.json()["content"] == "Shipping v2 to 40 pilot teams."
+    assert [s["title"] for s in res.json()["sources"]] == ["Q3 Launch Plan"]
+    _, second = upstream.requests
+    assert second.body["toolConfig"]["functionCallingConfig"]["mode"] == "ANY"
+    parts = [p for c in second.body["contents"] for p in c["parts"]]
+    response = next(p["functionResponse"] for p in parts if "functionResponse" in p)
+    assert response["name"] == "search_knowledge"
+    assert "40 pilot teams" in json.dumps(response)
 
 
 def test_follow_up_sends_whole_conversation_to_gemini(client, upstream, user):

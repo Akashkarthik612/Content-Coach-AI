@@ -28,19 +28,37 @@ from tests.smoke.fake_google import ROOT_ID, FakeEmbeddings, FakeGoogle
 MODEL_PATH = "/v1beta/models/gemini-3.5-flash:generateContent"
 
 
-def post_reply(content: str) -> dict:
-    """A successful generateContent body whose text is the structured output."""
+SUBMIT = "submit_post"
+
+
+def _reply(parts: list[dict]) -> dict:
     return {
-        "candidates": [
-            {
-                "content": {"role": "model", "parts": [{"text": json.dumps({"content": content})}]},
-                "finishReason": "STOP",
-                "index": 0,
-            }
-        ],
+        "candidates": [{"content": {"role": "model", "parts": parts}, "finishReason": "STOP", "index": 0}],
         "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 10, "totalTokenCount": 20},
         "modelVersion": "gemini-3.5-flash",
     }
+
+
+def post_reply(content: str) -> dict:
+    """A successful generateContent body whose text is the structured output."""
+    return _reply([{"text": json.dumps({"content": content})}])
+
+
+def call_reply(name: str, args: dict) -> dict:
+    """The model calling one declared function (a knowledge tool or submit_post)."""
+    return _reply([{"functionCall": {"name": name, "args": args}}])
+
+
+def declares_tools(body: dict) -> bool:
+    return bool(body.get("tools"))
+
+
+def answer_with_post(body: dict, content: str) -> dict:
+    """How Gemini hands back a post: submit_post when tools are declared
+    (knowledge tools on), structured JSON text otherwise."""
+    if declares_tools(body):
+        return call_reply(SUBMIT, {"content": content})
+    return post_reply(content)
 
 
 def error_reply(status: int, message: str = "fake gemini error") -> tuple[int, dict]:
@@ -58,7 +76,8 @@ class Recorded:
 @dataclass
 class FakeUpstream:
     """Records every Gemini request. Replies come from `queue` first, then
-    `always` if set, otherwise a numbered default post ("fake post N")."""
+    `always` if set, otherwise a numbered default post ("fake post N").
+    Queued posts are shaped per request (see answer_with_post)."""
 
     requests: list[Recorded] = field(default_factory=list)
     queue: deque = field(default_factory=deque)
@@ -75,7 +94,10 @@ class FakeUpstream:
         self.embeddings.reset()
 
     def reply_post(self, content: str) -> None:
-        self.queue.append((200, post_reply(content)))
+        self.queue.append(lambda body: (200, answer_with_post(body, content)))
+
+    def reply_call(self, name: str, args: dict) -> None:
+        self.queue.append((200, call_reply(name, args)))
 
     def reply_error(self, status: int, message: str = "fake gemini error") -> None:
         self.queue.append(error_reply(status, message))
@@ -83,12 +105,13 @@ class FakeUpstream:
     def fail_always(self, status: int, message: str = "fake gemini error") -> None:
         self.always = error_reply(status, message)
 
-    def _next(self) -> tuple[int, dict]:
+    def _next(self, body: dict) -> tuple[int, dict]:
         if self.queue:
-            return self.queue.popleft()
+            reply = self.queue.popleft()
+            return reply(body) if callable(reply) else reply
         if self.always:
             return self.always
-        return 200, post_reply(f"fake post {len(self.requests)}")
+        return 200, answer_with_post(body, f"fake post {len(self.requests)}")
 
     def app(self) -> FastAPI:
         app = FastAPI()
@@ -152,7 +175,7 @@ class FakeUpstream:
             if FakeEmbeddings.is_embed_path(full_path):
                 return self.embeddings.reply(body)
             self.requests.append(Recorded("/" + full_path, dict(request.headers), body))
-            status, payload = self._next()
+            status, payload = self._next(body)
             return JSONResponse(payload, status_code=status)
 
         return app

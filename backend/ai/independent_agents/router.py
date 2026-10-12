@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from backend.ai.independent_agents.limits import X_POST_MAX_CHARS, is_transient_llm_error
 from backend.ai.independent_agents.linkedin import AGENT as LINKEDIN
-from backend.ai.independent_agents.reddit import RedditAgent, RedditPostRequest, RedditPostResponse
+from backend.ai.independent_agents.reddit import RedditAgent, RedditDraftResponse, RedditPostRequest
 from backend.ai.independent_agents.schemas import (
     ChatRequest,
     LinkedInChatResponse,
@@ -35,7 +35,8 @@ from backend.ai.independent_agents.threads import (
     ThreadLimitReachedError,
     ThreadNotFoundError,
 )
-from backend.ai.independent_agents.x import XAgent, XPostRequest, XPostResponse, XPostTooLongError
+from backend.ai.independent_agents.x import XAgent, XDraftResponse, XPostRequest, XPostTooLongError
+from backend.ai.tools.access import KnowledgeAccess
 from backend.auth.models import User
 from backend.auth.services import get_current_user
 from backend.core.config import settings
@@ -88,6 +89,11 @@ def _linkedin_graph(request: Request) -> CompiledStateGraph:
     return request.app.state.linkedin_graph
 
 
+def _knowledge(request: Request) -> KnowledgeAccess | None:
+    """Built in main.py's lifespan; None when KNOWLEDGE_TOOLS_ENABLED is off."""
+    return request.app.state.knowledge
+
+
 # ── LinkedIn (thread memory) ──────────────────────────────────────────────────
 
 
@@ -136,6 +142,7 @@ async def chat_linkedin(
     return LinkedInChatResponse(
         content=reply.content,
         note=reply.additional_kwargs.get("note"),
+        sources=reply.additional_kwargs.get("sources") or [],
         thread=_thread_status(thread_id, turn_count),
     )
 
@@ -214,20 +221,26 @@ async def delete_linkedin_thread(
 # ── Reddit and X (stateless until they get thread memory) ────────────────────
 
 
-@router.post("/reddit", response_model=RedditPostResponse)
+@router.post("/reddit", response_model=RedditDraftResponse)
 async def generate_reddit_post(
-    req: RedditPostRequest, user: User = Depends(get_current_user)
-) -> RedditPostResponse:
+    req: RedditPostRequest,
+    user: User = Depends(get_current_user),
+    knowledge: KnowledgeAccess | None = Depends(_knowledge),
+) -> RedditDraftResponse:
     try:
-        return await RedditAgent.run(req, user.id)
+        return await RedditAgent.run(req, user.id, knowledge=knowledge)
     except Exception as exc:
         raise _llm_failed("Reddit", exc) from exc
 
 
-@router.post("/x", response_model=XPostResponse)
-async def generate_x_post(req: XPostRequest, user: User = Depends(get_current_user)) -> XPostResponse:
+@router.post("/x", response_model=XDraftResponse)
+async def generate_x_post(
+    req: XPostRequest,
+    user: User = Depends(get_current_user),
+    knowledge: KnowledgeAccess | None = Depends(_knowledge),
+) -> XDraftResponse:
     try:
-        return await XAgent.run(req, user.id)
+        return await XAgent.run(req, user.id, knowledge=knowledge)
     except XPostTooLongError as exc:
         # Already logged with index and length in XAgent.check_lengths.
         raise HTTPException(

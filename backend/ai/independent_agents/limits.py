@@ -19,7 +19,18 @@ GEMINI_TIMEOUT_S = 30  # per attempt
 BACKOFF_S = 5  # google-genai's exponential backoff between the attempts (~1s + ~2s + jitter)
 SAVE_BUFFER_S = 15  # loading/saving the checkpoint + the agent_threads updates
 
-LEASE = timedelta(seconds=GEMINI_ATTEMPTS * GEMINI_TIMEOUT_S + BACKOFF_S + SAVE_BUFFER_S)
+# Knowledge tool loop (backend/ai/tools/tool_loop.py): up to MAX_TOOL_ROUNDS
+# lookup rounds, then one more model call that submits (or is forced to).
+MAX_TOOL_ROUNDS = 4
+# Per turn, across all rounds: a model can ask for several tools in one round,
+# so the lease bounds calls, not rounds. Extra calls get a call_limit result.
+MAX_TOOL_CALLS = 4
+TOOL_TIMEOUT_S = 20  # per tool call; also the DB statement_timeout of that call
+
+LLM_CALL_WORST_S = GEMINI_ATTEMPTS * GEMINI_TIMEOUT_S + BACKOFF_S
+TURN_WORST_S = (MAX_TOOL_ROUNDS + 1) * LLM_CALL_WORST_S + MAX_TOOL_CALLS * TOOL_TIMEOUT_S  # 555 s
+
+LEASE = timedelta(seconds=TURN_WORST_S + SAVE_BUFFER_S)  # 570 s
 
 # X rejects longer posts. Used by the X prompt and the post-call check in x.py.
 X_POST_MAX_CHARS = 280

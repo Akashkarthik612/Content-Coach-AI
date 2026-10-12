@@ -22,8 +22,9 @@ def upstream():
     return fake_upstream.start()
 
 
-def _reset_clients():
+def reset_clients():
     linkedin._structured_llm.cache_clear()  # rebuilt with the settings below
+    linkedin._chat_model.cache_clear()
     auth_services._jwks_client = None  # refetch JWKS from the fake
 
 
@@ -33,10 +34,10 @@ def client(db, upstream, monkeypatch):
     monkeypatch.setattr(settings, "GEMINI_BASE_URL", upstream.url)
     monkeypatch.setattr(settings, "LANGCHAIN_API_KEY_GEMINI", GEMINI_KEY)
     monkeypatch.setattr(settings, "SUPABASE_URL", upstream.url)
-    _reset_clients()
+    reset_clients()
     with TestClient(app) as test_client:
         yield test_client
-    _reset_clients()
+    reset_clients()
 
 
 @pytest.fixture

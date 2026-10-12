@@ -169,7 +169,7 @@ async def test_i8_stale_diff_writes_nothing(db, user, source, embedder):
             stored = Repo.get_document(db, user, source.id, "f1")
             meta = doc(*FOUR).meta.to_document_meta()
             Repo.apply_document_version(
-                db, user, source.id, meta, "other-hash", ChunkDiff(), stored.content_hash
+                db, user, source.id, meta, "other-hash", ChunkDiff(), stored.content_hash, body="other"
             )
             return await super().embed_documents(title, texts)
 
