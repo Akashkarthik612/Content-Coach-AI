@@ -1,8 +1,7 @@
 # Honne AI
 
-Multiplayer AI for teams: one shared knowledge layer, many agents on top, and a single place to go from "I have the material" to "it's published". You can check it out [here!](#) <!-- 🔗 add live Vercel URL -->
+Multiplayer AI for teams: one shared knowledge layer, many agents on top, and a single place to go from "I have the material" to "it's published". [Explore the live Honne AI app](https://honne-ai-rust.vercel.app/).
 
-<!-- 📸 HERO SCREENSHOT: /home dashboard, full width -->
 
 ## Table of Contents
 
@@ -55,12 +54,10 @@ flowchart LR
 | **Thread memory** | A chat resumes where it stopped, using a Postgres-backed LangGraph checkpointer | ✅ LinkedIn · ⏳ Reddit, X |
 | **Turn-safe chats** | One turn at a time per thread (lease lock), a 15-turn cap and a 7-day idle purge | ✅ Live |
 | **Supabase auth** | Email, Google sign-in and password reset, with JWT verification on the API | ✅ Live |
-| **Knowledge layer** | Connect → parse → chunk → embed → store, with incremental re-embedding | 🚧 Next |
-| **Semantic search** | One retrieval interface that every agent shares | 🚧 Next |
-| **Supervisor graph** | One supervisor; researcher, angles, series and writer run as tools | 🗓 Later |
+| **Knowledge layer** | Ingestion, chunking and embedding code for shared company context; integration maturity varies by connector | 🧪 Implemented in code; validate end-to-end |
+| **Semantic search** | Retrieval components backed by pgvector | 🧪 Implemented in code; verify per-agent usage |
+| **Supervisor graph** | Supervisor / specialist-agent orchestration | 🧪 In development |
 
-<!-- 📸 SCREENSHOT: LinkedIn studio mid-conversation -->
-<!-- 📸 SCREENSHOT: Reddit / X studios side by side -->
 
 **One chat turn**
 
@@ -84,7 +81,7 @@ sequenceDiagram
     API-->>FE: draft (nothing written to posts)
 ```
 
-**Where it's heading: ingestion pipeline**
+**Knowledge-ingestion pipeline (implementation components; connector readiness varies)**
 
 ```mermaid
 flowchart LR
@@ -94,7 +91,6 @@ flowchart LR
     V --> R[Semantic search] --> AG[Any agent]
 ```
 
-<!-- 🖼 DIAGRAM: full system architecture (optional image export) -->
 
 ## Installation
 
@@ -170,7 +166,7 @@ This is a personal project and is under active development. Issues and suggestio
 
 ## License
 
-<!-- 📄 add license (e.g. MIT) and a LICENSE file -->
+See the repository LICENSE file if present; otherwise contact the author about reuse rights.
 
 ---
 
