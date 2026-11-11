@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from backend.core.config import settings
 from backend.knowledge.embedder import Embedder
 from backend.knowledge.errors import InvalidToolInputError
+from backend.knowledge.permissions import WorkspaceKnowledgeScope
 from backend.knowledge.records import (
     ChunkSnippet,
     DocumentHits,
@@ -53,13 +54,17 @@ class KnowledgeRetrievalService:
         self._session_factory = session_factory
         self._statement_timeout_ms = str(int(statement_timeout_s * 1000))
 
-    async def search(self, user_id: UUID, query: str) -> list[DocumentHits]:
+    async def search(
+        self, user_id: UUID, query: str, *, scope: WorkspaceKnowledgeScope | None = None
+    ) -> list[DocumentHits]:
         """Top KNOWLEDGE_SEARCH_TOP_K chunks, grouped by document in rank order
         (a document appears where its best chunk ranks)."""
         if not query.strip():
             raise InvalidToolInputError("query is blank")
         vector = await self._embedder.embed_query(query)
-        hits = await self._db(self._store.search, user_id, vector, settings.KNOWLEDGE_SEARCH_TOP_K)
+        hits = await self._db(
+            self._store.search, user_id, vector, settings.KNOWLEDGE_SEARCH_TOP_K, scope=scope
+        )
 
         grouped: dict[UUID, list] = {}  # insertion order = rank of each document's best chunk
         for hit in hits:
@@ -74,40 +79,60 @@ class KnowledgeRetrievalService:
             for document_id, group in grouped.items()
         ]
 
-    async def find(self, user_id: UUID, title_query: str, limit: int) -> list[DocumentSummary]:
+    async def find(
+        self, user_id: UUID, title_query: str, limit: int, *, scope: WorkspaceKnowledgeScope | None = None
+    ) -> list[DocumentSummary]:
         if not title_query.strip():
             raise InvalidToolInputError("title_query is blank")
         _check_limit(limit, settings.KNOWLEDGE_LIST_MAX)
-        return await self._db(self._store.find_documents_by_title, user_id, title_query.strip(), limit)
+        return await self._db(
+            self._store.find_documents_by_title, user_id, title_query.strip(), limit, scope=scope
+        )
 
     async def list_documents(
-        self, user_id: UUID, sort_by: SortBy, limit: int, cursor: str | None
+        self,
+        user_id: UUID,
+        sort_by: SortBy,
+        limit: int,
+        cursor: str | None,
+        *,
+        scope: WorkspaceKnowledgeScope | None = None,
     ) -> DocumentListPage:
         if sort_by not in _SORTS:
             raise InvalidToolInputError(f"sort_by must be one of {', '.join(_SORTS)}")
         _check_limit(limit, settings.KNOWLEDGE_LIST_MAX)
         offset = _decode_cursor(cursor, sort_by) if cursor else 0
-        items, more = await self._db(self._store.list_documents_page, user_id, sort_by, limit, offset)
+        items, more = await self._db(
+            self._store.list_documents_page, user_id, sort_by, limit, offset, scope=scope
+        )
         return DocumentListPage(
             items=tuple(items),
             next_cursor=_encode_cursor(sort_by, offset + limit) if more else None,
         )
 
-    async def read(self, user_id: UUID, document_id: UUID, offset: int, limit: int) -> DocumentPage:
+    async def read(
+        self,
+        user_id: UUID,
+        document_id: UUID,
+        offset: int,
+        limit: int,
+        *,
+        scope: WorkspaceKnowledgeScope | None = None,
+    ) -> DocumentPage:
         if offset < 0:
             raise InvalidToolInputError("offset must be 0 or more")
         _check_limit(limit, settings.KNOWLEDGE_READ_MAX_CHARS)
-        page = await self._db(self._store.get_document_text, user_id, document_id, offset, limit)
+        page = await self._db(self._store.get_document_text, user_id, document_id, offset, limit, scope=scope)
         if offset >= page.total_chars:
             raise InvalidToolInputError(
                 f"offset {offset} is past the end of the document ({page.total_chars} characters)"
             )
         return page
 
-    async def has_sources(self, user_id: UUID) -> bool:
-        return await self._db(self._store.has_sources, user_id)
+    async def has_sources(self, user_id: UUID, *, scope: WorkspaceKnowledgeScope | None = None) -> bool:
+        return await self._db(self._store.has_sources, user_id, scope=scope)
 
-    async def _db(self, fn: Callable[..., T], user_id: UUID, *args) -> T:
+    async def _db(self, fn: Callable[..., T], user_id: UUID, *args, scope=None) -> T:
         def work() -> T:
             with self._session_factory() as db:
                 # Transaction-local (is_local=true): ends with this call's transaction.
@@ -115,7 +140,7 @@ class KnowledgeRetrievalService:
                     text("SELECT set_config('statement_timeout', :ms, true)"),
                     {"ms": self._statement_timeout_ms},
                 )
-                return fn(db, user_id, *args)
+                return fn(db, user_id, *args, **({"scope": scope} if scope is not None else {}))
 
         return await asyncio.to_thread(work)
 

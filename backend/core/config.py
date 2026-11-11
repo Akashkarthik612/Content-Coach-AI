@@ -103,6 +103,12 @@ class Settings(BaseSettings):
     KNOWLEDGE_QUERY_EMBED_ATTEMPTS: int = 1
     KNOWLEDGE_QUERY_EMBED_TIMEOUT_S: float = 8.0
 
+    # Custom agents (backend/agents/, Day_8.md D8-D11). The prompt is resent on
+    # every model call of a turn, so its length is the main per-turn cost.
+    CUSTOM_AGENT_PROMPT_MAX_CHARS: int = 8000
+    CUSTOM_AGENT_GUARDRAILS_MAX_CHARS: int = 2000
+    MAX_CUSTOM_AGENTS_PER_USER: int = 25  # active (non-archived) agents
+
 
 
 @lru_cache

@@ -10,6 +10,7 @@ import RedditStudioPage from './pages/RedditStudioPage';
 import XStudioPage from './pages/XStudioPage';
 import GDriveCallbackPage from './pages/GDriveCallbackPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
+import DemoWorkspacePage from './pages/DemoWorkspacePage';
 import { supabase } from './lib/supabaseClient';
 
 // Dev-only switch — see AUTH_PROVIDER on the backend (backend/auth_local/).
@@ -45,6 +46,7 @@ export default function App() {
       <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
       <Route path="/home"      element={<RequireAuth><HomeDashboardPage /></RequireAuth>} />
       <Route path="/knowledge" element={<RequireAuth><HomeDashboardPage initialNav="knowledge" /></RequireAuth>} />
+      <Route path="/demo" element={<RequireAuth><DemoWorkspacePage /></RequireAuth>} />
       <Route path="/linkedin"   element={<RequireAuth><LinkedInStudioPage /></RequireAuth>} />
       <Route path="/reddit"     element={<RequireAuth><RedditStudioPage /></RequireAuth>} />
       <Route path="/x"          element={<RequireAuth><XStudioPage /></RequireAuth>} />

@@ -10,6 +10,7 @@ import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.agents.router import router as agents_router
 from backend.ai.independent_agents.checkpointer import create_checkpointer, create_pool
 from backend.ai.independent_agents.limits import MAX_TOOL_CALLS, MAX_TOOL_ROUNDS, TOOL_TIMEOUT_S
 from backend.ai.independent_agents.linkedin import build_linkedin_graph
@@ -27,6 +28,8 @@ from backend.knowledge.retrieval import KnowledgeRetrievalService
 from backend.knowledge.router import router as knowledge_router
 from backend.knowledge.search_mode import detect_search_mode
 from backend.knowledge.sync_poller import PollerSettings, start_sync_poller, stop_sync_poller
+from backend.workspaces.router import router as workspaces_router
+from backend.workspaces.workflow import build_workflow_graph
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +129,9 @@ async def lifespan(app: FastAPI):
         checkpointer = create_checkpointer(pool)
         await checkpointer.setup()  # official + idempotent: creates/migrates the checkpoint tables
         app.state.knowledge = build_knowledge_access()
+        app.state.workspace_graph = (
+            build_workflow_graph(checkpointer, app.state.knowledge) if app.state.knowledge is not None else None
+        )
         app.state.linkedin_graph = build_linkedin_graph(checkpointer, app.state.knowledge)
         purge_task = asyncio.create_task(_purge_expired_threads_forever(checkpointer))
         # Every 5 min, sync the knowledge sources that are due (off in tests/CI).
@@ -157,6 +163,8 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(independent_agents_router)
 app.include_router(knowledge_router)
+app.include_router(agents_router)
+app.include_router(workspaces_router)
 
 
 @app.get("/health")

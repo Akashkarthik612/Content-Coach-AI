@@ -1,9 +1,10 @@
 """The shared tool-calling loop (Day_7.md §5.4, D7-D3/D4/D5/D14).
 
-The agent's output schema becomes one more tool, `submit_post`: the model
-calls it to hand back the finished post, and its arguments are validated
-against the schema. Every round binds the tools with tool_choice="any", so
-each reply is either a lookup or the submission.
+The agent's output schema becomes one more tool, the submit tool: the model
+calls it to hand back its output, and its arguments are validated against the
+schema. Every round binds the tools with tool_choice="any", so each reply is
+either a lookup or the submission. Platform agents submit a post
+(`submit_post`, the default); custom agents submit an answer (Day_8.md D8-D5).
 
 The loop runs on a local message list: tool calls and results never reach the
 caller's state or checkpoint, only the validated output and the sources do.
@@ -16,6 +17,7 @@ import asyncio
 import json
 import logging
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import TypeVar
 
 from langchain_core.language_models import BaseChatModel
@@ -28,7 +30,24 @@ from backend.ai.tools.records import SourceRef, ToolCallRecord, ToolLoopResult, 
 
 logger = logging.getLogger(__name__)
 
-SUBMIT = "submit_post"
+@dataclass(frozen=True)
+class SubmitSpec:
+    """What the submit tool is called and what it hands back."""
+
+    name: str
+    noun: str  # "post" | "answer": used in the tool description and loop messages
+
+    @property
+    def description(self) -> str:
+        return (
+            f"Hand back the finished {self.noun}. Call it once, when the {self.noun} is ready; "
+            f"its arguments are the {self.noun}."
+        )
+
+
+SUBMIT_POST = SubmitSpec(name="submit_post", noun="post")
+SUBMIT_ANSWER = SubmitSpec(name="submit_answer", noun="answer")
+SUBMIT = SUBMIT_POST.name
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -38,18 +57,16 @@ class ToolLoopInvalidOutputError(Exception):
     without calling any tool. The turn fails (502); nothing is retried."""
 
 
-def submit_tool(output_schema: type[BaseModel]) -> StructuredTool:
+def submit_tool(output_schema: type[BaseModel], spec: SubmitSpec = SUBMIT_POST) -> StructuredTool:
     """Declared to the model, never executed: the loop intercepts the call."""
 
     def _never_run(**_: object) -> None:
-        raise RuntimeError("submit_post is handled by ToolCallingRunner, not executed")
+        raise RuntimeError(f"{spec.name} is handled by ToolCallingRunner, not executed")
 
     return StructuredTool.from_function(
         func=_never_run,
-        name=SUBMIT,
-        description=(
-            "Hand back the finished post. Call it once, when the post is ready; its arguments are the post."
-        ),
+        name=spec.name,
+        description=spec.description,
         args_schema=output_schema,
     )
 
@@ -67,8 +84,9 @@ class ToolCallingRunner:
         tools: Sequence[BaseTool],
         output_schema: type[T],
         ctx: ToolContext,
+        spec: SubmitSpec = SUBMIT_POST,
     ) -> ToolLoopResult[T]:
-        submit = submit_tool(output_schema)
+        submit = submit_tool(output_schema, spec)
         by_name: dict[str, BaseTool] = {t.name: t for t in tools}
         bound = llm.bind_tools([*tools, submit], tool_choice="any")
         local: list[AnyMessage] = list(messages)
@@ -77,9 +95,11 @@ class ToolCallingRunner:
 
         for round_no in range(1, self._max_rounds + 1):
             reply: AIMessage = await bound.ainvoke(local)
-            submission = _submission(reply)
+            if ctx.on_usage and reply.usage_metadata:
+                await ctx.on_usage(dict(reply.usage_metadata))
+            submission = _submission(reply, spec)
             if submission is not None:
-                return self._finish(output_schema, submission, sources, calls, round_no, False, ctx)
+                return self._finish(output_schema, submission, sources, calls, round_no, False, ctx, spec)
             if not reply.tool_calls:
                 raise ToolLoopInvalidOutputError("model replied without calling a tool")
 
@@ -87,10 +107,17 @@ class ToolCallingRunner:
             for call in reply.tool_calls:  # in order, one at a time (D7-D14)
                 if len(calls) >= self._max_calls:
                     message, outcome = _error_result(
-                        call, "call_limit", "tool call limit reached for this turn; call submit_post now", ctx
+                        call, "call_limit", f"tool call limit reached for this turn; call {spec.name} now", ctx
                     )
                 else:
-                    message, outcome = await self._execute(by_name, call, ctx)
+                    if ctx.on_tool:
+                        await ctx.on_tool({"tool_name": call["name"], "phase": "started"})
+                    try:
+                        message, outcome = await self._execute(by_name, call, ctx)
+                    except Exception:
+                        if ctx.on_tool:
+                            await ctx.on_tool({"tool_name": call["name"], "phase": "failed", "error_code": "tool_execution_failed"})
+                        raise
                 local.append(message)
                 calls.append(
                     ToolCallRecord(
@@ -100,11 +127,16 @@ class ToolCallingRunner:
                         result_count=outcome.result_count,
                     )
                 )
+                if ctx.on_tool:
+                    await ctx.on_tool({"tool_name": call["name"], "ok": outcome.error_code is None,
+                                       "error_code": outcome.error_code, "result_count": outcome.result_count,
+                                       "sources": [{"document_id": str(r.document_id), "title": r.title, "url": r.url}
+                                                   for r in outcome.sources]})
                 for ref in outcome.sources:
                     sources.setdefault(ref.document_id, ref)
 
         # Approved fallback (D7-D4): the model used every lookup round without
-        # submitting. One more call where submit_post is the only tool.
+        # submitting. One more call where the submit tool is the only tool.
         logger.warning(
             "agent.tool_loop round cap reached agent=%s user_id=%s correlation_id=%s rounds=%d; forcing submit",
             ctx.agent,
@@ -113,10 +145,12 @@ class ToolCallingRunner:
             self._max_rounds,
         )
         reply = await llm.bind_tools([submit], tool_choice="any").ainvoke(local)
-        submission = _submission(reply)
+        if ctx.on_usage and reply.usage_metadata:
+            await ctx.on_usage(dict(reply.usage_metadata))
+        submission = _submission(reply, spec)
         if submission is None:
-            raise ToolLoopInvalidOutputError("model did not submit a post on the forced round")
-        return self._finish(output_schema, submission, sources, calls, self._max_rounds + 1, True, ctx)
+            raise ToolLoopInvalidOutputError(f"model did not submit a {spec.noun} on the forced round")
+        return self._finish(output_schema, submission, sources, calls, self._max_rounds + 1, True, ctx, spec)
 
     async def _execute(
         self, by_name: dict[str, BaseTool], call: dict, ctx: ToolContext
@@ -152,6 +186,7 @@ class ToolCallingRunner:
         rounds: int,
         forced: bool,
         ctx: ToolContext,
+        spec: SubmitSpec,
     ) -> ToolLoopResult[T]:
         try:
             output = output_schema.model_validate(args)
@@ -163,7 +198,7 @@ class ToolCallingRunner:
                 ctx.correlation_id,
                 _first_error(exc),
             )
-            raise ToolLoopInvalidOutputError(f"submit_post arguments invalid: {_first_error(exc)}") from exc
+            raise ToolLoopInvalidOutputError(f"{spec.name} arguments invalid: {_first_error(exc)}") from exc
 
         fields = {
             "agent": ctx.agent,
@@ -190,11 +225,11 @@ class ToolCallingRunner:
         )
 
 
-def _submission(reply: AIMessage) -> dict | None:
-    """submit_post's arguments if the model called it. A submission ends the
-    turn even if the same reply also asked for lookups."""
+def _submission(reply: AIMessage, spec: SubmitSpec) -> dict | None:
+    """The submit tool's arguments if the model called it. A submission ends
+    the turn even if the same reply also asked for lookups."""
     for call in reply.tool_calls:
-        if call["name"] == SUBMIT:
+        if call["name"] == spec.name:
             return call["args"]
     return None
 

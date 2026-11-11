@@ -38,6 +38,7 @@ from backend.knowledge.models import (
     KnowledgeSource,
     KnowledgeSourceCredential,
 )
+from backend.knowledge.permissions import WorkspaceKnowledgeScope, document_access
 from backend.knowledge.records import (
     ChunkDiff,
     ChunkHit,
@@ -686,6 +687,7 @@ class KnowledgeRepository:
         query_vector: Sequence[float],
         k: int,
         source_ids: Sequence[UUID] | None = None,
+        *, scope: WorkspaceKnowledgeScope | None = None,
     ) -> list[ChunkHit]:
         """Nearest chunks by cosine distance, only ever from this user's
         sources. source_ids=None searches all of them; an empty list searches
@@ -699,7 +701,7 @@ class KnowledgeRepository:
 
         distance = _C.c.embedding.cosine_distance(list(query_vector))
         filters = [
-            _C.c.user_id == user_id,
+            document_access(_D, user_id, scope),
             _C.c.embedding_model == settings.EMBEDDING_MODEL_TAG,
             _S.c.status != "paused",
         ]
@@ -715,6 +717,7 @@ class KnowledgeRepository:
                 distance.label("distance"),
             )
             .join(_S, (_S.c.id == _C.c.source_id) & (_S.c.user_id == _C.c.user_id))
+            .join(_D, (_D.c.id == _C.c.document_id) & (_D.c.user_id == _C.c.user_id))
             .where(*filters)
             .order_by(distance)
             .limit(k)
@@ -752,7 +755,7 @@ class KnowledgeRepository:
 
     @staticmethod
     def find_documents_by_title(
-        db: Session, user_id: UUID, title_query: str, limit: int
+        db: Session, user_id: UUID, title_query: str, limit: int, *, scope: WorkspaceKnowledgeScope | None = None
     ) -> list[DocumentSummary]:
         """Case-insensitive substring match on the title, wildcards taken
         literally. Titles that start with the query first, then most recently
@@ -763,7 +766,7 @@ class KnowledgeRepository:
         starts = _D.c.title.ilike(f"{escaped}%", escape="\\")
         rows = db.execute(
             _visible_documents()
-            .where(_D.c.user_id == user_id, _S.c.status != "paused", contains)
+            .where(document_access(_D, user_id, scope), _S.c.status != "paused", contains)
             .order_by(starts.desc(), _D.c.source_modified_at.desc().nulls_last(), _D.c.id)
             .limit(limit)
         ).all()
@@ -771,7 +774,8 @@ class KnowledgeRepository:
 
     @staticmethod
     def list_documents_page(
-        db: Session, user_id: UUID, sort_by: str, limit: int, offset: int
+        db: Session, user_id: UUID, sort_by: str, limit: int, offset: int,
+        *, scope: WorkspaceKnowledgeScope | None = None
     ) -> tuple[list[DocumentSummary], bool]:
         """One page, and whether another follows (one extra row is fetched to
         tell). sort_by is "title" or "modified" (newest first)."""
@@ -783,7 +787,7 @@ class KnowledgeRepository:
             raise ValueError(f"unknown sort_by {sort_by!r}")
         rows = db.execute(
             _visible_documents()
-            .where(_D.c.user_id == user_id, _S.c.status != "paused")
+            .where(document_access(_D, user_id, scope), _S.c.status != "paused")
             .order_by(*order)
             .limit(limit + 1)
             .offset(offset)
@@ -792,7 +796,8 @@ class KnowledgeRepository:
 
     @staticmethod
     def get_document_text(
-        db: Session, user_id: UUID, document_id: UUID, offset: int, limit: int
+        db: Session, user_id: UUID, document_id: UUID, offset: int, limit: int,
+        *, scope: WorkspaceKnowledgeScope | None = None
     ) -> DocumentPage:
         """`limit` characters of the body from `offset` (0-based). Raises
         DocumentNotFoundError (no such visible document for this user) or
@@ -805,7 +810,7 @@ class KnowledgeRepository:
                 func.char_length(_D.c.body).label("total_chars"),
             )
             .join(_S, (_S.c.id == _D.c.source_id) & (_S.c.user_id == _D.c.user_id))
-            .where(_D.c.id == document_id, _D.c.user_id == user_id, _S.c.status != "paused")
+            .where(_D.c.id == document_id, document_access(_D, user_id, scope), _S.c.status != "paused")
         ).one_or_none()
         if row is None:
             raise DocumentNotFoundError(f"no document {document_id}")
@@ -823,7 +828,10 @@ class KnowledgeRepository:
         )
 
     @staticmethod
-    def has_sources(db: Session, user_id: UUID) -> bool:
+    def has_sources(db: Session, user_id: UUID, *, scope: WorkspaceKnowledgeScope | None = None) -> bool:
+        if scope is not None:
+            return db.execute(select(select(_D.c.id).join(_S, _S.c.id == _D.c.source_id).where(
+                document_access(_D, user_id, scope), _S.c.status != "paused").exists())).scalar_one()
         return db.execute(select(select(_S.c.id).where(_S.c.user_id == user_id).exists())).scalar_one()
 
     # ── credentials (0026) ─────────────────────────────────────────────────────

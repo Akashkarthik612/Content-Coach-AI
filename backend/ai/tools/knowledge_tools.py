@@ -65,10 +65,11 @@ class ReadArgs(BaseModel):
 
 def build_knowledge_tools(ctx: ToolContext, service: KnowledgeRetrievalService) -> list[StructuredTool]:
     user_id = ctx.user_id
+    access = {"scope": ctx.knowledge_scope} if ctx.knowledge_scope is not None else {}
 
     async def search_knowledge(query: str) -> tuple[str, ToolOutcome]:
         async def work():
-            results = await service.search(user_id, query)
+            results = await service.search(user_id, query, **access)
             payload = {
                 "results": [
                     {
@@ -87,7 +88,7 @@ def build_knowledge_tools(ctx: ToolContext, service: KnowledgeRetrievalService) 
 
     async def find_documents(title_query: str, limit: int = settings.KNOWLEDGE_LIST_DEFAULT):
         async def work():
-            docs = await service.find(user_id, title_query, limit)
+            docs = await service.find(user_id, title_query, limit, **access)
             return {"documents": [_summary(d) for d in docs]}, (), len(docs)
 
         return await _run(FIND, ctx, service, work, query_chars=len(title_query))
@@ -98,7 +99,7 @@ def build_knowledge_tools(ctx: ToolContext, service: KnowledgeRetrievalService) 
         cursor: str | None = None,
     ):
         async def work():
-            page = await service.list_documents(user_id, sort_by, limit, cursor)
+            page = await service.list_documents(user_id, sort_by, limit, cursor, **access)
             payload = {"documents": [_summary(d) for d in page.items], "next_cursor": page.next_cursor}
             return payload, (), len(page.items)
 
@@ -108,7 +109,7 @@ def build_knowledge_tools(ctx: ToolContext, service: KnowledgeRetrievalService) 
         document_id: str, offset: int = 0, limit: int = settings.KNOWLEDGE_READ_MAX_CHARS
     ):
         async def work():
-            page = await service.read(user_id, _parse_id(document_id), offset, limit)
+            page = await service.read(user_id, _parse_id(document_id), offset, limit, **access)
             payload = {
                 "document_id": str(page.document_id),
                 "title": page.title,
@@ -122,7 +123,7 @@ def build_knowledge_tools(ctx: ToolContext, service: KnowledgeRetrievalService) 
 
         return await _run(READ, ctx, service, work)
 
-    return [
+    tools = [
         StructuredTool.from_function(
             coroutine=search_knowledge,
             name=SEARCH,
@@ -166,6 +167,8 @@ def build_knowledge_tools(ctx: ToolContext, service: KnowledgeRetrievalService) 
         ),
     ]
 
+    return [t for t in tools if ctx.enabled_tools is None or t.name in ctx.enabled_tools]
+
 
 async def _run(
     name: str, ctx: ToolContext, service: KnowledgeRetrievalService, work, query_chars: int | None = None
@@ -177,7 +180,7 @@ async def _run(
         _log(logging.WARNING, name, ctx, 0, exc.code, query_chars)
         return json.dumps({"error": exc.code, "message": exc.message}), ToolOutcome(error_code=exc.code)
 
-    if count == 0 and not await service.has_sources(ctx.user_id):
+    if count == 0 and not await service.has_sources(ctx.user_id, **({"scope": ctx.knowledge_scope} if ctx.knowledge_scope is not None else {})):
         payload["hint"] = _NO_SOURCES_HINT
     _log(logging.INFO, name, ctx, count, None, query_chars)
     return json.dumps(payload, default=str), ToolOutcome(sources=sources, result_count=count)

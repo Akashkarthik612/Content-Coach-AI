@@ -4,6 +4,7 @@ from logging.config import fileConfig
 from alembic import context
 from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
+from backend.core.database_urls import sqlalchemy_url
 
 load_dotenv()
 
@@ -13,15 +14,17 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # Override the ini placeholder with the real DATABASE_URL from .env
-config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])
+config.set_main_option("sqlalchemy.url", sqlalchemy_url(os.environ["DATABASE_URL"]).replace("%", "%%"))
 
 # Import Base and all models so their tables are registered in metadata
+import backend.agents.models
 import backend.ai.independent_agents.models
 import backend.auth.models
 import backend.knowledge.models
 import backend.linkedin.models
 import backend.profile.models
 import backend.vault.models  # noqa: F401
+import backend.workspaces.models  # noqa: F401
 from backend.core.database import Base
 
 target_metadata = Base.metadata

@@ -4,9 +4,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from backend.core.config import settings
+from backend.core.database_urls import sqlalchemy_url
 
 engine = create_engine(
-    settings.DATABASE_URL,
+    sqlalchemy_url(settings.DATABASE_URL),
     pool_pre_ping=True,
     # Kept small: shares Supabase's session-pooler budget with the
     # checkpointer's psycopg pool (backend/ai/independent_agents/checkpointer.py).

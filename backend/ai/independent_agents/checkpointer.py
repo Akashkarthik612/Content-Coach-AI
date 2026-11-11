@@ -9,6 +9,8 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
+from backend.core.database_urls import psycopg_url
+
 # Kept small: shares Supabase's session-pooler budget with the SQLAlchemy
 # engine in backend/core/database.py.
 POOL_MAX_SIZE = 5
@@ -16,7 +18,7 @@ POOL_MAX_SIZE = 5
 
 def create_pool(conninfo: str) -> AsyncConnectionPool:
     return AsyncConnectionPool(
-        conninfo=conninfo,
+        conninfo=psycopg_url(conninfo),
         min_size=1,
         max_size=POOL_MAX_SIZE,
         kwargs={

@@ -10,10 +10,22 @@ attachAuthHeader(api);
  * draft, send the current one back as `extra_context`.
  *
  * @param {{topic: string, subreddit?: string, tone?: string, extra_context?: string}} req
- * @returns {Promise<{title: string, content: string, suggested_subreddit: string}>}
+ * @param {{signal?: AbortSignal}} [opts] aborting stops the wait, not the server's run
+ * @returns {Promise<{title: string, content: string, suggested_subreddit: string, note: string|null, sources: Array<{document_id: string, title: string, url: string|null}>}>}
  */
-export const generateRedditPost = (req) =>
-  api.post('/reddit', req).then(r => r.data);
+export const generateRedditPost = (req, { signal } = {}) =>
+  api.post('/reddit', req, { signal }).then(r => r.data);
+
+/**
+ * One stateless X draft (a single post, or a thread when `thread` is set).
+ * Same revise pattern as Reddit: send the current draft as `extra_context`.
+ *
+ * @param {{topic: string, thread?: boolean, tone?: string, extra_context?: string}} req
+ * @param {{signal?: AbortSignal}} [opts]
+ * @returns {Promise<{posts: string[], note: string|null, sources: Array<{document_id: string, title: string, url: string|null}>}>}
+ */
+export const generateXPost = (req, { signal } = {}) =>
+  api.post('/x', req, { signal }).then(r => r.data);
 
 // ── LinkedIn (thread memory) ────────────────────────────────────────────────
 // A chat is a server-side thread. Omit thread_id to start a new one; the
@@ -21,10 +33,11 @@ export const generateRedditPost = (req) =>
 
 /**
  * @param {{message: string, thread_id?: string|null}} req
- * @returns {Promise<{content: string, thread: {thread_id: string, turn_count: number, turn_limit: number, limit_reached: boolean}}>}
+ * @param {{signal?: AbortSignal}} [opts] aborting stops the wait; the server still finishes the turn
+ * @returns {Promise<{content: string, note: string|null, sources: Array<{document_id: string, title: string, url: string|null}>, thread: {thread_id: string, turn_count: number, turn_limit: number, limit_reached: boolean}}>}
  */
-export const sendLinkedInMessage = ({ message, thread_id = null }) =>
-  api.post('/linkedin', thread_id ? { message, thread_id } : { message }).then(r => r.data);
+export const sendLinkedInMessage = ({ message, thread_id = null }, { signal } = {}) =>
+  api.post('/linkedin', thread_id ? { message, thread_id } : { message }, { signal }).then(r => r.data);
 
 /** @returns {Promise<Array<{id: string, title: string|null, turn_count: number, last_message_at: string}>>} */
 export const listLinkedInThreads = () =>

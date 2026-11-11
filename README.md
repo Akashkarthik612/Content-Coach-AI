@@ -1,6 +1,10 @@
 # Honne AI
 
-Multiplayer AI for teams: one shared knowledge layer, many agents on top, and a single place to go from "I have the material" to "it's published". [Explore the live Honne AI app](https://honne-ai-rust.vercel.app/).
+The organizational multiplayer implementation is available at authenticated `/demo`.
+See [the organizational demo guide](docs/organizational-demo.md) for migration 0030,
+startup instructions, workspace/agent/chat/workflow APIs, implementation details and remaining verification.
+
+Multiplayer AI for teams: one shared knowledge layer, many agents on top, and a single place to go from "I have the material" to "it's published". You can check it out [here!](#) <!-- 🔗 add live Vercel URL -->
 
 
 ## Table of Contents
@@ -54,9 +58,11 @@ flowchart LR
 | **Thread memory** | A chat resumes where it stopped, using a Postgres-backed LangGraph checkpointer | ✅ LinkedIn · ⏳ Reddit, X |
 | **Turn-safe chats** | One turn at a time per thread (lease lock), a 15-turn cap and a 7-day idle purge | ✅ Live |
 | **Supabase auth** | Email, Google sign-in and password reset, with JWT verification on the API | ✅ Live |
-| **Knowledge layer** | Ingestion, chunking and embedding code for shared company context; integration maturity varies by connector | 🧪 Implemented in code; validate end-to-end |
-| **Semantic search** | Retrieval components backed by pgvector | 🧪 Implemented in code; verify per-agent usage |
-| **Supervisor graph** | Supervisor / specialist-agent orchestration | 🧪 In development |
+| **Knowledge layer** | Existing Google Drive ingestion, incremental re-embedding and explicit company document/source sharing | Implemented |
+| **Semantic search** | Shared pgvector retrieval with personal ownership or employee/workspace/agent permission intersections | Implemented |
+| **Company workspaces** | UUID companies, employees, admin/member roles, shared knowledge and configurable versioned agents | Implemented |
+| **Shared conversations** | Employee attribution, @agent routing, persistent history, sources and concurrency protection | Implemented |
+| **Company workflow** | Product ? Marketing ? Support handoffs in LangGraph, durable checkpoints and human review | Implemented; live scenario verification pending |
 
 
 **One chat turn**
@@ -81,7 +87,7 @@ sequenceDiagram
     API-->>FE: draft (nothing written to posts)
 ```
 
-**Knowledge-ingestion pipeline (implementation components; connector readiness varies)**
+**Knowledge-ingestion pipeline**
 
 ```mermaid
 flowchart LR
@@ -166,7 +172,6 @@ This is a personal project and is under active development. Issues and suggestio
 
 ## License
 
-See the repository LICENSE file if present; otherwise contact the author about reuse rights.
 
 ---
 

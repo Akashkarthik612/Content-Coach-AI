@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from backend.ai.tools.context import ToolContext
 from backend.ai.tools.knowledge_tools import build_knowledge_tools
 from backend.ai.tools.records import SourceRef, ToolLoopResult
-from backend.ai.tools.tool_loop import ToolCallingRunner
+from backend.ai.tools.tool_loop import SUBMIT_POST, SubmitSpec, ToolCallingRunner
 from backend.knowledge.retrieval import KnowledgeRetrievalService
 
 T = TypeVar("T", bound=BaseModel)
@@ -26,10 +26,16 @@ class KnowledgeAccess:
     runner: ToolCallingRunner
 
     async def write(
-        self, llm: BaseChatModel, messages: Sequence[AnyMessage], output_schema: type[T], ctx: ToolContext
+        self,
+        llm: BaseChatModel,
+        messages: Sequence[AnyMessage],
+        output_schema: type[T],
+        ctx: ToolContext,
+        spec: SubmitSpec = SUBMIT_POST,
     ) -> ToolLoopResult[T]:
         """One agent turn with the four knowledge tools bound for ctx's user."""
-        return await self.runner.run(llm, messages, build_knowledge_tools(ctx, self.service), output_schema, ctx)
+        tools = build_knowledge_tools(ctx, self.service)
+        return await self.runner.run(llm, messages, tools, output_schema, ctx, spec)
 
 
 def sources_json(sources: Sequence[SourceRef]) -> list[dict]:
