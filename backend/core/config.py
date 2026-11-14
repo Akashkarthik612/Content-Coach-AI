@@ -103,6 +103,9 @@ class Settings(BaseSettings):
     KNOWLEDGE_QUERY_EMBED_ATTEMPTS: int = 1
     KNOWLEDGE_QUERY_EMBED_TIMEOUT_S: float = 8.0
 
+    # Empty disables evaluation evidence export. Explicit test-workspace UUIDs only.
+    RAG_EVALUATION_WORKSPACE_IDS: str = ""
+
     # Custom agents (backend/agents/, Day_8.md D8-D11). The prompt is resent on
     # every model call of a turn, so its length is the main per-turn cost.
     CUSTOM_AGENT_PROMPT_MAX_CHARS: int = 8000

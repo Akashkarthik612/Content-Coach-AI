@@ -22,6 +22,7 @@ from backend.knowledge.models import KnowledgeDocument, KnowledgeSource
 from backend.knowledge.permissions import WorkspaceKnowledgeScope
 from backend.knowledge.sync import run_sync_in_background
 from backend.workspaces import chat, service, workflow
+from backend.workspaces.evaluation import router as evaluation_router
 from backend.workspaces.models import (
     AgentVersion,
     Conversation,
@@ -47,6 +48,7 @@ from backend.workspaces.schemas import (
 )
 
 router = APIRouter(prefix="/api/workspaces", tags=["workspaces"])
+router.include_router(evaluation_router)
 
 
 def commit(db):
