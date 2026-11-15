@@ -76,6 +76,21 @@ def test_capture_rejects_unshared_documents_before_search(capture):
 
 def test_capture_limits_source_count(capture):
     client, workspace, _, _, calls = capture
-    result = client.post(f"/api/workspaces/{workspace}/evaluation/retrieve", json={"query": "Which mode?", "document_ids": [str(uuid4()) for _ in range(6)]})
+    result = client.post(f"/api/workspaces/{workspace}/evaluation/retrieve", json={"query": "Which mode?", "document_ids": [str(uuid4()) for _ in range(501)]})
     assert result.status_code == 422
     assert calls == []
+
+
+def test_capture_preserves_all_five_hundred_document_ids(capture, monkeypatch):
+    client, workspace, document, employee, calls = capture
+    documents = [document, *[uuid4() for _ in range(499)]]
+    monkeypatch.setattr(evaluation.service, "visible_documents", lambda *a: [
+        SimpleNamespace(id=item, sync_status="synced") for item in documents
+    ])
+    result = client.post(f"/api/workspaces/{workspace}/evaluation/retrieve", json={
+        "query": "Which mode?", "document_ids": [str(item) for item in documents],
+    })
+    assert result.status_code == 200, result.text
+    assert calls[0][0] == employee
+    assert set(calls[0][2].document_ids) == set(documents)
+    assert set(result.json()["honne_document_ids"]) == {str(item) for item in documents}
