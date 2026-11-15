@@ -30,7 +30,7 @@ router = APIRouter()
 
 class RetrievalIn(Input):
     query: TextInput = Field(max_length=500)
-    document_ids: list[UUID] = Field(min_length=1, max_length=5)
+    document_ids: list[UUID] = Field(min_length=1, max_length=500)
 
     @field_validator("document_ids")
     @classmethod
