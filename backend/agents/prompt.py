@@ -84,8 +84,12 @@ _SECTIONS: tuple[tuple[str, _Section], ...] = (
 
 class CustomAgentPromptBuilder:
     @staticmethod
-    def build(config: AgentConfig, tools_bound: bool) -> RenderedPrompt:
+    def build(config: AgentConfig, tools_bound: bool, enabled_tools=None) -> RenderedPrompt:
         parts = [(tag, body(config, tools_bound)) for tag, body in _SECTIONS]
+        if enabled_tools is not None:
+            from backend.ai.tools.registry import KNOWLEDGE_TOOLS
+            if not set(enabled_tools).intersection(KNOWLEDGE_TOOLS):
+                parts = [(tag, body) for tag, body in parts if tag != "knowledge_tools"]
         included = tuple(tag for tag, text in parts if text is not None)
         text = "\n\n".join(_section(tag, body) for tag, body in parts if body is not None)
         return RenderedPrompt(

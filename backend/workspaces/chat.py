@@ -8,6 +8,7 @@ from uuid import uuid4
 from sqlalchemy import select
 
 from backend.agents.models import AgentConfiguration
+from backend.ai.tools.sources import source_key
 from backend.workspaces.models import ChatMessage, Conversation
 from backend.workspaces.runtime import (
     AGENT_TIMEOUT_S,
@@ -202,6 +203,14 @@ async def run_turn(knowledge, message_id, attempt_id):
             await database(_event, message_id, attempt_id, name, data)
 
         context_sources = {}
+        def build_context(allowed):
+            # Enabled capabilities come from the pinned configuration; the history
+            # access check still applies current workspace document permissions.
+            return attributed_history(history, allowed, agent_id, context_sources, enabled)
+
+        from backend.workspaces.runtime import configuration_context
+        _, _, enabled, _, _ = await database(configuration_context, workspace_id, user_id, version_id)
+        build_context.source_refs = context_sources
         result = await execute_agent(
             knowledge,
             workspace_id,
@@ -209,11 +218,13 @@ async def run_turn(knowledge, message_id, attempt_id):
             version_id,
             [],
             event,
-            context_builder=lambda allowed: attributed_history(history, allowed, agent_id, context_sources),
+            context_builder=build_context,
+            execution_id=f'chat:{message_id}',
+            message_id=message_id,
         )
         # Preserve provenance through context-only replies, so a later specialist cannot
         # receive source-derived content that has lost its original document permissions.
-        context_sources.update({s["document_id"]: s for s in result["sources"]})
+        context_sources.update({source_key(s): s for s in result["sources"]})
         result["sources"] = list(context_sources.values())
         await database(_finish, message_id, attempt_id, result)
     except Exception as exc:  # noqa: BLE001 - background boundary persists a sanitized failure state

@@ -22,3 +22,4 @@ uvicorn
 cryptography
 pypdf
 tiktoken
+markdown-it-py>=3,<5

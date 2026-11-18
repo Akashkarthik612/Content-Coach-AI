@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Bot, Building2, ChevronDown, FileText, GitBranch, MessageSquare, Plus, Users } from 'lucide-react'
 import { addWorkspaceMember, archiveWorkspaceAgent, createWorkspace, getWorkspace, getWorkspaceKnowledge, listConversations, listWorkspaceAgents, listWorkflows, listWorkspaces, workspaceError } from '../api/workspaces'
@@ -9,6 +9,7 @@ import WorkflowPanel from './demo/WorkflowPanel'
 import { Dialog, ErrorMessage, TextContent, WorkspaceTopbar } from './demo/shared'
 import '@fontsource-variable/inter'
 import './demo/demo.css'
+import { agentDraftKey, readAgentDraft } from './demo/agentDraft'
 
 function WorkspaceForm({ onClose, onCreated }) {
   const [name, setName] = useState('')
@@ -40,7 +41,7 @@ function MemberForm({ workspaceId, onClose, onSaved }) {
 function WorkspaceContent({ workspaceId, workspaces, selectWorkspace, onCreate, conversationId, runId, tab, navigate }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
-  const [builder, setBuilder] = useState(null)
+  const [builder, setBuilder] = useState(() => { const draft = readAgentDraft(workspaceId); return draft ? { agent: draft.agent, template: draft.template } : null })
   const [addingMember, setAddingMember] = useState(false)
   const [archiving, setArchiving] = useState('')
   const [section, setSection] = useState('')
@@ -81,7 +82,7 @@ function WorkspaceContent({ workspaceId, workspaces, selectWorkspace, onCreate, 
     {section === 'documents' && <Dialog title="Documents" onClose={() => setSection('')} wide><div className="demo-panel-body"><KnowledgePanel workspaceId={workspaceId} knowledge={knowledge} admin={admin} onRefresh={refresh} /></div></Dialog>}
     {section === 'agents' && <Dialog title="Workspace agents" onClose={() => setSection('')} wide><div className="demo-panel-body"><div className="demo-section-title"><p className="demo-muted">Specialists configured by your workspace.</p>{admin && <button className="demo-primary" type="button" onClick={() => setBuilder({})}><Plus size={14} />Create agent</button>}</div>{agents.map(agent => <section className="demo-agent-row" key={agent.id}><div><strong>{agent.name} <span>@{agent.handle}</span></strong><span>v{agent.version}</span></div><TextContent content={agent.description} /><p className="demo-small demo-muted">{agent.responsibility}</p>{admin && <div className="demo-agent-actions"><button type="button" onClick={() => setBuilder({ agent })}>Edit / Try</button><button className="demo-text-button" type="button" disabled={archiving === agent.id} onClick={() => archive(agent.id)}>{archiving === agent.id ? 'Archiving…' : 'Archive'}</button></div>}</section>)}{!agents.length && <p>Create specialists with their own instructions and knowledge permissions.</p>}</div></Dialog>}
     {section === 'people' && <Dialog title="People & workspace" onClose={() => setSection('')}><div className="demo-panel-body"><div className="demo-section-title"><h3>{workspace.name}</h3>{admin && <button type="button" onClick={() => setAddingMember(true)}><Plus size={14} />Add employee</button>}</div><ul className="demo-members">{workspace.members.map(member => <li key={member.user_id}><span className="demo-avatar">{(member.username || member.email || '?')[0].toUpperCase()}</span><div><strong>{member.username || member.email}</strong><small>{member.role}{member.user_id === workspace.user_id ? ' · you' : ''}</small></div></li>)}</ul></div></Dialog>}
-    {builder && <AgentBuilder workspaceId={workspaceId} {...builder} knowledge={knowledge} onClose={() => setBuilder(null)} onSaved={refresh} />}
+    {builder && <AgentBuilder workspaceId={workspaceId} {...builder} knowledge={knowledge} onClose={() => { sessionStorage.removeItem(agentDraftKey(workspaceId)); setBuilder(null) }} onSaved={refresh} />}
     {addingMember && <MemberForm workspaceId={workspaceId} onClose={() => setAddingMember(false)} onSaved={refresh} />}
   </div>
 }

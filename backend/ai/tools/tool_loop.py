@@ -27,6 +27,7 @@ from pydantic import BaseModel, ValidationError
 
 from backend.ai.tools.context import ToolContext
 from backend.ai.tools.records import SourceRef, ToolCallRecord, ToolLoopResult, ToolOutcome
+from backend.ai.tools.sources import source_json
 
 logger = logging.getLogger(__name__)
 
@@ -130,10 +131,10 @@ class ToolCallingRunner:
                 if ctx.on_tool:
                     await ctx.on_tool({"tool_name": call["name"], "ok": outcome.error_code is None,
                                        "error_code": outcome.error_code, "result_count": outcome.result_count,
-                                       "sources": [{"document_id": str(r.document_id), "title": r.title, "url": r.url}
-                                                   for r in outcome.sources]})
+                                       "sources": [source_json(r) for r in outcome.sources]})
                 for ref in outcome.sources:
-                    sources.setdefault(ref.document_id, ref)
+                    sources.setdefault(ref.key, ref)
+                    ctx.sources[ref.key] = source_json(ref)
 
         # Approved fallback (D7-D4): the model used every lookup round without
         # submitting. One more call where the submit tool is the only tool.
@@ -161,7 +162,8 @@ class ToolCallingRunner:
         if tool is None:
             return _error_result(call, "unknown_tool", f"there is no tool named {call['name']!r}", ctx)
         try:
-            message = await asyncio.wait_for(tool.ainvoke(call), self._tool_timeout_s)
+            timeout = max(self._tool_timeout_s, 60) if tool.name == "create_google_doc" else self._tool_timeout_s
+            message = await asyncio.wait_for(tool.ainvoke(call), timeout)
         except ValidationError as exc:
             return _error_result(call, "invalid_input", _first_error(exc), ctx)
         except TimeoutError:

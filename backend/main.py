@@ -10,6 +10,7 @@ import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.agent_tools.router import router as agent_tools_router
 from backend.agents.router import router as agents_router
 from backend.ai.independent_agents.checkpointer import create_checkpointer, create_pool
 from backend.ai.independent_agents.limits import MAX_TOOL_CALLS, MAX_TOOL_ROUNDS, TOOL_TIMEOUT_S
@@ -91,6 +92,8 @@ def _check_production_config() -> None:
     if settings.GOOGLE_BASE_URL:
         # Would send real users' Google tokens to a test fake.
         raise RuntimeError("GOOGLE_BASE_URL is test-only; refusing to start on Render with it set")
+    if settings.TAVILY_BASE_URL != "https://api.tavily.com":
+        raise RuntimeError("TAVILY_BASE_URL overrides are test-only on Render")
     try:
         TokenCipher()  # a malformed key would only surface at the first Drive connect
     except ValueError as exc:
@@ -129,8 +132,12 @@ async def lifespan(app: FastAPI):
         checkpointer = create_checkpointer(pool)
         await checkpointer.setup()  # official + idempotent: creates/migrates the checkpoint tables
         app.state.knowledge = build_knowledge_access()
+        app.state.agent_tools = app.state.knowledge or KnowledgeAccess(
+            service=None,
+            runner=ToolCallingRunner(max_rounds=MAX_TOOL_ROUNDS, max_calls=MAX_TOOL_CALLS, tool_timeout_s=TOOL_TIMEOUT_S),
+        )
         app.state.workspace_graph = (
-            build_workflow_graph(checkpointer, app.state.knowledge) if app.state.knowledge is not None else None
+            build_workflow_graph(checkpointer, app.state.agent_tools)
         )
         app.state.linkedin_graph = build_linkedin_graph(checkpointer, app.state.knowledge)
         purge_task = asyncio.create_task(_purge_expired_threads_forever(checkpointer))
@@ -165,6 +172,7 @@ app.include_router(independent_agents_router)
 app.include_router(knowledge_router)
 app.include_router(agents_router)
 app.include_router(workspaces_router)
+app.include_router(agent_tools_router)
 
 
 @app.get("/health")

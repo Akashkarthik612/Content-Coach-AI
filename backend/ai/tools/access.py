@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from backend.ai.tools.context import ToolContext
 from backend.ai.tools.knowledge_tools import build_knowledge_tools
 from backend.ai.tools.records import SourceRef, ToolLoopResult
+from backend.ai.tools.sources import source_json
 from backend.ai.tools.tool_loop import SUBMIT_POST, SubmitSpec, ToolCallingRunner
 from backend.knowledge.retrieval import KnowledgeRetrievalService
 
@@ -22,7 +23,7 @@ T = TypeVar("T", bound=BaseModel)
 
 @dataclass(frozen=True)
 class KnowledgeAccess:
-    service: KnowledgeRetrievalService
+    service: KnowledgeRetrievalService | None
     runner: ToolCallingRunner
 
     async def write(
@@ -34,10 +35,13 @@ class KnowledgeAccess:
         spec: SubmitSpec = SUBMIT_POST,
     ) -> ToolLoopResult[T]:
         """One agent turn with the four knowledge tools bound for ctx's user."""
-        tools = build_knowledge_tools(ctx, self.service)
+        from backend.ai.tools.external import build_external_tools
+
+        tools = build_knowledge_tools(ctx, self.service) if self.service is not None else []
+        tools.extend(build_external_tools(ctx))
         return await self.runner.run(llm, messages, tools, output_schema, ctx, spec)
 
 
 def sources_json(sources: Sequence[SourceRef]) -> list[dict]:
     """Sources as plain JSON, for the checkpoint and the API."""
-    return [{"document_id": str(s.document_id), "title": s.title, "url": s.url} for s in sources]
+    return [source_json(s) for s in sources]

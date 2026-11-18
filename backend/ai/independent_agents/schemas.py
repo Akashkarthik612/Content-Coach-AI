@@ -29,9 +29,13 @@ class ThreadStatus(BaseModel):
 class SourceRefOut(BaseModel):
     """A document the agent's knowledge tools showed it this turn."""
 
-    document_id: UUID
+    document_id: UUID | None = None
     title: str
     url: str | None = None
+    source_id: str | None = None
+    type: Literal["document", "web"] = "document"
+    retrieved_at: str | None = None
+    excerpt: str | None = None
 
 
 class LinkedInChatResponse(BaseModel):

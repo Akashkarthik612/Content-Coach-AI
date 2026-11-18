@@ -18,8 +18,15 @@ from langsmith import tracing_context
 from sqlalchemy import select
 
 from backend.agents.models import AgentConfiguration
+from backend.ai.tools.sources import fact_keys, source_key, sources_allowed
 from backend.workspaces.models import WorkflowReview, WorkflowRun, WorkflowStep
-from backend.workspaces.runtime import JOB_STALE_SECONDS, database, error_code, execute_agent
+from backend.workspaces.runtime import (
+    JOB_STALE_SECONDS,
+    configuration_context,
+    database,
+    error_code,
+    execute_agent,
+)
 from backend.workspaces.schemas import Deliverable, ProductFacts
 from backend.workspaces.service import fail, get_agent, member, version_for
 
@@ -110,7 +117,7 @@ def start_run(db, workspace_id, user_id, request):
                 fail(422, f"select_one_{role}_agent")
             agent = rows[0]
         version = version_for(db, agent)
-        if not agent.enabled_tools or not (agent.source_ids or agent.document_ids):
+        if not agent.enabled_tools or not (agent.source_ids or agent.document_ids or 'web_search' in agent.enabled_tools):
             fail(422, f"configure_{role}_knowledge")
         assignments[role] = {
             "id": str(agent.id),
@@ -191,20 +198,26 @@ def build_workflow_graph(checkpointer, knowledge):
             await emit(state, config, event, {"role": role, **data})
 
         handoff = {}
+        inherited_sources = {}
+        _, _, enabled, _, _ = await database(configuration_context, UUID(state["workspace_id"]),
+                                             UUID(state["employee_id"]), UUID(assignment["version_id"]))
 
         def context(allowed):
             import json
 
-            instruction = "Extract product facts from authorized company documents. Every fact needs retrieved document IDs."
+            instruction = "Extract source-backed facts from permitted company documents and, when enabled, public web search. Cite retrieved document IDs in document_ids and web source IDs in source_ids. Flag missing evidence."
             if role != "product":
                 product = state["product"]
                 facts = [
                     fact
                     for fact in product.get("facts", [])
-                    if {UUID(v) for v in fact["document_ids"]} <= allowed
+                    if fact_keys(fact) and fact_keys(fact) <= {
+                        source_key(source) for source in product.get("sources", [])
+                        if sources_allowed([source], allowed, enabled)
+                    }
                 ]
-                ids = {v for fact in facts for v in fact["document_ids"]}
-                refs = [s for s in product.get("sources", []) if s["document_id"] in ids]
+                ids = {key for fact in facts for key in fact_keys(fact)}
+                refs = [s for s in product.get("sources", []) if source_key(s) in ids]
                 handoff.update(
                     {
                         "facts": facts,
@@ -226,8 +239,11 @@ def build_workflow_graph(checkpointer, knowledge):
                 instruction += " Do not present missing or contradictory facts as confirmed. Retrieve additional permitted knowledge if needed."
             # Carry previous deliverables only when their sources remain inside this specialist's grants.
             previous = state.get("previous_deliverables", {}).get(role)
-            if previous and not {UUID(s["document_id"]) for s in previous.get("sources", [])} <= allowed:
+            if previous and not sources_allowed(previous.get("sources", []), allowed, enabled):
                 previous = None
+            inherited_sources.update({source_key(source): source for source in handoff.get("sources", [])})
+            if previous:
+                inherited_sources.update({source_key(source): source for source in previous.get("sources", [])})
             data = {
                 "business_request": state["request"],
                 "task": instruction,
@@ -237,6 +253,7 @@ def build_workflow_graph(checkpointer, knowledge):
             }
             return [HumanMessage(json.dumps(data, ensure_ascii=False))]
 
+        context.source_refs = inherited_sources
         output = await execute_agent(
             knowledge,
             UUID(state["workspace_id"]),
@@ -246,12 +263,14 @@ def build_workflow_graph(checkpointer, knowledge):
             on_event,
             schema,
             context_builder=context,
+            execution_id=f"workflow:{state['run_id']}:{state.get('revision', 0)}:{role}",
+            run_id=UUID(state['run_id']), revision=state.get('revision', 0), workflow_role=role,
         )
         output["revision"] = state.get("revision", 0)
         if role == "product":
             # A model-supplied identifier is never accepted as a citation without an actual tool result.
-            retrieved = {s["document_id"] for s in output["sources"]}
-            verified = [f for f in output["facts"] if set(f["document_ids"]) <= retrieved]
+            retrieved = {source_key(s) for s in output["sources"]}
+            verified = [f for f in output["facts"] if fact_keys(f) and fact_keys(f) <= retrieved]
             if len(verified) != len(output["facts"]):
                 output["missing"].append(
                     "Facts with unverified document references were excluded from the handoff."
@@ -269,7 +288,7 @@ def build_workflow_graph(checkpointer, knowledge):
             )
         else:
             # Include only real refs supplied in this authorized handoff or this turn's tools.
-            refs = {s["document_id"]: s for s in [*handoff.get("sources", []), *output["sources"]]}
+            refs = {source_key(s): s for s in [*handoff.get("sources", []), *output["sources"]]}
             output["sources"] = list(refs.values())
             output["handoff"] = handoff
         snapshot = {**state, role: output}
@@ -292,7 +311,7 @@ def build_workflow_graph(checkpointer, knowledge):
             for label in ("missing", "contradictions"):
                 issues.extend(f"{role}: {item}" for item in state[role].get(label, []))
             for source in state[role].get("sources", []):
-                sources[source["document_id"]] = source
+                sources[source_key(source)] = source
         result = {"issues": list(dict.fromkeys(issues)), "sources": list(sources.values())}
         await emit(
             state,

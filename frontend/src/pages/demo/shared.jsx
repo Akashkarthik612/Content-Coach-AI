@@ -24,13 +24,13 @@ export function ErrorMessage({ children }) {
 
 export function Sources({ sources = [], expanded = false }) {
   if (!sources.length) return <p className="demo-muted demo-small">No retrieved sources recorded.</p>
-  const unique = [...new Map(sources.map(source => [source.document_id || source.url || source.title, source])).values()]
+  const unique = [...new Map(sources.map(source => [source.source_id || source.document_id || source.url || source.title, source])).values()]
   const list = <ul>{unique.map((source, index) => {
       const safe = /^https?:\/\//i.test(source.url ?? '')
       const label = source.display_name || source.title || source.name || `Document ${index + 1}`
       return <li key={source.document_id || source.url || index}>{safe
         ? <a href={source.url} target="_blank" rel="noopener noreferrer" title={source.url}>{label}<ExternalLink size={13} /></a>
-        : <span>{label}</span>}{source.document_id && <small>Document {source.document_id}</small>}
+        : <span>{label}</span>}{source.type === 'web' ? <small>Web source{source.retrieved_at ? ` ? retrieved ${new Date(source.retrieved_at).toLocaleDateString()}` : ''}</small> : source.document_id && <small>Document {source.document_id}</small>}
         {source.excerpt && <blockquote>{source.excerpt}</blockquote>}
         {safe && <details className="demo-source-address"><summary>Full source address</summary><a href={source.url} target="_blank" rel="noopener noreferrer">{source.url}</a></details>}</li>
     })}</ul>

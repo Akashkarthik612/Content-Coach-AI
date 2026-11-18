@@ -32,6 +32,18 @@ export const reviewWorkflow = (id, runId, input) => data(api.post(`${path(id)}/w
 export const retryWorkflow = (id, runId) => data(api.post(`${path(id)}/workflows/${runId}/retry`))
 
 const REASONS = {
+  google_docs_not_configured: 'Google Docs is not available yet. Ask your workspace administrator to finish setup.',
+  google_docs_not_connected: 'Connect your Google Docs account to create this document.',
+  google_docs_reconnect_required: 'Reconnect your Google Docs account and retry.',
+  google_docs_connection_failed: 'Google Docs could not connect. Start the connection again.',
+  docs_scope_not_granted: 'Allow document creation when connecting Google Docs.',
+  consent_denied: 'The Google connection was cancelled. You can connect again.',
+  invalid_state: 'This connection request expired or was already used. Start a new connection.',
+  document_owner_required: 'Only the person who requested this document can retry creating it.',
+  document_tool_not_enabled: 'This agent no longer has permission to create Google documents.',
+  document_sources_no_longer_permitted: 'Some report sources are no longer available to this agent.',
+  document_busy: 'This document is already being created. Its status will update shortly.',
+
   workspace_not_found: 'You do not have access to this workspace.',
   workspace_admin_required: 'A workspace admin manages members, sharing and agents.',
   registered_employee_not_found: 'No registered employee has that email. Ask them to sign in to Honne first.',
@@ -59,10 +71,16 @@ export function workspaceError(error) {
   const reason = detail?.reason
   if (REASONS[reason]) return REASONS[reason]
   if (/^select_one_(product|marketing|support)_agent$/.test(reason ?? '')) return 'Choose one Product, Marketing and Support specialist before running the workflow.'
-  if (/^configure_.*_knowledge$/.test(reason ?? '')) return 'Give every specialist at least one shared knowledge source or document and an enabled tool.'
+  if (/^configure_.*_knowledge$/.test(reason ?? '')) return 'Give every specialist access to shared knowledge with a reading tool, or enable web search.'
   if (Array.isArray(detail)) return detail.map(item => `${item.loc?.slice(1).join('.')}: ${item.msg}`).join(' · ')
   if (error?.response?.status === 401) return 'Your session has expired. Sign in again.'
   return reason ? `Request failed (${reason}).` : 'Could not reach the server. Try again.'
 }
 
 export const statusLabel = value => (value ?? '').replaceAll('_', ' ')
+
+export const getToolCatalog = id => data(api.get(`${path(id)}/tools`))
+export const connectGoogleDocs = id => data(api.get(`${path(id)}/google-docs/connect`))
+export const completeGoogleDocs = (id, input) => data(api.post(`${path(id)}/google-docs/complete`, input))
+export const disconnectGoogleDocs = id => data(api.delete(`${path(id)}/google-docs/connection`))
+export const retryGeneratedDocument = (id, reportId) => data(api.post(`${path(id)}/documents/generated/${encodeURIComponent(reportId)}/retry`))

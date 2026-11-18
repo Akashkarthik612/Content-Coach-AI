@@ -18,6 +18,7 @@ config.set_main_option("sqlalchemy.url", sqlalchemy_url(os.environ["DATABASE_URL
 
 # Import Base and all models so their tables are registered in metadata
 import backend.agents.models
+import backend.agent_tools.models  # noqa: F401
 import backend.ai.independent_agents.models
 import backend.auth.models
 import backend.knowledge.models

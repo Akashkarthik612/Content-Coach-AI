@@ -7,11 +7,11 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_vali
 
 from backend.agents.models import AgentModel
 from backend.agents.schemas import Guardrails, Handle, SystemPrompt
+from backend.ai.tools.registry import KNOWLEDGE_TOOLS, TOOL_NAMES, ToolName
 
 TextInput = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
-ToolName = Literal["search_knowledge", "find_documents", "list_documents", "read_document"]
 WorkflowRole = Literal["product", "marketing", "support", "custom"]
-ALL_TOOLS = ["search_knowledge", "find_documents", "list_documents", "read_document"]
+ALL_TOOLS = list(KNOWLEDGE_TOOLS)
 
 
 class Input(BaseModel):
@@ -44,7 +44,7 @@ class AgentIn(Input):
     workflow_role: WorkflowRole = "custom"
     source_ids: list[UUID] = Field(default_factory=list, max_length=200)
     document_ids: list[UUID] = Field(default_factory=list, max_length=200)
-    enabled_tools: list[ToolName] = Field(default_factory=lambda: ALL_TOOLS.copy(), max_length=4)
+    enabled_tools: list[ToolName] = Field(default_factory=lambda: ALL_TOOLS.copy(), max_length=len(TOOL_NAMES))
 
     @field_validator("source_ids", "document_ids", "enabled_tools")
     @classmethod
@@ -99,10 +99,17 @@ class Fact(Input):
     category: Literal["product", "feature", "pricing", "limitation", "policy", "other"]
     statement: str = Field(min_length=1, max_length=1500)
     document_ids: list[UUID] = Field(
-        min_length=1,
+        default_factory=list,
         max_length=12,
         description="Document IDs actually returned by this turn's knowledge tools. No invented IDs.",
     )
+    source_ids: list[str] = Field(default_factory=list, max_length=12, description="Recorded source IDs for web evidence; never invent references.")
+
+    @model_validator(mode="after")
+    def evidence_required(self):
+        if not self.document_ids and not self.source_ids:
+            raise ValueError("A fact needs at least one retrieved source reference.")
+        return self
 
 
 class ProductFacts(Input):

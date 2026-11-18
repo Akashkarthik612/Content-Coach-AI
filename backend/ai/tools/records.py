@@ -12,9 +12,17 @@ T = TypeVar("T")
 class SourceRef:
     """A document a tool showed the model; collected for the response."""
 
-    document_id: UUID
+    document_id: UUID | None
     title: str
     url: str | None
+    kind: str = "document"
+    source_id: str | None = None
+    retrieved_at: str | None = None
+    excerpt: str | None = None
+
+    @property
+    def key(self) -> str:
+        return self.source_id or str(self.document_id)
 
 
 @dataclass(frozen=True)

@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from backend.agent_tools.documents import list_documents as generated_documents
 from backend.agents.models import AgentConfiguration
 from backend.agents.records import AgentConfig
 from backend.agents.runner import CustomAgentRunner
@@ -60,7 +61,7 @@ def commit(db):
 
 
 def knowledge(request):
-    value = getattr(request.app.state, "knowledge", None)
+    value = getattr(request.app.state, "agent_tools", None) or getattr(request.app.state, "knowledge", None)
     if value is None:
         service.fail(503, "knowledge_tools_disabled")
     return value
@@ -318,6 +319,7 @@ async def preview_agent(
         correlation_id=str(config.id),
         knowledge_scope=WorkspaceKnowledgeScope(workspace_id, tuple(cfg.source_ids), tuple(cfg.document_ids)),
         enabled_tools=tuple(cfg.enabled_tools),
+        preview=True,
     )
     try:
         with tracing_context(enabled=False):
@@ -386,17 +388,22 @@ def get_conversation(
     row = chat.conversation(db, workspace_id, conversation_id)
     chat.expire_messages(db, conversation_id)
     commit(db)
+    messages = db.execute(
+        select(chat.ChatMessage, AgentVersion.version)
+        .outerjoin(AgentVersion, AgentVersion.id == chat.ChatMessage.agent_version_id)
+        .where(chat.ChatMessage.conversation_id == row.id)
+        .order_by(chat.ChatMessage.seq)
+    ).all()
+    artifacts = {}
+    for document in generated_documents(db, workspace_id, message_ids=[message.id for message, _ in messages]):
+        artifacts.setdefault(document["message_id"], []).append(document)
     return {
         "id": row.id,
         "title": row.title,
         "messages": [
-            {**chat.message_json(m), "agent_version": version}
-            for m, version in db.execute(
-                select(chat.ChatMessage, AgentVersion.version)
-                .outerjoin(AgentVersion, AgentVersion.id == chat.ChatMessage.agent_version_id)
-                .where(chat.ChatMessage.conversation_id == row.id)
-                .order_by(chat.ChatMessage.seq)
-            )
+            {**chat.message_json(message), "agent_version": version,
+             "artifacts": artifacts.get(str(message.id), [])}
+            for message, version in messages
         ],
     }
 
@@ -505,6 +512,7 @@ def get_workflow(
     ).all()
     return {
         **run_json(row, full=True),
+        "artifacts": generated_documents(db, workspace_id, run_id=run_id),
         "steps": [
             {
                 k: getattr(s, k)

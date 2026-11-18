@@ -60,8 +60,8 @@ class CustomAgentRunner:
         The caller builds the trusted scope and immutable config, never the model.
         The submit tool's schema is authoritative for workflow outputs.
         """
-        prompt = CustomAgentPromptBuilder.build(config, tools_bound=True)
         tools = ctx.enabled_tools
+        prompt = CustomAgentPromptBuilder.build(config, tools_bound=True, enabled_tools=tools)
         contract = (
             "\nThe submit_answer tool declaration defines the complete output contract for this turn. "
             "Populate all required fields in that schema, including structured facts or issues when present."
@@ -69,6 +69,11 @@ class CustomAgentRunner:
         context = f"\nAgent responsibility: {escape(config.responsibility)}"
         if tools is not None:
             context += "\nAvailable data tools: " + (", ".join(tools) or "none")
+        if ctx.sources:
+            import json
+            context += "\nServer-recorded source references from permitted context (use their IDs for citations): " + json.dumps(list(ctx.sources.values()), ensure_ascii=False)
+        if ctx.preview:
+            context += "\nThis is a preview. Explain the proposed report; no Google documents will be created."
         request = [SystemMessage(platform_rules + context + "\n\n" + prompt.text + contract), *messages]
         return await knowledge.write(chat_model(config.model), request, output_schema, ctx, SUBMIT_ANSWER)
 

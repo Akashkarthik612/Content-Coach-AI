@@ -3,6 +3,8 @@ import { MessageSquare, Plus, Send } from 'lucide-react'
 import { createConversation, getConversation, retryWorkspaceMessage, sendWorkspaceMessage, workspaceError } from '../../api/workspaces'
 import { ErrorMessage, Sources, TextContent } from './shared'
 import { timeLabel } from './time'
+import GeneratedDocuments from './GeneratedDocuments'
+import { GoogleDocsConnection } from './ToolSettings'
 
 export default function SharedConversation({ workspaceId, members, agents, conversations, conversationId, onSelect, onRefresh }) {
   const [chat, setChat] = useState(null)
@@ -57,6 +59,7 @@ export default function SharedConversation({ workspaceId, members, agents, conve
     <div className="demo-chat-controls"><label>Shared conversation<select value={conversationId ?? ''} onChange={e => onSelect(e.target.value)}><option value="">Choose a conversation</option>{conversations.map(item => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>
       <form onSubmit={newChat}><label className="demo-sr-only" htmlFor="conversation-title">New conversation title</label><input id="conversation-title" value={title} maxLength={120} onChange={e => setTitle(e.target.value)} placeholder="New conversation title" /><button type="submit" disabled={busy}><Plus size={15} />New</button></form>
     </div>
+    <GoogleDocsConnection workspaceId={workspaceId} />
     <ErrorMessage>{error || pollError}</ErrorMessage>
     <div className="demo-message-list" aria-live="polite" aria-relevant="additions text">
       {!conversationId && <div className="demo-empty"><MessageSquare size={32} /><h3>Start a shared conversation</h3><p>Create a conversation, then ask one of your company agents a question.</p></div>}
@@ -65,6 +68,7 @@ export default function SharedConversation({ workspaceId, members, agents, conve
       {chat?.messages.map(message => <article className={`demo-message demo-message-${message.role}`} key={message.id}>
         <header><strong>{message.role === 'user' ? employee(message.employee_id) : `@${message.agent_handle}`}</strong><span>{message.role === 'assistant' && <>v{message.agent_version ?? '—'} · </>}{timeLabel(message.created_at)}</span></header>
         {message.content && <TextContent content={message.content} />}
+        <GeneratedDocuments workspaceId={workspaceId} artifacts={message.artifacts || []} onRefresh={() => setReload(value => value + 1)} />
         {message.status === 'running' && <p className="demo-live-status" role="status">{message.steps.at(-1)?.event === 'tool_used' ? `Used ${message.steps.at(-1).tool_name.replaceAll('_', ' ')}` : 'Agent is answering…'}</p>}
         {message.status === 'failed' && <div><ErrorMessage>{workspaceError({ response: { data: { detail: { reason: message.error_code } } } })}</ErrorMessage>{message.id === newest?.id && <button type="button" onClick={retry} disabled={busy}>Retry this turn</button>}</div>}
         {message.role === 'assistant' && message.status === 'ok' && <Sources sources={message.sources} />}

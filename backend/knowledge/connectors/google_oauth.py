@@ -11,7 +11,7 @@ consent link and attach the victim's Drive to their own account.
 import json
 import secrets
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode, urlsplit
 from uuid import UUID
 
@@ -91,12 +91,13 @@ class GoogleOAuth:
         )
 
     @staticmethod
-    def auth_url(state: str) -> str:
+    def auth_url(state: str, scope: str = DRIVE_SCOPE) -> str:
         params = {
             "client_id": settings.GOOGLE_OAUTH_CLIENT_ID,
             "redirect_uri": settings.GOOGLE_DRIVE_REDIRECT_URI,
             "response_type": "code",
-            "scope": DRIVE_SCOPE,
+            "scope": scope,
+            "include_granted_scopes": "true",
             "access_type": "offline",  # we need a refresh token
             # consent: a refresh token every time, even on reconnect.
             # select_account: always show Google's account chooser ("Use another account").
@@ -164,7 +165,7 @@ class GoogleOAuth:
         body = response.json()
         return TokenGrant(
             access_token=body["access_token"],
-            expires_at=datetime.now(timezone.utc) + timedelta(seconds=int(body.get("expires_in", 3600))),
+            expires_at=datetime.now(UTC) + timedelta(seconds=int(body.get("expires_in", 3600))),
             scope=body.get("scope", ""),
             refresh_token=body.get("refresh_token"),
         )

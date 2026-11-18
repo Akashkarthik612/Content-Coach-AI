@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # (tests/smoke/fake_gemini.py); leave it unset everywhere else.
     GEMINI_BASE_URL: str = ""
     TAVILY_API_KEY: str = ""
+    TAVILY_BASE_URL: str = "https://api.tavily.com"
     APP_NAME: str = "LinkedIn Coach"
     ENV: str = "development"
 

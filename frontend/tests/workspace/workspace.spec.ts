@@ -1,4 +1,4 @@
-﻿import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
 import { readFileSync, mkdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fixture, french } from './fixtures'
@@ -6,7 +6,7 @@ import { fixture, french } from './fixtures'
 async function replay(page: Page, snapshot = fixture()) {
   const data = structuredClone(snapshot)
   const reviews: any[] = []
-  await page.addInitScript(() => localStorage.setItem('user_id', 'local-ui-replay'))
+  await page.addInitScript(user => localStorage.setItem('user_id', user), data.workspace.user_id)
   await page.route(url => url.pathname === '/api/workspaces' || url.pathname.startsWith('/api/workspaces/'), async route => {
     const url = new URL(route.request().url())
     const tail = url.pathname.replace(/^\/api\/workspaces\/?/, '').split('/').filter(Boolean)
@@ -19,9 +19,14 @@ async function replay(page: Page, snapshot = fixture()) {
     if (!tail.length) body = [{ id: data.workspace.id, name: data.workspace.name, role: data.workspace.role }]
     else if (tail.length === 1) body = data.workspace
     else if (tail[1] === 'knowledge') body = { sources: [], documents: data.run.state.product?.sources?.map((s: any) => ({ id: s.document_id, title: s.title, source_url: s.url, sync_status: 'ready', chunk_count: 2 })) || [] }
+    else if (tail[1] === 'tools') body = { tools: [
+      { name: 'search_knowledge', label: 'Search company knowledge', description: 'Read permitted knowledge.', effect: 'read', configured: true },
+      { name: 'web_search', label: 'Search the web', description: 'Public research with Tavily.', effect: 'read', configured: true },
+      { name: 'create_google_doc', label: 'Create Google documents', description: 'Create a document in your Google account.', effect: 'create', configured: true },
+    ], google_docs: { configured: true, connected: false } }
     else if (tail[1] === 'agents') body = data.agents
     else if (tail[1] === 'workflows') body = tail.length === 2 ? data.runs : data.run
-    else if (tail[1] === 'conversations') body = tail.length === 2 ? data.conversations : { id: 'chat-1', messages: [{ id: 'message-1', role: 'assistant', agent_handle: data.agents[0].handle, agent_version: 2, content: french, status: 'ok', steps: [], sources: data.run.state.product.sources, created_at: '2026-11-18T10:00:00Z' }] }
+    else if (tail[1] === 'conversations') body = tail.length === 2 ? data.conversations : { id: 'chat-1', messages: [{ id: 'message-1', role: 'assistant', agent_handle: data.agents[0].handle, agent_version: 2, content: french, status: 'ok', steps: [], artifacts: data.run.artifacts || [], sources: data.run.state.product.sources, created_at: '2026-11-18T10:00:00Z' }] }
     else return route.fulfill({ status: 404, json: { detail: 'Unknown replay route' } })
     return route.fulfill({ json: body })
   })
@@ -142,4 +147,68 @@ test('conversation replies use the same clean renderer', async ({ page }) => {
 test('authentication gate remains in place', async ({ page }) => {
   await page.goto('/demo')
   await expect(page).toHaveURL('/')
+})
+
+
+test('any user-created agent can opt into web search and Google Docs', async ({ page }) => {
+  await replay(page)
+  await page.getByRole('button', { name: 'Agents', exact: false }).first().click()
+  await page.getByRole('button', { name: 'Create agent', exact: true }).click()
+  const builder = page.getByRole('dialog').last()
+  await expect(builder.getByRole('checkbox', { name: 'Search the web' })).not.toBeChecked()
+  await expect(builder.getByRole('checkbox', { name: 'Create Google documents' })).not.toBeChecked()
+  await builder.getByRole('checkbox', { name: 'Search the web' }).check()
+  await builder.getByRole('checkbox', { name: 'Create Google documents' }).check()
+  await expect(builder.getByRole('button', { name: 'Connect Google Docs', exact: true })).toBeVisible()
+  await expect(builder).toContainText('Try agent previews document content without creating a Google document.')
+})
+
+test('document deliverables persist in chat and distinguish ready from failed creation', async ({ page }) => {
+  const snapshot = fixture()
+  snapshot.run.artifacts = [
+    { id: 'report-ready', title: 'Rapport de recherche', status: 'ready', url: 'https://docs.google.com/document/d/test-document/edit', created_by: snapshot.workspace.user_id, sources: snapshot.run.state.product.sources },
+    { id: 'report-failed', title: 'Rapport ? reprendre', status: 'failed', error_code: 'google_docs_not_connected', created_by: snapshot.workspace.user_id, sources: [] },
+  ]
+  await replay(page, snapshot)
+  await page.getByRole('button', { name: 'Questions sur les entretiens', exact: true }).click()
+  await expect(page.getByRole('link', { name: 'Open in Google Docs' })).toHaveAttribute('href', 'https://docs.google.com/document/d/test-document/edit')
+  await expect(page.getByRole('button', { name: 'Retry creation' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Generated documents' })).toContainText('Connect your Google Docs account')
+  await page.reload()
+  await expect(page.getByRole('link', { name: 'Open in Google Docs' })).toBeVisible()
+})
+
+test('Google Docs consent restores the unfinished agent and original workspace view', async ({ page }) => {
+  await replay(page)
+  await page.route('**/google-docs/connect', route => route.fulfill({ json: { auth_url: 'http://127.0.0.1:4186/connect/gdrive/callback?state=docs.test-state&code=test-code' } }))
+  await page.route('**/google-docs/complete', route => route.fulfill({ json: { workspace_id: 'workspace-1', connected: true } }))
+  await page.getByRole('button', { name: 'Agents', exact: false }).first().click()
+  await page.getByRole('button', { name: 'Create agent', exact: true }).click()
+  let builder = page.getByRole('dialog').last()
+  await builder.getByRole('textbox', { name: 'Name', exact: true }).fill('Custom research reporter')
+  await builder.getByRole('textbox', { name: 'System instructions', exact: true }).fill('Write a sourced research report when requested.')
+  await builder.getByRole('checkbox', { name: 'Create Google documents' }).check()
+  await builder.getByRole('button', { name: 'Connect Google Docs', exact: true }).click()
+  await expect(page).toHaveURL(/view=workflow&run=run-1&docs=connected/)
+  builder = page.getByRole('dialog').last()
+  await expect(builder.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue('Custom research reporter')
+  await expect(builder.getByRole('textbox', { name: 'System instructions', exact: true })).toHaveValue('Write a sourced research report when requested.')
+  await expect(builder.getByRole('checkbox', { name: 'Create Google documents' })).toBeChecked()
+  await builder.getByRole('group', { name: 'Tools', exact: true }).scrollIntoViewIfNeeded()
+  await page.screenshot({ path: resolve(process.cwd(), '../reports/agent-tool-settings.png') })
+})
+
+test('a failed report can be retried and become a real document link', async ({ page }) => {
+  const snapshot = fixture()
+  snapshot.run.artifacts = [{ id: 'report-retry', title: 'Rapport de recherche', status: 'failed', error_code: 'google_docs_not_connected', created_by: snapshot.workspace.user_id, sources: snapshot.run.state.product.sources }]
+  const { data } = await replay(page, snapshot)
+  await page.route('**/documents/generated/report-retry/retry', route => {
+    data.run.artifacts[0] = { ...data.run.artifacts[0], status: 'ready', error_code: null, url: 'https://docs.google.com/document/d/retried-document/edit' }
+    return route.fulfill({ json: { status: 'working' } })
+  })
+  await page.getByRole('button', { name: 'Questions sur les entretiens', exact: true }).click()
+  await page.getByRole('button', { name: 'Retry creation' }).click()
+  await expect(page.getByRole('link', { name: 'Open in Google Docs' })).toHaveAttribute('href', 'https://docs.google.com/document/d/retried-document/edit')
+  await page.getByRole('region', { name: 'Generated documents' }).scrollIntoViewIfNeeded()
+  await page.screenshot({ path: resolve(process.cwd(), '../reports/generated-report.png') })
 })
