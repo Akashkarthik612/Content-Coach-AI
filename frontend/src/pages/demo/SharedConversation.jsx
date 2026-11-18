@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { MessageSquare, Plus, Send } from 'lucide-react'
 import { createConversation, getConversation, retryWorkspaceMessage, sendWorkspaceMessage, workspaceError } from '../../api/workspaces'
-import { ErrorMessage, Sources, TextContent, timeLabel } from './shared'
+import { ErrorMessage, Sources, TextContent } from './shared'
+import { timeLabel } from './time'
 
 export default function SharedConversation({ workspaceId, members, agents, conversations, conversationId, onSelect, onRefresh }) {
   const [chat, setChat] = useState(null)
@@ -17,7 +18,6 @@ export default function SharedConversation({ workspaceId, members, agents, conve
   useEffect(() => {
     let live = true
     let timer
-    setChat(null); setPollError('')
     if (!conversationId) return undefined
     async function refresh() {
       try {
@@ -53,7 +53,7 @@ export default function SharedConversation({ workspaceId, members, agents, conve
   }
   const employee = id => { const value = members.find(member => member.user_id === id); return value?.username || value?.email || 'Former employee' }
   return <section className="demo-chat">
-    <div className="demo-content-heading"><div><span className="demo-eyebrow">Manual multiplayer</span><h2>One conversation. Your whole team.</h2><p>Address an agent with @handle. Every company member can continue the conversation.</p></div><MessageSquare size={25} /></div>
+    <div className="demo-content-heading"><h1>Shared conversation</h1><p>Address an agent with @handle. Your team can pick up where you left off.</p></div>
     <div className="demo-chat-controls"><label>Shared conversation<select value={conversationId ?? ''} onChange={e => onSelect(e.target.value)}><option value="">Choose a conversation</option>{conversations.map(item => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>
       <form onSubmit={newChat}><label className="demo-sr-only" htmlFor="conversation-title">New conversation title</label><input id="conversation-title" value={title} maxLength={120} onChange={e => setTitle(e.target.value)} placeholder="New conversation title" /><button type="submit" disabled={busy}><Plus size={15} />New</button></form>
     </div>
@@ -73,7 +73,7 @@ export default function SharedConversation({ workspaceId, members, agents, conve
     </div>
     <form className="demo-composer" onSubmit={send}>
       <div className="demo-mentions">{agents.map(agent => <button key={agent.id} type="button" disabled={!conversationId || busy || running} onClick={() => setDraft(value => `@${agent.handle} ${value.replace(/^@[a-z0-9-]+\s*/i, '')}`)}>@{agent.handle}</button>)}</div>
-      <label htmlFor="shared-message" className="demo-sr-only">Message a company agent</label><textarea id="shared-message" rows={3} value={draft} maxLength={8000} onChange={e => setDraft(e.target.value)} placeholder="@product Summarize the approved features and pricing…" disabled={!conversationId || running} />
+      <label htmlFor="shared-message" className="demo-sr-only">Message a company agent</label><textarea id="shared-message" rows={3} value={draft} maxLength={8000} onChange={e => setDraft(e.target.value)} placeholder={agents[0] ? `@${agents[0].handle} Ask about your workspace knowledge…` : 'Ask a workspace agent…'} disabled={!conversationId || running} />
       <footer><span className="demo-muted demo-small">Shared with all workspace members</span><button className="demo-primary" type="submit" disabled={!conversationId || !chat || busy || running || !draft.trim()}><Send size={15} />{busy || running ? 'Waiting for agent…' : 'Send message'}</button></footer>
     </form>
   </section>

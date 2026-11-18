@@ -3,7 +3,7 @@ import { createWorkspaceAgent, previewWorkspaceAgent, updateWorkspaceAgent, work
 import { Dialog, ErrorMessage, Sources, TextContent } from './shared'
 
 const TOOLS = ['search_knowledge', 'find_documents', 'list_documents', 'read_document']
-export const TEMPLATES = {
+const TEMPLATES = {
   product: { name: 'Product Agent', handle: 'product', description: 'Verified product facts, pricing and limitations.', responsibility: 'Research approved product documentation and extract source-backed facts.', system_prompt: 'Read approved product documentation. Extract product facts, features, exact pricing, limitations and unresolved contradictions. Each structured fact must cite document IDs actually returned by your tools. If a detail is missing, flag it instead of guessing. Provide a concise product summary.' },
   marketing: { name: 'Marketing Agent', handle: 'marketing', description: 'Launch announcements grounded in product facts and brand guidance.', responsibility: 'Turn verified facts into a launch announcement using company brand guidelines.', system_prompt: 'Draft a LinkedIn launch announcement from verified product facts and authorized company brand guidelines. Preserve the exact pricing and limitations. Do not invent claims, customer names, launch dates or performance numbers. Flag missing information and contradictions. Draft only.' },
   support: { name: 'Customer Support Agent', handle: 'support', description: 'Customer FAQs and unresolved support questions.', responsibility: 'Prepare source-backed FAQs from product facts and support policies.', system_prompt: 'Prepare concise customer FAQs using verified product facts and authorized company support policies. Include pricing, limitations and support terms only when documented. Clearly separate answered FAQs from unresolved questions. Flag contradictions. Do not promise unsupported capabilities or policies.' },
@@ -59,7 +59,7 @@ export default function AgentBuilder({ workspaceId, agent, template, knowledge, 
       <fieldset><legend>Read-only tools</legend><div className="demo-tool-options">{TOOLS.map(tool => <label className="demo-check" key={tool}><input type="checkbox" checked={form.enabled_tools.includes(tool)} onChange={() => toggle('enabled_tools', tool)} />{tool.replaceAll('_', ' ')}</label>)}</div></fieldset>
       <section className="demo-preview"><h3>Try before saving</h3><label>Test message<textarea rows={2} maxLength={8000} value={message} onChange={e => setMessage(e.target.value)} placeholder="Ask a question about the selected company documents" /></label>
         <button type="button" onClick={tryAgent} disabled={!!busy || !message.trim()}>{busy === 'preview' ? 'Agent is answering…' : 'Try agent'}</button>
-        {preview && <div aria-live="polite"><TextContent content={preview.content} />{preview.note && <p className="demo-muted">{preview.note}</p>}<Sources sources={preview.sources} />
+        {preview && <div aria-live="polite"><TextContent content={preview.content} />{preview.note && <TextContent content={preview.note} />}<Sources sources={preview.sources} />
           {preview.steps.length > 0 && <p className="demo-small demo-muted">Tools: {preview.steps.map(step => step.tool_name).join(', ')}</p>}</div>}
       </section>
       <ErrorMessage>{error}</ErrorMessage>
